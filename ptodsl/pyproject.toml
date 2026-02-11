@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pto-dsl"
+version = "0.1.0"
+description = "Pythonic DSL for PTO-ISA"
+requires-python = ">=3.9"
+authors = [
+  { name = "pto-dsl contributors" }
+]
+
+[tool.setuptools]
+packages = ["ptodsl"]
+
+[tool.setuptools.package-dir]
+ptodsl = "."
