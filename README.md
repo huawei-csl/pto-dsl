@@ -8,6 +8,7 @@ Pythonic interface and JIT compiler for [PTO-ISA](https://gitcode.com/cann/pto-i
 - Easy interfacing with [torch-npu](https://gitcode.com/ascend/pytorch)
 - Automatic software pipelining without [manual synchronization](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850/API/ascendcopapi/atlasascendc_api_07_0179.html)
 - Explicit control across memory hierarchy
+- Simple and lightweight compiler stack without over-engineering
 
 ## Environment
 
