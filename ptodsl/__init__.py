@@ -371,7 +371,7 @@ def jit(
     *,
     meta_data,
     output_dir=None,
-    block_dim=20,
+    block_dim=1,
     enable_insert_sync=True,
     npu_arch="dav-2201",
 ):

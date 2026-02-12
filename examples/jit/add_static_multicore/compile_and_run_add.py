@@ -26,7 +26,7 @@ def meta_data():
     }
 
 
-@jit(meta_data=meta_data)
+@jit(meta_data=meta_data, block_dim=20)
 def vec_add_kernel(
     arg0: "ptr_type",
     arg1: "ptr_type",
@@ -37,7 +37,7 @@ def vec_add_kernel(
     c0 = const(0)
     c1 = const(1)
     c32 = const(32)
-    c1280 = const(1280)
+    c1280 = const(1280)  # 32 rows/per * 40 vec cores = 1280 rows
 
     cid = pto.get_block_idx()
     sub_bid = pto.get_subblock_idx()
