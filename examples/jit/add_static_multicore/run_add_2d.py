@@ -31,8 +31,8 @@ def vec_add_kernel(
     arg0: "ptr_type",
     arg1: "ptr_type",
     arg2: "ptr_type",
-    arg_vrow_i32: "index_dtype",
-    arg_vcol_i32: "index_dtype"
+    vrow: "index_dtype",
+    vcol: "index_dtype"
     ) -> None:
     c0 = const(0)
     c1 = const(1)
@@ -45,8 +45,8 @@ def vec_add_kernel(
     cidmul = cid * sub_bnum
     vid = cidmul + sub_bid
 
-    v_row_idx = pto.index_cast(arg_vrow_i32)
-    v_col_idx = pto.index_cast(arg_vcol_i32)
+    v_row_idx = pto.index_cast(vrow)
+    v_col_idx = pto.index_cast(vcol)
 
     tv0 = pto.as_tensor(tensor_type, ptr=arg0, shape=[c1280, c32], strides=[c32, c1])
     tv1 = pto.as_tensor(tensor_type, ptr=arg1, shape=[c1280, c32], strides=[c32, c1])
@@ -80,7 +80,7 @@ def test_add():
     y = torch.rand(shape, device=device, dtype=dtype)
     z = torch.empty(shape, device=device, dtype=dtype)
 
-    vec_add_kernel(x, y, z)
+    vec_add_kernel(x, y, z, 32, 32)
     torch.npu.synchronize()
 
     z_ref = x + y
