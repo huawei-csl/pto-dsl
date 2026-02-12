@@ -10,10 +10,41 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # --------------------------------------------------------------------------------
 
+import ctypes
 import torch
 import torch_npu
 
-from jit_util_dyn import jit_compile
+
+def torch_to_ctypes(tensor):
+    return ctypes.c_void_p(tensor.data_ptr())
+
+
+def load_lib(lib_path, block_dim, check_type=True):
+    lib = ctypes.CDLL(lib_path)
+
+    if check_type:
+        lib.call_kernel.argtypes = [
+            ctypes.c_uint32,  # blockDim
+            ctypes.c_void_p,  # stream
+            ctypes.c_void_p,  # x
+            ctypes.c_void_p,  # y
+            ctypes.c_uint32,  # num of elements
+        ]
+        lib.call_kernel.restype = None
+
+    def relu_func(x, y, n, block_dim=block_dim, stream_ptr=None):
+        if stream_ptr is None:
+            stream_ptr=  torch.npu.current_stream()._as_parameter_
+
+        lib.call_kernel(
+            block_dim,
+            stream_ptr,
+            torch_to_ctypes(x),
+            torch_to_ctypes(y),
+            n,
+        )
+
+    return relu_func
 
 
 def test_add(verbose=False):
@@ -23,7 +54,7 @@ def test_add(verbose=False):
     dtype = torch.float32
 
     BLOCK_DIM = 10
-    relu_kernel = jit_compile("generated_relu.cpp", block_dim=BLOCK_DIM)
+    relu_kernel = load_lib("relu_lib.so", block_dim=BLOCK_DIM)
 
     for i in range(2):
         shape = [20, 128 + i*128]
