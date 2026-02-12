@@ -308,15 +308,6 @@ class JitWrapper:
             return ctypes.c_void_p(value)
         raise TypeError(f"Pointer-like argument expected, got {type(value)!r}.")
 
-    def _default_scalar_value(self, param_name):
-        # TODO: remove this hard-coded default
-        lower_name = param_name.lower()
-        if "vrow" in lower_name or "valid_row" in lower_name:
-            return 32
-        if "vcol" in lower_name or "valid_col" in lower_name:
-            return 32
-        return 0
-
     def _prepare_call_args(self, args):
         params = list(self._sig.parameters.values())
         if len(args) > len(params):
@@ -331,7 +322,6 @@ class JitWrapper:
             arg_type = self._arg_types[idx]
             if _is_ptr_type(arg_type):
                 raise TypeError(f"Missing required pointer argument '{param.name}'.")
-            filled_args.append(self._default_scalar_value(param.name))
 
         converted = []
         for value, arg_type in zip(filled_args, self._arg_types):
@@ -341,6 +331,7 @@ class JitWrapper:
                 converted.append(value)
         return converted
 
+    # TODO: also allow taking named `kwargs`
     def __call__(self, *args, stream_ptr=None):
         if not self._compiled:
             self._build()
