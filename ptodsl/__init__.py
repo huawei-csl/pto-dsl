@@ -261,7 +261,7 @@ class JitWrapper:
             "-mllvm",
             "-cce-aicore-dcci-insert-for-scalar=false",
             f"--npu-arch={self._npu_arch}",
-            "-DMEMORY_BASE",
+            "-DMEMORY_BASE",  # TODO: add switch for A5
             "-std=gnu++17",
             str(caller_cpp_path),
             "-o",
@@ -346,14 +346,8 @@ class JitWrapper:
             self._build()
 
         if stream_ptr is None:
-            try:
-                import torch
-
-                stream_ptr = torch.npu.current_stream()._as_parameter_
-            except Exception as exc:
-                raise RuntimeError(
-                    "stream_ptr is not provided and torch.npu current stream could not be resolved."
-                ) from exc
+            import torch
+            stream_ptr = torch.npu.current_stream()._as_parameter_
 
         call_args = self._prepare_call_args(args)
         self._lib.call_kernel(_normalize_stream_ptr(stream_ptr), *call_args)
