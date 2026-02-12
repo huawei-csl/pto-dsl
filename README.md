@@ -10,6 +10,8 @@ Pythonic interface and JIT compiler for [PTO-ISA](https://gitcode.com/cann/pto-i
 - Explicit control across memory hierarchy
 - Simple and lightweight compiler stack without over-engineering
 
+PTO-DSL provides a programming abstraction layer similar to [Cute DSL](https://docs.nvidia.com/cutlass/latest/media/docs/pythonDSL/overview.html) and [cuTile](https://docs.nvidia.com/cuda/cutile-python/), but native to [NPU](https://www.hiascend.com/).
+
 ## Environment
 
 See [docker](./docker)
