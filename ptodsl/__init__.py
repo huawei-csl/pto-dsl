@@ -309,6 +309,7 @@ class JitWrapper:
         raise TypeError(f"Pointer-like argument expected, got {type(value)!r}.")
 
     def _default_scalar_value(self, param_name):
+        # TODO: remove this hard-coded default
         lower_name = param_name.lower()
         if "vrow" in lower_name or "valid_row" in lower_name:
             return 32

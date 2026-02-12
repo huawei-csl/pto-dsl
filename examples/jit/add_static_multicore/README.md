@@ -1,5 +1,6 @@
 With `ptodsl` installed, just run a single script:
 
 ```bash
-python ./compile_and_run_add.py
+python ./run_add_2d.py
+python ./run_add_1d.py
 ```
