@@ -10,12 +10,16 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # --------------------------------------------------------------------------------
 
+import ctypes
 import torch
 import torch_npu
 
 
+def torch_to_ctypes(tensor):
+    return ctypes.c_void_p(tensor.data_ptr())
+
+
 def load_lib(lib_path, block_dim, check_type=True):
-    lib_path = os.path.abspath(lib_path)
     lib = ctypes.CDLL(lib_path)
 
     if check_type:
