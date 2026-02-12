@@ -1,7 +1,7 @@
 Usage:
 
 ```bash
-RELEASE_TAG=20260211
+RELEASE_TAG=20260212
 sudo docker build . -t pto_dsl:$RELEASE_TAG
 
 # for specific arch (x86_64 vs aarch64)

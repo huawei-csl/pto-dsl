@@ -50,3 +50,10 @@ RUN ptoas ./tmatmulk.pto -o ./tmatmulk.cpp
 
 RUN python ./abs.py > ./abs.pto
 RUN ptoas --enable-insert-sync ./abs.pto -o ./abs.cpp
+
+# certain operations need latest isa header, not CANN 8.5.0 default
+# header on 2026/02/12
+ARG PTOISA_COMMIT=1d222ef08e626bf692d08950bb39b06560807697
+WORKDIR /sources
+RUN git clone https://gitcode.com/cann/pto-isa.git \
+    && cd pto-isa && git checkout $PTOISA_COMMIT
