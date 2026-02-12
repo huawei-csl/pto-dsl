@@ -26,7 +26,7 @@ def meta_data():
     }
 
 
-@jit(meta_data=meta_data)  # mock for now, not implemented yet
+@jit(meta_data=meta_data)
 def vec_add_kernel(
     arg0: "ptr_type",
     arg1: "ptr_type",
@@ -67,8 +67,6 @@ def vec_add_kernel(
         pto.load(sv1, tb1)
         pto.add(tb0, tb1, tb2)
         pto.store(tb2, sv2)
-
-    # `default `return None` maps to `func.ReturnOp([])`
 
 
 def test_add():
