@@ -16,24 +16,18 @@ import torch_npu
 from jit_util_dyn import jit_compile
 
 
-def test_add(verbose=True):
-    device = "npu:0"
+def test_add(verbose=False):
+    device = "npu:1"
     torch.set_default_device(device)
     torch.npu.set_device(device)
     dtype = torch.float32
 
     BLOCK_DIM = 10
-
-    print('starting to jit')
     relu_kernel = jit_compile("generated_relu.cpp", block_dim=BLOCK_DIM)
-    print('finsished jit')
 
-    for i in range(1):
+    for i in range(2):
         shape = [20, 128 + i*128]
 
-        print('wth')
-        wtttt = torch.rand(shape, device=device, dtype=dtype) - 0.5
-        print(wtttt)
         x = torch.rand(shape, device=device, dtype=dtype) - 0.5
         y = torch.full(shape, -10, device=device, dtype=dtype)
         relu_kernel(x, y, n=x.numel())
