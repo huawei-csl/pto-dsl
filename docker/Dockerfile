@@ -20,7 +20,7 @@ RUN pip install --no-cache-dir \
 # ARG ARCH=x86_64
 ARG ARCH=aarch64
 ARG RELEASE_REPO=huawei-csl/PTOAS
-ARG RELEASE_TAG=20260211
+ARG RELEASE_TAG=20260214
 ARG WHEEL_NAME=ptoas-0.1.1-cp311-none-manylinux_2_34_${ARCH}.whl
 ARG CLI_TAR_NAME=ptoas-bin-${ARCH}.tar.gz
 
@@ -52,8 +52,8 @@ RUN python ./abs.py > ./abs.pto
 RUN ptoas --enable-insert-sync ./abs.pto -o ./abs.cpp
 
 # certain operations need latest isa header, not CANN 8.5.0 default
-# header on 2026/02/12
-ARG PTOISA_COMMIT=1d222ef08e626bf692d08950bb39b06560807697
+# header on 2026/02/14
+ARG PTOISA_COMMIT=672ee54cb8905bb9f9abbe80ec26ed2054b7a0cc
 WORKDIR /sources
 RUN git clone https://gitcode.com/cann/pto-isa.git \
     && cd pto-isa && git checkout $PTOISA_COMMIT

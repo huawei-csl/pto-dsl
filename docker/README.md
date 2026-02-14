@@ -1,12 +1,15 @@
 Usage:
 
 ```bash
-RELEASE_TAG=20260212
-sudo docker build . -t pto_dsl:$RELEASE_TAG
+RELEASE_TAG=20260214
+sudo docker build \
+    --build-arg RELEASE_TAG=$RELEASE_TAG \
+    . -t pto_dsl:$RELEASE_TAG
 
 # for specific arch (x86_64 vs aarch64)
 sudo docker build \
     --build-arg ARCH=x86_64 \
+    --build-arg RELEASE_TAG=$RELEASE_TAG \
     . -t pto_dsl:$RELEASE_TAG
 
 # to test compile-only
