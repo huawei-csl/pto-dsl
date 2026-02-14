@@ -2,8 +2,6 @@ from mlir.ir import Context, Location, Module, InsertionPoint
 from mlir.dialects import func, arith, pto, scf
 from mlir.ir import F32Type, IndexType, IntegerType
 
-# python gen_dyn.py | ptoas --enable-insert-sync > generated_relu.cpp
-
 def build():
     with Context() as ctx:
         pto.register_dialect(ctx, load=True)
@@ -46,16 +44,11 @@ def build():
                     c0 = arith.ConstantOp(idx, 0).result
                     c1 = arith.ConstantOp(idx, 1).result
                     c_tile_w = arith.ConstantOp(idx, tile_w).result
-                    c_num_blocks = arith.ConstantOp(u32, NUM_BLOCKS).result
+                    c_num_blocks = arith.ConstantOp(idx, NUM_BLOCKS).result
                     total_elements = arith.IndexCastOp(idx, argN).result
 
-                    # must do divisions in u32 for now. until index is supported
-                    num_el_per_core = arith.DivUIOp(argN, c_num_blocks).result
-                    num_tiles = arith.DivUIOp(
-                        num_el_per_core, arith.IndexCastOp(u32, c_tile_w).result
-                    ).result
-                    num_el_per_core = arith.IndexCastOp(idx, num_el_per_core).result
-                    num_tiles = arith.IndexCastOp(idx, num_tiles).result
+                    num_el_per_core = arith.DivUIOp(total_elements, c_num_blocks).result
+                    num_tiles = arith.DivUIOp(num_el_per_core, c_tile_w).result
                     bid = arith.IndexCastOp(idx, pto.GetBlockIdxOp()).result
 
                     # GM tensors shape N with stride 1
