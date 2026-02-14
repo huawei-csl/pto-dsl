@@ -9,7 +9,7 @@ RUN apt update && apt install -y wget git vim
 RUN pip install --no-cache-dir torch==2.9.0 --index-url https://download.pytorch.org/whl/cpu \
     && pip install --no-cache-dir torch-npu==2.9.0 \
     && pip install --no-cache-dir numpy pyyaml
-    
+
 # extra util
 RUN pip install --no-cache-dir \
     pytest pybind11 nanobind setuptools wheel \
@@ -20,7 +20,7 @@ RUN pip install --no-cache-dir \
 # ARG ARCH=x86_64
 ARG ARCH=aarch64
 ARG RELEASE_REPO=huawei-csl/PTOAS
-ARG RELEASE_TAG=20260214
+ARG RELEASE_TAG=20260214.post1
 ARG WHEEL_NAME=ptoas-0.1.1-cp311-none-manylinux_2_34_${ARCH}.whl
 ARG CLI_TAR_NAME=ptoas-bin-${ARCH}.tar.gz
 
