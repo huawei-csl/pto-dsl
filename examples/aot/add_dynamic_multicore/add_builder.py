@@ -66,11 +66,8 @@ def build():
                 tb1 = pto.AllocTileOp(tile_buf).result
                 tb2 = pto.AllocTileOp(tile_buf).result
 
-                # for loop: for i in range(num_tiles)
-                # TODO: use `scf.for_` syntax sugar https://github.com/llvm/llvm-project/blob/llvmorg-19.1.7/mlir/python/mlir/dialects/scf.py#L106
-                loop = scf.ForOp(c0, num_tiles, c1)
-                with InsertionPoint(loop.body):
-                    i = loop.induction_variable
+                # NOTE: `scf.for_` syntax sugar defined in https://github.com/llvm/llvm-project/blob/llvmorg-19.1.7/mlir/python/mlir/dialects/scf.py#L106
+                for i in scf.for_(c0, num_tiles, c1):
                     offset_core = arith.MulIOp(vid_idx, elements_per_core).result
                     offset_tile = arith.MulIOp(i, c1024).result
                     offset_global = arith.AddIOp(offset_core, offset_tile).result
