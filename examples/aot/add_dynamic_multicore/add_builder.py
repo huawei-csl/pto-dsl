@@ -50,8 +50,9 @@ def build():
             num_blocks_idx = arith.IndexCastOp(IndexType.get(), num_blocks).result
             total_elements = arith.IndexCastOp(IndexType.get(), argN).result
 
-            elements_per_core = arith.DivUIOp(total_elements, num_blocks_idx).result
-            num_tiles = arith.DivUIOp(elements_per_core, c1024).result
+            # https://mlir.llvm.org/docs/Dialects/ArithOps/#arithceildivsi-arithceildivsiop
+            elements_per_core = arith.CeilDivSIOp(total_elements, num_blocks_idx).result
+            num_tiles = arith.CeilDivSIOp(elements_per_core, c1024).result
 
             vec_section = pto.SectionVectorOp()
             vec_block = vec_section.body.blocks.append()
