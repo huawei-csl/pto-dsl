@@ -25,7 +25,7 @@ def meta_data():
     }
 
 
-def vec_add_kernel_2d_dynamic(
+def vec_add_2d_static(
     arg0: "ptr_type",
     arg1: "ptr_type",
     arg2: "ptr_type",
@@ -92,7 +92,7 @@ def build():
         fn_ty = func.FunctionType.get([ptr_f32, ptr_f32, ptr_f32, i32, i32], [])
 
         with InsertionPoint(m.body):
-            fn = func.FuncOp("vec_add_kernel_2d_dynamic", fn_ty)
+            fn = func.FuncOp("vec_add_2d_static", fn_ty)
             entry = fn.add_entry_block()
 
         with InsertionPoint(entry):
@@ -148,6 +148,6 @@ def build():
 
 def test_structural_ir_equality():
     # NOTE: function name also need to match
-    dsl_module = to_ir_module(meta_data=meta_data)(vec_add_kernel_2d_dynamic)
+    dsl_module = to_ir_module(meta_data=meta_data)(vec_add_2d_static)
     ref_module = build()
     assert str(dsl_module) == str(ref_module)
