@@ -15,7 +15,7 @@ def build():
 
         tensor_view = pto.TensorViewType.get(1, f32)
 
-        tile_length = 1024
+        tile_length = 1024  # TODO: increase to 8192 for better DMA util
         tile_view = pto.PartitionTensorViewType.get([1, tile_length], f32)
         vec = pto.AddressSpaceAttr.get(pto.AddressSpace.VEC)
         bl = pto.BLayoutAttr.get(pto.BLayout.RowMajor)
@@ -34,7 +34,7 @@ def build():
         with InsertionPoint(entry):
             c0 = arith.ConstantOp(IndexType.get(), 0).result
             c1 = arith.ConstantOp(IndexType.get(), 1).result
-            c1024 = arith.ConstantOp(IndexType.get(), tile_length).result
+            c_tile = arith.ConstantOp(IndexType.get(), tile_length).result
 
             arg0, arg1, arg2, argN = entry.arguments
 
@@ -52,7 +52,8 @@ def build():
 
             # https://mlir.llvm.org/docs/Dialects/ArithOps/#arithceildivsi-arithceildivsiop
             elements_per_core = arith.CeilDivSIOp(total_elements, num_blocks_idx).result
-            num_tiles = arith.CeilDivSIOp(elements_per_core, c1024).result
+            num_tiles = arith.CeilDivSIOp(elements_per_core, c_tile).result
+            offset_core = arith.MulIOp(vid_idx, elements_per_core).result
 
             vec_section = pto.SectionVectorOp()
             vec_block = vec_section.body.blocks.append()
@@ -68,18 +69,17 @@ def build():
 
                 # NOTE: `scf.for_` syntax sugar defined in https://github.com/llvm/llvm-project/blob/llvmorg-19.1.7/mlir/python/mlir/dialects/scf.py#L106
                 for i in scf.for_(c0, num_tiles, c1):
-                    offset_core = arith.MulIOp(vid_idx, elements_per_core).result
-                    offset_tile = arith.MulIOp(i, c1024).result
+                    offset_tile = arith.MulIOp(i, c_tile).result
                     offset_global = arith.AddIOp(offset_core, offset_tile).result
 
                     sv0 = pto.PartitionViewOp(
-                        tile_view, tv0, offsets=[offset_global], sizes=[c1024]
+                        tile_view, tv0, offsets=[offset_global], sizes=[c_tile]
                     ).result
                     sv1 = pto.PartitionViewOp(
-                        tile_view, tv1, offsets=[offset_global], sizes=[c1024]
+                        tile_view, tv1, offsets=[offset_global], sizes=[c_tile]
                     ).result
                     sv2 = pto.PartitionViewOp(
-                        tile_view, tv2, offsets=[offset_global], sizes=[c1024]
+                        tile_view, tv2, offsets=[offset_global], sizes=[c_tile]
                     ).result
 
                     pto.TLoadOp(None, sv0, tb0)
