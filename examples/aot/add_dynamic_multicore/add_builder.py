@@ -10,7 +10,6 @@ def build():
         m = Module.create()
 
         f32 = F32Type.get()
-        i32 = IntegerType.get_signless(32)
         u32 = IntegerType.get_signless(32)
         ptr_f32 = pto.PtrType.get(f32)
 
