@@ -40,8 +40,10 @@ def test_add():
     # shape parameter hard-coded as kernel
     num_cores = 20 * 2
     tile_size = 1024
-    expected_iters = [1, 2, 3, 5, 9]
-    shape_list = [tile_size * num_cores * iters for iters in expected_iters]
+    # Keep shapes aligned to tile size, but vary tile counts so they are not
+    # required to be multiples of `num_cores`.
+    tile_counts = [1, 7, num_cores - 1, num_cores + 3, 2 * num_cores + 7, 5 * num_cores - 5]
+    shape_list = [tile_size * tiles for tiles in tile_counts]
 
     torch.manual_seed(0)
     dtype = torch.float32
