@@ -24,7 +24,7 @@ def build():
 
         cfg = pto.TileBufConfigAttr.get(bl, sl, 512, pd)
 
-        tile_buf = pto.TileBufType.get([1, tile_length], f32, vec, [1, tile_length], cfg)
+        tile_buf_dynamic = pto.TileBufType.get([1, tile_length], f32, vec, [-1, -1], cfg)
         fn_ty = func.FunctionType.get([ptr_f32, ptr_f32, ptr_f32, u32], [])
 
         with InsertionPoint(m.body):
@@ -62,10 +62,6 @@ def build():
                 tv0 = pto.MakeTensorViewOp(tensor_view, arg0, [total_elements], [c1]).result
                 tv1 = pto.MakeTensorViewOp(tensor_view, arg1, [total_elements], [c1]).result
                 tv2 = pto.MakeTensorViewOp(tensor_view, arg2, [total_elements], [c1]).result
-
-                tb0 = pto.AllocTileOp(tile_buf).result
-                tb1 = pto.AllocTileOp(tile_buf).result
-                tb2 = pto.AllocTileOp(tile_buf).result
 
                 # Skip whole core if its starting tile is already out-of-bound.
                 has_valid_start_tile = arith.CmpIOp(
@@ -105,15 +101,47 @@ def build():
                                 i, tile_offset_this_core
                             ).result
                             offset_global = arith.MulIOp(tile_offset_global, c_tile).result
+                            remaining_elements = arith.SubIOp(
+                                total_elements, offset_global
+                            ).result
+                            has_full_tile = arith.CmpIOp(
+                                arith.CmpIPredicate.sge, remaining_elements, c_tile
+                            ).result
+                            c_tile_actual_if = scf.IfOp(
+                                has_full_tile, [IndexType.get()], hasElse=True
+                            )
+                            with InsertionPoint(c_tile_actual_if.then_block):
+                                scf.YieldOp([c_tile])
+                            with InsertionPoint(c_tile_actual_if.else_block):
+                                scf.YieldOp([remaining_elements])
+                            c_tile_actual = c_tile_actual_if.results[0]
+                            tb0 = pto.AllocTileOp(
+                                tile_buf_dynamic, valid_row=c1, valid_col=c_tile_actual
+                            ).result
+                            tb1 = pto.AllocTileOp(
+                                tile_buf_dynamic, valid_row=c1, valid_col=c_tile_actual
+                            ).result
+                            tb2 = pto.AllocTileOp(
+                                tile_buf_dynamic, valid_row=c1, valid_col=c_tile_actual
+                            ).result
 
                             sv0 = pto.PartitionViewOp(
-                                tile_view, tv0, offsets=[offset_global], sizes=[c_tile]
+                                tile_view,
+                                tv0,
+                                offsets=[offset_global],
+                                sizes=[c_tile_actual],
                             ).result
                             sv1 = pto.PartitionViewOp(
-                                tile_view, tv1, offsets=[offset_global], sizes=[c_tile]
+                                tile_view,
+                                tv1,
+                                offsets=[offset_global],
+                                sizes=[c_tile_actual],
                             ).result
                             sv2 = pto.PartitionViewOp(
-                                tile_view, tv2, offsets=[offset_global], sizes=[c_tile]
+                                tile_view,
+                                tv2,
+                                offsets=[offset_global],
+                                sizes=[c_tile_actual],
                             ).result
 
                             pto.TLoadOp(None, sv0, tb0)
