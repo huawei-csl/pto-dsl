@@ -38,9 +38,9 @@ def test_add():
     add_func = lib_to_func(lib)
 
     # shape parameter hard-coded as kernel
-    num_cores = 20
+    num_cores = 20 * 2
     tile_size = 1024
-    expected_iters = [1, 2, 3]
+    expected_iters = [1, 2, 3, 5, 9]
     shape_list = [tile_size * num_cores * iters for iters in expected_iters]
 
     torch.manual_seed(0)
