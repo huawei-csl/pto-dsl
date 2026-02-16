@@ -47,13 +47,14 @@ def build():
 
             # NOTE: convert i64, i32 all to index type for avoid type mismatch for arith ops
             vid_idx = arith.IndexCastOp(IndexType.get(), vid).result
-            num_blocks_idx = arith.IndexCastOp(IndexType.get(), num_blocks).result
+            num_cores = arith.IndexCastOp(IndexType.get(), num_blocks).result
             total_elements = arith.IndexCastOp(IndexType.get(), argN).result
 
             # https://mlir.llvm.org/docs/Dialects/ArithOps/#arithceildivsi-arithceildivsiop
-            elements_per_core = arith.CeilDivSIOp(total_elements, num_blocks_idx).result
-            num_tiles = arith.CeilDivSIOp(elements_per_core, c_tile).result
-            offset_core = arith.MulIOp(vid_idx, elements_per_core).result
+            num_tiles_global = arith.CeilDivSIOp(total_elements, c_tile).result
+            num_tiles_per_core = arith.CeilDivSIOp(num_tiles_global, num_cores).result
+            elements_per_core = arith.MulIOp(num_tiles_per_core, c_tile).result
+            offset_this_core = arith.MulIOp(vid_idx, elements_per_core).result
 
             vec_section = pto.SectionVectorOp()
             vec_block = vec_section.body.blocks.append()
@@ -68,9 +69,9 @@ def build():
                 tb2 = pto.AllocTileOp(tile_buf).result
 
                 # NOTE: `scf.for_` syntax sugar defined in https://github.com/llvm/llvm-project/blob/llvmorg-19.1.7/mlir/python/mlir/dialects/scf.py#L106
-                for i in scf.for_(c0, num_tiles, c1):
+                for i in scf.for_(c0, num_tiles_per_core, c1):
                     offset_tile = arith.MulIOp(i, c_tile).result
-                    offset_global = arith.AddIOp(offset_core, offset_tile).result
+                    offset_global = arith.AddIOp(offset_this_core, offset_tile).result
 
                     sv0 = pto.PartitionViewOp(
                         tile_view, tv0, offsets=[offset_global], sizes=[c_tile]
