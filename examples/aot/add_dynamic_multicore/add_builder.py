@@ -13,10 +13,10 @@ def build():
         u32 = IntegerType.get_signless(32)
         ptr_f32 = pto.PtrType.get(f32)
 
-        tv1_f32 = pto.TensorViewType.get(1, f32)
+        tensor_view = pto.TensorViewType.get(1, f32)
 
         tile_length = 1024
-        tile_view_32 = pto.PartitionTensorViewType.get([1, tile_length], f32)
+        tile_view = pto.PartitionTensorViewType.get([1, tile_length], f32)
         vec = pto.AddressSpaceAttr.get(pto.AddressSpace.VEC)
         bl = pto.BLayoutAttr.get(pto.BLayout.RowMajor)
         sl = pto.SLayoutAttr.get(pto.SLayout.NoneBox)
@@ -57,9 +57,9 @@ def build():
             vec_block = vec_section.body.blocks.append()
             with InsertionPoint(vec_block):
 
-                tv0 = pto.MakeTensorViewOp(tv1_f32, arg0, [total_elements], [c1]).result
-                tv1 = pto.MakeTensorViewOp(tv1_f32, arg1, [total_elements], [c1]).result
-                tv2 = pto.MakeTensorViewOp(tv1_f32, arg2, [total_elements], [c1]).result
+                tv0 = pto.MakeTensorViewOp(tensor_view, arg0, [total_elements], [c1]).result
+                tv1 = pto.MakeTensorViewOp(tensor_view, arg1, [total_elements], [c1]).result
+                tv2 = pto.MakeTensorViewOp(tensor_view, arg2, [total_elements], [c1]).result
 
                 tb0 = pto.AllocTileOp(tile_buf).result
                 tb1 = pto.AllocTileOp(tile_buf).result
@@ -72,13 +72,13 @@ def build():
                     offset_global = arith.AddIOp(offset_core, offset_tile).result
 
                     sv0 = pto.PartitionViewOp(
-                        tile_view_32, tv0, offsets=[offset_global], sizes=[c1024]
+                        tile_view, tv0, offsets=[offset_global], sizes=[c1024]
                     ).result
                     sv1 = pto.PartitionViewOp(
-                        tile_view_32, tv1, offsets=[offset_global], sizes=[c1024]
+                        tile_view, tv1, offsets=[offset_global], sizes=[c1024]
                     ).result
                     sv2 = pto.PartitionViewOp(
-                        tile_view_32, tv2, offsets=[offset_global], sizes=[c1024]
+                        tile_view, tv2, offsets=[offset_global], sizes=[c1024]
                     ).result
 
                     pto.TLoadOp(None, sv0, tb0)
