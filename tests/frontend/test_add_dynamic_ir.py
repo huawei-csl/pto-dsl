@@ -68,9 +68,9 @@ def vec_add_1d_dynamic(
         tb1 = pto.alloc_tile(tile_type)
         tb2 = pto.alloc_tile(tile_type)
 
-        with pto.if_(pto.lt(tile_offset_this_core, num_tiles_global)):
+        with pto.if_(tile_offset_this_core < num_tiles_global):
             tiles_end_this_core = tile_offset_this_core + num_tiles_per_core
-            need_truncate = pto.gt(tiles_end_this_core, num_tiles_global)
+            need_truncate = tiles_end_this_core > num_tiles_global
             remaining_tiles = num_tiles_global - tile_offset_this_core
 
             tiles_to_process = pto.if_else_yield(
@@ -78,7 +78,7 @@ def vec_add_1d_dynamic(
             )
             elements_to_process = tiles_to_process * c_tile
 
-            with pto.if_(pto.gt(elements_to_process, c0)):
+            with pto.if_(elements_to_process > c0):
                 for i in pto.for_range(c0, tiles_to_process, c1):
                     tile_offset_global = i + tile_offset_this_core
                     offset_global = tile_offset_global * c_tile
