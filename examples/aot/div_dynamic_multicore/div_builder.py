@@ -13,7 +13,7 @@ def meta_data():
     subtensor_type = pto.SubTensorType(shape=[1, tile_length], dtype=dtype)
     tile_cfg = pto.TileBufConfig()
     tile_type = pto.TileBufType(
-        shape=[1, tile_length], valid_shape=[-1, -1], dtype=dtype, memory_space="VEC", config=tile_cfg)
+        shape=[1, tile_length], valid_shape=[1, tile_length], dtype=dtype, memory_space="VEC", config=tile_cfg)
     return {
         "ptr_type": ptr_type,
         "index_dtype": index_dtype,
@@ -59,6 +59,11 @@ def vec_div_1d_dynamic(
         tv1 = pto.as_tensor(tensor_type, ptr=arg1, shape=[total_elements], strides=[c1])
         tv2 = pto.as_tensor(tensor_type, ptr=arg2, shape=[total_elements], strides=[c1])
 
+        # Allocate tiles once
+        tb0 = pto.alloc_tile(tile_type)
+        tb1 = pto.alloc_tile(tile_type)
+        tb2 = pto.alloc_tile(tile_type)
+
         # Skip whole core if its starting tile is already out-of-bound.
         with pto.if_(pto.lt(tile_offset_this_core, num_tiles_global)):
             tiles_end_this_core = tile_offset_this_core + num_tiles_per_core
@@ -73,19 +78,10 @@ def vec_div_1d_dynamic(
                 for i in pto.for_range(c0, tiles_to_process, c1):
                     tile_offset_global = i + tile_offset_this_core
                     offset_global = tile_offset_global * c_tile
-                    remaining_elements = total_elements - offset_global
 
-                    # Use full tile or remainder for the last tile.
-                    has_full_tile = pto.ge(remaining_elements, c_tile)
-                    c_tile_actual = pto.select(has_full_tile, c_tile, remaining_elements)
-
-                    tb0 = pto.alloc_tile(tile_type, valid_row=c1, valid_col=c_tile_actual)
-                    tb1 = pto.alloc_tile(tile_type, valid_row=c1, valid_col=c_tile_actual)
-                    tb2 = pto.alloc_tile(tile_type, valid_row=c1, valid_col=c_tile_actual)
-
-                    sv0 = pto.slice_view(subtensor_type, source=tv0, offsets=[offset_global], sizes=[c_tile_actual])
-                    sv1 = pto.slice_view(subtensor_type, source=tv1, offsets=[offset_global], sizes=[c_tile_actual])
-                    sv2 = pto.slice_view(subtensor_type, source=tv2, offsets=[offset_global], sizes=[c_tile_actual])
+                    sv0 = pto.slice_view(subtensor_type, source=tv0, offsets=[offset_global], sizes=[c_tile])
+                    sv1 = pto.slice_view(subtensor_type, source=tv1, offsets=[offset_global], sizes=[c_tile])
+                    sv2 = pto.slice_view(subtensor_type, source=tv2, offsets=[offset_global], sizes=[c_tile])
 
                     pto.load(sv0, tb0)
                     pto.load(sv1, tb1)
