@@ -6,8 +6,7 @@ from mlir.ir import (
 )
 from mlir.dialects import func, arith, scf, pto, builtin
 from mlir.dialects.pto import (
-    TLOAD, TMOV_M2L, TMATMUL, TSTORE_ACC,
-    EVENT_ID0
+    TLOAD, TMOV_M2L, TMATMUL, TSTORE_ACC
 )
 from mlir.dialects.arith import CmpIPredicate
 
@@ -200,10 +199,6 @@ def build(
                     with InsertionPoint(if_load_bias.else_block):
                         scf.YieldOp([])
 
-                    # ---- sync: MTE2 -> MTE1 ----
-                    pto.record_event(TLOAD, TMOV_M2L, EVENT_ID0)
-                    pto.wait_event  (TLOAD, TMOV_M2L, EVENT_ID0)
-
                     # ---- TMOV ----
                     # TMOV 也传对应 tile 的 valid dims（a/b/bias）
                     pto.TMovOp(None, aMatTile, aTile)
@@ -215,10 +210,6 @@ def build(
                         scf.YieldOp([])
                     with InsertionPoint(if_mov_bias.else_block):
                         scf.YieldOp([])
-
-                    # ---- sync: MTE1 -> M ----
-                    pto.record_event(TMOV_M2L, TMATMUL, EVENT_ID0)
-                    pto.wait_event  (TMOV_M2L, TMATMUL, EVENT_ID0)
 
                     # ---- i == 0 ? (bias? TMATMUL_BIAS : TMATMUL) : TMATMUL_ACC ----
                     is_i0 = arith.CmpIOp(CmpIPredicate.eq, i, c0).result
@@ -244,15 +235,7 @@ def build(
                         pto.TMatmulAccOp(None, cTile, aTile, bTile, cTile)
                         scf.YieldOp([])
 
-                    # ---- sync: M -> MTE2 ----
-                    pto.record_event(TMATMUL, TLOAD, EVENT_ID0)
-                    pto.wait_event  (TMATMUL, TLOAD, EVENT_ID0)
-
                     scf.YieldOp([])
-
-                # ---- after loop ----
-                pto.record_event(TMATMUL, TSTORE_ACC, EVENT_ID0)
-                pto.wait_event  (TMATMUL, TSTORE_ACC, EVENT_ID0)
 
                 # ---- TSTORE ----
                 # 写回 OUT，传 C 的 valid dims
