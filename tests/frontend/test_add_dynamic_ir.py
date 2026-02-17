@@ -1,22 +1,23 @@
 from mlir.ir import Context, F32Type, InsertionPoint, IntegerType, Location, Module
 from mlir.ir import IndexType
-from mlir.dialects import arith, func, pto, scf
+from mlir.dialects import arith, func, pto as _pto, scf
 
 from ptodsl import to_ir_module
-import ptodsl.language as pto_lang
 
-const = pto_lang.const
+import ptodsl.language as pto
+
+const = pto.const
 
 
 def meta_data():
-    dtype = pto_lang.float32
-    index_dtype = pto_lang.int32
-    ptr_type = pto_lang.PtrType(dtype)
-    tensor_type = pto_lang.TensorType(rank=1, dtype=dtype)
+    dtype = pto.float32
+    index_dtype = pto.int32
+    ptr_type = pto.PtrType(dtype)
+    tensor_type = pto.TensorType(rank=1, dtype=dtype)
     tile_length = 1024
-    subtensor_type = pto_lang.SubTensorType(shape=[1, tile_length], dtype=dtype)
-    tile_cfg = pto_lang.TileBufConfig()
-    tile_type = pto_lang.TileBufType(
+    subtensor_type = pto.SubTensorType(shape=[1, tile_length], dtype=dtype)
+    tile_cfg = pto.TileBufConfig()
+    tile_type = pto.TileBufType(
         shape=[1, tile_length],
         valid_shape=[1, tile_length],
         dtype=dtype,
@@ -43,81 +44,81 @@ def vec_add_1d_dynamic(
     c1 = const(1)
     c_tile = const(tile_length)
 
-    cid = pto_lang.get_block_idx()
-    sub_bid = pto_lang.get_subblock_idx()
-    sub_bnum = pto_lang.get_subblock_num()
+    cid = pto.get_block_idx()
+    sub_bid = pto.get_subblock_idx()
+    sub_bnum = pto.get_subblock_num()
     cidmul = cid * sub_bnum
     vid = cidmul + sub_bid
-    num_blocks = pto_lang.get_block_num()
+    num_blocks = pto.get_block_num()
 
-    vid_idx = pto_lang.index_cast(vid)
-    num_cores = pto_lang.index_cast(num_blocks)
-    total_elements = pto_lang.index_cast(argN)
+    vid_idx = pto.index_cast(vid)
+    num_cores = pto.index_cast(num_blocks)
+    total_elements = pto.index_cast(argN)
 
-    num_tiles_global = pto_lang.ceil_div(total_elements, c_tile)
-    num_tiles_per_core = pto_lang.ceil_div(num_tiles_global, num_cores)
+    num_tiles_global = pto.ceil_div(total_elements, c_tile)
+    num_tiles_per_core = pto.ceil_div(num_tiles_global, num_cores)
     tile_offset_this_core = vid_idx * num_tiles_per_core
 
-    with pto_lang.vector_section():
-        tv0 = pto_lang.as_tensor(tensor_type, ptr=arg0, shape=[total_elements], strides=[c1])
-        tv1 = pto_lang.as_tensor(tensor_type, ptr=arg1, shape=[total_elements], strides=[c1])
-        tv2 = pto_lang.as_tensor(tensor_type, ptr=arg2, shape=[total_elements], strides=[c1])
+    with pto.vector_section():
+        tv0 = pto.as_tensor(tensor_type, ptr=arg0, shape=[total_elements], strides=[c1])
+        tv1 = pto.as_tensor(tensor_type, ptr=arg1, shape=[total_elements], strides=[c1])
+        tv2 = pto.as_tensor(tensor_type, ptr=arg2, shape=[total_elements], strides=[c1])
 
-        tb0 = pto_lang.alloc_tile(tile_type)
-        tb1 = pto_lang.alloc_tile(tile_type)
-        tb2 = pto_lang.alloc_tile(tile_type)
+        tb0 = pto.alloc_tile(tile_type)
+        tb1 = pto.alloc_tile(tile_type)
+        tb2 = pto.alloc_tile(tile_type)
 
-        with pto_lang.if_(pto_lang.lt(tile_offset_this_core, num_tiles_global)):
+        with pto.if_(pto.lt(tile_offset_this_core, num_tiles_global)):
             tiles_end_this_core = tile_offset_this_core + num_tiles_per_core
-            need_truncate = pto_lang.gt(tiles_end_this_core, num_tiles_global)
+            need_truncate = pto.gt(tiles_end_this_core, num_tiles_global)
             remaining_tiles = num_tiles_global - tile_offset_this_core
 
-            tiles_to_process = pto_lang.if_else_yield(
+            tiles_to_process = pto.if_else_yield(
                 need_truncate, remaining_tiles, num_tiles_per_core
             )
             elements_to_process = tiles_to_process * c_tile
 
-            with pto_lang.if_(pto_lang.gt(elements_to_process, c0)):
-                for i in pto_lang.for_range(c0, tiles_to_process, c1):
+            with pto.if_(pto.gt(elements_to_process, c0)):
+                for i in pto.for_range(c0, tiles_to_process, c1):
                     tile_offset_global = i + tile_offset_this_core
                     offset_global = tile_offset_global * c_tile
 
-                    sv0 = pto_lang.slice_view(
+                    sv0 = pto.slice_view(
                         subtensor_type, source=tv0, offsets=[offset_global], sizes=[c_tile]
                     )
-                    sv1 = pto_lang.slice_view(
+                    sv1 = pto.slice_view(
                         subtensor_type, source=tv1, offsets=[offset_global], sizes=[c_tile]
                     )
-                    sv2 = pto_lang.slice_view(
+                    sv2 = pto.slice_view(
                         subtensor_type, source=tv2, offsets=[offset_global], sizes=[c_tile]
                     )
 
-                    pto_lang.load(sv0, tb0)
-                    pto_lang.load(sv1, tb1)
-                    pto_lang.add(tb0, tb1, tb2)
-                    pto_lang.store(tb2, sv2)
+                    pto.load(sv0, tb0)
+                    pto.load(sv1, tb1)
+                    pto.add(tb0, tb1, tb2)
+                    pto.store(tb2, sv2)
 
 
 def build_verbose():
     with Context() as ctx, Location.unknown():
-        pto.register_dialect(ctx, load=True)
+        _pto.register_dialect(ctx, load=True)
 
         module = Module.create()
 
         f32 = F32Type.get()
         i32 = IntegerType.get_signless(32)
-        ptr_f32 = pto.PtrType.get(f32)
+        ptr_f32 = _pto.PtrType.get(f32)
 
-        tensor_view = pto.TensorViewType.get(1, f32)
+        tensor_view = _pto.TensorViewType.get(1, f32)
         tile_length = 1024
-        tile_view = pto.PartitionTensorViewType.get([1, tile_length], f32)
+        tile_view = _pto.PartitionTensorViewType.get([1, tile_length], f32)
 
-        vec = pto.AddressSpaceAttr.get(pto.AddressSpace.VEC)
-        bl = pto.BLayoutAttr.get(pto.BLayout.RowMajor)
-        sl = pto.SLayoutAttr.get(pto.SLayout.NoneBox)
-        pd = pto.PadValueAttr.get(pto.PadValue.Null)
-        cfg = pto.TileBufConfigAttr.get(bl, sl, 512, pd)
-        tile_buf = pto.TileBufType.get([1, tile_length], f32, vec, [1, tile_length], cfg)
+        vec = _pto.AddressSpaceAttr.get(_pto.AddressSpace.VEC)
+        bl = _pto.BLayoutAttr.get(_pto.BLayout.RowMajor)
+        sl = _pto.SLayoutAttr.get(_pto.SLayout.NoneBox)
+        pd = _pto.PadValueAttr.get(_pto.PadValue.Null)
+        cfg = _pto.TileBufConfigAttr.get(bl, sl, 512, pd)
+        tile_buf = _pto.TileBufType.get([1, tile_length], f32, vec, [1, tile_length], cfg)
         fn_ty = func.FunctionType.get([ptr_f32, ptr_f32, ptr_f32, i32], [])
 
         with InsertionPoint(module.body):
@@ -131,12 +132,12 @@ def build_verbose():
 
             arg0, arg1, arg2, argN = entry.arguments
 
-            cid = pto.GetBlockIdxOp().result
-            sub_bid = pto.GetSubBlockIdxOp().result
-            sub_bnum = pto.GetSubBlockNumOp().result
+            cid = _pto.GetBlockIdxOp().result
+            sub_bid = _pto.GetSubBlockIdxOp().result
+            sub_bnum = _pto.GetSubBlockNumOp().result
             cidmul = arith.MulIOp(cid, sub_bnum).result
             vid = arith.AddIOp(cidmul, sub_bid).result
-            num_blocks = pto.GetBlockNumOp().result
+            num_blocks = _pto.GetBlockNumOp().result
 
             vid_idx = arith.IndexCastOp(IndexType.get(), vid).result
             num_cores = arith.IndexCastOp(IndexType.get(), num_blocks).result
@@ -146,16 +147,16 @@ def build_verbose():
             num_tiles_per_core = arith.CeilDivSIOp(num_tiles_global, num_cores).result
             tile_offset_this_core = arith.MulIOp(vid_idx, num_tiles_per_core).result
 
-            vec_section = pto.SectionVectorOp()
+            vec_section = _pto.SectionVectorOp()
             vec_block = vec_section.body.blocks.append()
             with InsertionPoint(vec_block):
-                tv0 = pto.MakeTensorViewOp(tensor_view, arg0, [total_elements], [c1]).result
-                tv1 = pto.MakeTensorViewOp(tensor_view, arg1, [total_elements], [c1]).result
-                tv2 = pto.MakeTensorViewOp(tensor_view, arg2, [total_elements], [c1]).result
+                tv0 = _pto.MakeTensorViewOp(tensor_view, arg0, [total_elements], [c1]).result
+                tv1 = _pto.MakeTensorViewOp(tensor_view, arg1, [total_elements], [c1]).result
+                tv2 = _pto.MakeTensorViewOp(tensor_view, arg2, [total_elements], [c1]).result
 
-                tb0 = pto.AllocTileOp(tile_buf).result
-                tb1 = pto.AllocTileOp(tile_buf).result
-                tb2 = pto.AllocTileOp(tile_buf).result
+                tb0 = _pto.AllocTileOp(tile_buf).result
+                tb1 = _pto.AllocTileOp(tile_buf).result
+                tb2 = _pto.AllocTileOp(tile_buf).result
 
                 has_valid_start_tile = arith.CmpIOp(
                     arith.CmpIPredicate.slt, tile_offset_this_core, num_tiles_global
@@ -189,20 +190,20 @@ def build_verbose():
                             tile_offset_global = arith.AddIOp(i, tile_offset_this_core).result
                             offset_global = arith.MulIOp(tile_offset_global, c_tile).result
 
-                            sv0 = pto.PartitionViewOp(
+                            sv0 = _pto.PartitionViewOp(
                                 tile_view, tv0, offsets=[offset_global], sizes=[c_tile]
                             ).result
-                            sv1 = pto.PartitionViewOp(
+                            sv1 = _pto.PartitionViewOp(
                                 tile_view, tv1, offsets=[offset_global], sizes=[c_tile]
                             ).result
-                            sv2 = pto.PartitionViewOp(
+                            sv2 = _pto.PartitionViewOp(
                                 tile_view, tv2, offsets=[offset_global], sizes=[c_tile]
                             ).result
 
-                            pto.TLoadOp(None, sv0, tb0)
-                            pto.TLoadOp(None, sv1, tb1)
-                            pto.TAddOp(tb0, tb1, tb2)
-                            pto.TStoreOp(None, tb2, sv2)
+                            _pto.TLoadOp(None, sv0, tb0)
+                            _pto.TLoadOp(None, sv1, tb1)
+                            _pto.TAddOp(tb0, tb1, tb2)
+                            _pto.TStoreOp(None, tb2, sv2)
 
                             scf.YieldOp([])
                         scf.YieldOp([])
