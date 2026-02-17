@@ -38,6 +38,22 @@ class Value:
     def __rfloordiv__(self, other):
         return Value(arith.DivUIOp(_unwrap(other), _unwrap(self)).result)
 
+    @staticmethod
+    def _cmp(lhs, rhs, predicate):
+        return Value(arith.CmpIOp(predicate, _unwrap(lhs), _unwrap(rhs)).result)
+
+    def __lt__(self, other):
+        return Value._cmp(self, other, arith.CmpIPredicate.slt)
+
+    def __gt__(self, other):
+        return Value._cmp(self, other, arith.CmpIPredicate.sgt)
+
+    def __le__(self, other):
+        return Value._cmp(self, other, arith.CmpIPredicate.sle)
+
+    def __ge__(self, other):
+        return Value._cmp(self, other, arith.CmpIPredicate.sge)
+
     def __getattr__(self, item):
         return getattr(self.raw, item)
 
