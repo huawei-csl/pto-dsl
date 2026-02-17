@@ -179,10 +179,7 @@ def build(
                 # 对齐你 C++ TileLeft/Right/Acc/Bias 的 RowValid_/ColValid_
 
                 # ---- loop for split-K ----
-                loop = scf.ForOp(c0, cIter, c1, [])
-                with InsertionPoint(loop.body):
-                    i = loop.induction_variable
-
+                for i in scf.for_(c0, cIter, c1):
                     # kOff = i * BASEK
                     kOff = arith.MulIOp(i, cBASEK).result
 
