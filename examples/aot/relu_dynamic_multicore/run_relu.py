@@ -47,43 +47,44 @@ def load_lib(lib_path, block_dim, check_type=True):
     return relu_func
 
 
-def test_add(verbose=False):
+def test_relu(verbose=True):
     device = "npu:1"
     torch.set_default_device(device)
     torch.npu.set_device(device)
     dtype = torch.float32
 
-    BLOCK_DIM = 10
-    relu_kernel = load_lib("relu_lib.so", block_dim=BLOCK_DIM)
 
-    for i in range(2):
-        shape = [20, 128 + i*128]
+    # allocate a bigger buffer than the actual number of elements to test the padding behavior
+    shape = [1, 2 * 128]
+    for BLOCK_DIM in range(1, 21):
+        relu_kernel = load_lib("relu_lib.so", block_dim=BLOCK_DIM)
+        print(BLOCK_DIM) 
+        for num_elements in [3,7,13,97,143, 2*128]:
+            x = torch.rand(shape, device=device, dtype=dtype) - 0.5
+            y = torch.full(shape, -10, device=device, dtype=dtype)
+            relu_kernel(x, y, n=num_elements)
+            torch.npu.synchronize()
 
-        x = torch.rand(shape, device=device, dtype=dtype) - 0.5
-        y = torch.full(shape, -10, device=device, dtype=dtype)
-        relu_kernel(x, y, n=x.numel())
-        torch.npu.synchronize()
+            y_ref = torch.max(x, torch.zeros_like(x))
+            if verbose:
+                correct = y == y_ref
 
-        y_ref = torch.max(x, torch.zeros_like(x))
-        if verbose:
-            correct = y == y_ref
-            print('inp:')
-            print(x)
-            print('res:')
-            print(y)
+                step = 1
+                for i in range(0, shape[0]):
+                    for j in range(0, shape[1], step):
+                        if correct[i, j:j+step].all():
+                            print('X', end='')
+                        else:
+                            print('.', end='')
+                        if j == num_elements - 1:
+                            print('|', end='')
+                    print('|')
 
-            step = 4
-            for i in range(0, shape[0]):
-                for j in range(0, shape[1], step):
-                    if correct[i, j:j+step].all():
-                        print('X', end='')
-                    else:
-                        print('.', end='')
-                print('|')
-
-        torch.testing.assert_close(y, y_ref)
-        print(f"RELU test pass for shape {shape}!")
+            torch.testing.assert_close(y.flatten()[:num_elements], y_ref.flatten()[:num_elements])
+            # Make sure we didn't write past the end of the buffer
+            torch.testing.assert_close(y.flatten()[num_elements:], torch.full_like(y.flatten()[num_elements:], -10))
+            print(f"RELU test pass for shape {shape}! using {BLOCK_DIM} cores")
 
 
 if __name__ == "__main__":
-    test_add()
+    test_relu()
