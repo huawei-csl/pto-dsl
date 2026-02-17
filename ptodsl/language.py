@@ -188,6 +188,19 @@ def select(cond, true_val, false_val):
     return Value(arith.SelectOp(_unwrap(cond), _unwrap(true_val), _unwrap(false_val)).result)
 
 
+def if_else_yield(condition, then_value, else_value, result_type=IndexType):
+    if hasattr(result_type, "get"):
+        scf_result_type = result_type.get()
+    else:
+        scf_result_type = result_type
+    op = scf.IfOp(_unwrap(condition), [scf_result_type], hasElse=True)
+    with InsertionPoint(op.then_block):
+        scf.YieldOp([_unwrap(then_value)])
+    with InsertionPoint(op.else_block):
+        scf.YieldOp([_unwrap(else_value)])
+    return Value(op.results[0])
+
+
 @contextmanager
 def if_(condition):
     op = scf.IfOp(_unwrap(condition))
