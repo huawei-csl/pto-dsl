@@ -1,6 +1,6 @@
 from contextlib import contextmanager
 
-from mlir.dialects import arith, pto
+from mlir.dialects import arith, pto, scf
 from mlir.ir import F32Type, IndexType, InsertionPoint, IntegerType
 
 
@@ -25,6 +25,18 @@ class Value:
 
     def __radd__(self, other):
         return Value(arith.AddIOp(_unwrap(other), _unwrap(self)).result)
+
+    def __sub__(self, other):
+        return Value(arith.SubIOp(_unwrap(self), _unwrap(other)).result)
+
+    def __rsub__(self, other):
+        return Value(arith.SubIOp(_unwrap(other), _unwrap(self)).result)
+
+    def __floordiv__(self, other):
+        return Value(arith.DivUIOp(_unwrap(self), _unwrap(other)).result)
+
+    def __rfloordiv__(self, other):
+        return Value(arith.DivUIOp(_unwrap(other), _unwrap(self)).result)
 
     def __getattr__(self, item):
         return getattr(self.raw, item)
@@ -94,6 +106,10 @@ def get_subblock_num():
     return Value(pto.GetSubBlockNumOp().result)
 
 
+def get_block_num():
+    return Value(pto.GetBlockNumOp().result)
+
+
 def index_cast(value, index_type=IndexType):
     if hasattr(index_type, "get"):
         dst = index_type.get()
@@ -122,8 +138,18 @@ def vector_section():
         yield
 
 
-def alloc_tile(tile_type, *, valid_row, valid_col):
-    return pto.AllocTileOp(tile_type, valid_row=_unwrap(valid_row), valid_col=_unwrap(valid_col)).result
+def for_range(start, stop, step):
+    loop = scf.ForOp(_unwrap(start), _unwrap(stop), _unwrap(step))
+    with InsertionPoint(loop.body):
+        yield Value(loop.induction_variable)
+        scf.YieldOp([])
+
+
+def alloc_tile(tile_type, *, valid_row=None, valid_col=None):
+    if valid_row is not None and valid_col is not None:
+        return pto.AllocTileOp(tile_type, valid_row=_unwrap(valid_row), valid_col=_unwrap(valid_col)).result
+    else:
+        return pto.AllocTileOp(tile_type).result
 
 
 def load(source, dest):
@@ -134,5 +160,37 @@ def add(lhs, rhs, out):
     pto.TAddOp(lhs, rhs, out)
 
 
+def div(lhs, rhs, out):
+    pto.TDivOp(lhs, rhs, out)
+
+
 def store(source, dest):
     pto.TStoreOp(None, source, dest)
+
+
+def ceil_div(a, b):
+    return Value(arith.CeilDivSIOp(_unwrap(a), _unwrap(b)).result)
+
+
+def lt(a, b):
+    return Value(arith.CmpIOp(arith.CmpIPredicate.slt, _unwrap(a), _unwrap(b)).result)
+
+
+def gt(a, b):
+    return Value(arith.CmpIOp(arith.CmpIPredicate.sgt, _unwrap(a), _unwrap(b)).result)
+
+
+def ge(a, b):
+    return Value(arith.CmpIOp(arith.CmpIPredicate.sge, _unwrap(a), _unwrap(b)).result)
+
+
+def select(cond, true_val, false_val):
+    return Value(arith.SelectOp(_unwrap(cond), _unwrap(true_val), _unwrap(false_val)).result)
+
+
+@contextmanager
+def if_(condition):
+    op = scf.IfOp(_unwrap(condition))
+    with InsertionPoint(op.then_block):
+        yield
+        scf.YieldOp([])
