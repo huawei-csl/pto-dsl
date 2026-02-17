@@ -1,135 +1,103 @@
-from mlir.ir import Context, Location, Module, InsertionPoint, IntegerType
-from mlir.ir import F32Type, IndexType
-from mlir.dialects import func, arith, scf, pto
+from ptodsl import to_ir_module
+import ptodsl.language as pto
+
+const = pto.const
 
 
-def build():
-    with Context() as ctx, Location.unknown():
-        pto.register_dialect(ctx, load=True)
+def meta_data():
+    dtype = pto.float32
+    index_dtype = pto.int32
+    ptr_type = pto.PtrType(dtype)
+    tensor_type = pto.TensorType(rank=1, dtype=dtype)
+    tile_length = 1024  # TODO: increase to 8192 for better DMA util
+    subtensor_type = pto.SubTensorType(shape=[1, tile_length], dtype=dtype)
+    tile_cfg = pto.TileBufConfig()
+    tile_type = pto.TileBufType(
+        shape=[1, tile_length],
+        valid_shape=[1, tile_length],
+        dtype=dtype,
+        memory_space="VEC",
+        config=tile_cfg,
+    )
+    return {
+        "ptr_type": ptr_type,
+        "index_dtype": index_dtype,
+        "tensor_type": tensor_type,
+        "subtensor_type": subtensor_type,
+        "tile_type": tile_type,
+        "tile_length": tile_length,
+    }
 
-        m = Module.create()
 
-        f32 = F32Type.get()
-        u32 = IntegerType.get_signless(32)
-        ptr_f32 = pto.PtrType.get(f32)
+@to_ir_module(meta_data=meta_data)
+def vec_add_1d_dynamic(
+    arg0: "ptr_type",
+    arg1: "ptr_type",
+    arg2: "ptr_type",
+    argN: "index_dtype",
+) -> None:
+    c0 = const(0)
+    c1 = const(1)
+    c_tile = const(tile_length)
 
-        tensor_view = pto.TensorViewType.get(1, f32)
+    cid = pto.get_block_idx()
+    sub_bid = pto.get_subblock_idx()
+    sub_bnum = pto.get_subblock_num()
+    cidmul = cid * sub_bnum
+    vid = cidmul + sub_bid
+    num_blocks = pto.get_block_num()
 
-        tile_length = 1024  # TODO: increase to 8192 for better DMA util
-        tile_view = pto.PartitionTensorViewType.get([1, tile_length], f32)
-        vec = pto.AddressSpaceAttr.get(pto.AddressSpace.VEC)
-        bl = pto.BLayoutAttr.get(pto.BLayout.RowMajor)
-        sl = pto.SLayoutAttr.get(pto.SLayout.NoneBox)
-        pd = pto.PadValueAttr.get(pto.PadValue.Null)
+    # Convert i64/i32 values to index for arithmetic ops.
+    vid_idx = pto.index_cast(vid)
+    num_cores = pto.index_cast(num_blocks)
+    total_elements = pto.index_cast(argN)
 
-        cfg = pto.TileBufConfigAttr.get(bl, sl, 512, pd)
+    num_tiles_global = pto.ceil_div(total_elements, c_tile)
+    num_tiles_per_core = pto.ceil_div(num_tiles_global, num_cores)
+    tile_offset_this_core = vid_idx * num_tiles_per_core
 
-        tile_buf = pto.TileBufType.get([1, tile_length], f32, vec, [1, tile_length], cfg)
-        fn_ty = func.FunctionType.get([ptr_f32, ptr_f32, ptr_f32, u32], [])
+    with pto.vector_section():
+        tv0 = pto.as_tensor(tensor_type, ptr=arg0, shape=[total_elements], strides=[c1])
+        tv1 = pto.as_tensor(tensor_type, ptr=arg1, shape=[total_elements], strides=[c1])
+        tv2 = pto.as_tensor(tensor_type, ptr=arg2, shape=[total_elements], strides=[c1])
 
-        with InsertionPoint(m.body):
-            fn = func.FuncOp("vec_add_1d_dynamic", fn_ty)
-            entry = fn.add_entry_block()
+        tb0 = pto.alloc_tile(tile_type)
+        tb1 = pto.alloc_tile(tile_type)
+        tb2 = pto.alloc_tile(tile_type)
 
-        with InsertionPoint(entry):
-            c0 = arith.ConstantOp(IndexType.get(), 0).result
-            c1 = arith.ConstantOp(IndexType.get(), 1).result
-            c_tile = arith.ConstantOp(IndexType.get(), tile_length).result
+        # Skip whole core if its starting tile is already out-of-bound.
+        with pto.if_(pto.lt(tile_offset_this_core, num_tiles_global)):
+            tiles_end_this_core = tile_offset_this_core + num_tiles_per_core
+            need_truncate = pto.gt(tiles_end_this_core, num_tiles_global)
+            remaining_tiles = num_tiles_global - tile_offset_this_core
 
-            arg0, arg1, arg2, argN = entry.arguments
+            # Keep the same scf.if with result pattern as the verbose IR builder.
+            tiles_to_process = pto.if_else_yield(
+                need_truncate, remaining_tiles, num_tiles_per_core
+            )
 
-            cid = pto.GetBlockIdxOp().result
-            sub_bid = pto.GetSubBlockIdxOp().result
-            sub_bnum = pto.GetSubBlockNumOp().result
-            cidmul = arith.MulIOp(cid, sub_bnum).result
-            vid = arith.AddIOp(cidmul, sub_bid).result
-            num_blocks = pto.GetBlockNumOp().result
+            elements_to_process = tiles_to_process * c_tile
+            with pto.if_(pto.gt(elements_to_process, c0)):
+                for i in pto.for_range(c0, tiles_to_process, c1):
+                    tile_offset_global = i + tile_offset_this_core
+                    offset_global = tile_offset_global * c_tile
 
-            # NOTE: convert i64, i32 all to index type for avoid type mismatch for arith ops
-            vid_idx = arith.IndexCastOp(IndexType.get(), vid).result
-            num_cores = arith.IndexCastOp(IndexType.get(), num_blocks).result
-            total_elements = arith.IndexCastOp(IndexType.get(), argN).result
-
-            # https://mlir.llvm.org/docs/Dialects/ArithOps/#arithceildivsi-arithceildivsiop
-            num_tiles_global = arith.CeilDivSIOp(total_elements, c_tile).result
-            num_tiles_per_core = arith.CeilDivSIOp(num_tiles_global, num_cores).result
-            tile_offset_this_core = arith.MulIOp(vid_idx, num_tiles_per_core).result
-
-            vec_section = pto.SectionVectorOp()
-            vec_block = vec_section.body.blocks.append()
-            with InsertionPoint(vec_block):
-
-                tv0 = pto.MakeTensorViewOp(tensor_view, arg0, [total_elements], [c1]).result
-                tv1 = pto.MakeTensorViewOp(tensor_view, arg1, [total_elements], [c1]).result
-                tv2 = pto.MakeTensorViewOp(tensor_view, arg2, [total_elements], [c1]).result
-
-                tb0 = pto.AllocTileOp(tile_buf).result
-                tb1 = pto.AllocTileOp(tile_buf).result
-                tb2 = pto.AllocTileOp(tile_buf).result
-
-                # Skip whole core if its starting tile is already out-of-bound.
-                has_valid_start_tile = arith.CmpIOp(
-                    arith.CmpIPredicate.slt, tile_offset_this_core, num_tiles_global
-                ).result
-                core_if = scf.IfOp(has_valid_start_tile)
-                with InsertionPoint(core_if.then_block):
-                    tiles_end_this_core = arith.AddIOp(
-                        tile_offset_this_core, num_tiles_per_core
-                    ).result
-                    need_truncate = arith.CmpIOp(
-                        arith.CmpIPredicate.sgt, tiles_end_this_core, num_tiles_global
-                    ).result
-                    remaining_tiles = arith.SubIOp(
-                        num_tiles_global, tile_offset_this_core
-                    ).result
-
-                    # Truncate per-core tiles when the chunk crosses global bound.
-                    tiles_to_process_if = scf.IfOp(
-                        need_truncate, [IndexType.get()], hasElse=True
+                    sv0 = pto.slice_view(
+                        subtensor_type, source=tv0, offsets=[offset_global], sizes=[c_tile]
                     )
-                    with InsertionPoint(tiles_to_process_if.then_block):
-                        scf.YieldOp([remaining_tiles])
-                    with InsertionPoint(tiles_to_process_if.else_block):
-                        scf.YieldOp([num_tiles_per_core])
-                    tiles_to_process = tiles_to_process_if.results[0]
+                    sv1 = pto.slice_view(
+                        subtensor_type, source=tv1, offsets=[offset_global], sizes=[c_tile]
+                    )
+                    sv2 = pto.slice_view(
+                        subtensor_type, source=tv2, offsets=[offset_global], sizes=[c_tile]
+                    )
 
-                    elements_to_process = arith.MulIOp(tiles_to_process, c_tile).result
-                    has_elements = arith.CmpIOp(
-                        arith.CmpIPredicate.sgt, elements_to_process, c0
-                    ).result
-                    work_if = scf.IfOp(has_elements)
-                    with InsertionPoint(work_if.then_block):
-                        # NOTE: `scf.for_` syntax sugar defined in https://github.com/llvm/llvm-project/blob/llvmorg-19.1.7/mlir/python/mlir/dialects/scf.py#L106
-                        for i in scf.for_(c0, tiles_to_process, c1):
-                            tile_offset_global = arith.AddIOp(
-                                i, tile_offset_this_core
-                            ).result
-                            offset_global = arith.MulIOp(tile_offset_global, c_tile).result
-
-                            sv0 = pto.PartitionViewOp(
-                                tile_view, tv0, offsets=[offset_global], sizes=[c_tile]
-                            ).result
-                            sv1 = pto.PartitionViewOp(
-                                tile_view, tv1, offsets=[offset_global], sizes=[c_tile]
-                            ).result
-                            sv2 = pto.PartitionViewOp(
-                                tile_view, tv2, offsets=[offset_global], sizes=[c_tile]
-                            ).result
-
-                            pto.TLoadOp(None, sv0, tb0)
-                            pto.TLoadOp(None, sv1, tb1)
-                            pto.TAddOp(tb0, tb1, tb2)
-                            pto.TStoreOp(None, tb2, sv2)
-
-                            scf.YieldOp([])
-                        scf.YieldOp([])
-                    scf.YieldOp([])
-
-            func.ReturnOp([])
-
-        m.operation.verify()
-        return m
+                    pto.load(sv0, tb0)
+                    pto.load(sv1, tb1)
+                    pto.add(tb0, tb1, tb2)
+                    pto.store(tb2, sv2)
 
 
 if __name__ == "__main__":
-    print(build())
+    module = vec_add_1d_dynamic
+    print(module)
