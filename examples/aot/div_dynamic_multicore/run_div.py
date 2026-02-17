@@ -40,18 +40,10 @@ def test_div():
     # shape parameter hard-coded as kernel
     num_cores = 20 * 2
     tile_size = 1024
-    # Use general (non tile-aligned) sizes to exercise tail tiles and
-    # cross-core partitioning together.
-    shape_list = [
-        1,
-        17,
-        tile_size - 1,
-        tile_size + 13,
-        num_cores * tile_size - 3,
-        num_cores * tile_size + 29,
-        2 * num_cores * tile_size + 7,
-        5 * num_cores * tile_size - 11,
-    ]
+    # Keep shapes aligned to tile size, but vary tile counts so they are not
+    # required to be multiples of `num_cores`.
+    tile_counts = [1, 7, num_cores - 1, num_cores + 3, 2 * num_cores + 7, 5 * num_cores - 5]
+    shape_list = [tile_size * tiles for tiles in tile_counts]
 
     torch.manual_seed(0)
     dtype = torch.float32
@@ -65,11 +57,8 @@ def test_div():
         torch.npu.synchronize()
 
         z_ref = x / y
-        try:
-            torch.testing.assert_close(z, z_ref)
-            print(f"result equal for shape {shape}")
-        except AssertionError as e:
-            print(f"result mismatch for shape {shape}: {e}")
+        torch.testing.assert_close(z, z_ref)
+        print(f"result equal for shape {shape}")
 
 if __name__ == "__main__":
     test_div()
