@@ -64,8 +64,8 @@ def build(
         bias = pto.AddressSpaceAttr.get(pto.AddressSpace.BIAS)
 
         # ---- configs (3rd arg = s_fractal_size) ----
-        # 说明：下面 layout/pad 都是“合理默认”，你按 C++ Tile 定义微调即可
-        # MAT tile：搬运用，常见 row_major
+        # Note: these layout/pad settings are reasonable defaults; adjust to match your C++ Tile definitions if needed.
+        # MAT tile: used for transfers, typically row_major
         cfg_mat = pto.TileBufConfigAttr.get(
             pto.BLayoutAttr.get(pto.BLayout.ColMajor),
             pto.SLayoutAttr.get(pto.SLayout.RowMajor),
@@ -105,7 +105,7 @@ def build(
             pto.PadValueAttr.get(pto.PadValue.Null)
         )
 
-        # BIAS tile：一般不需要分形（这里给 0；你也可给一个专用 size）
+        # BIAS tile: usually does not require fractalization (we use a default fractal size here; a dedicated size is also possible)
         cfg_bias = pto.TileBufConfigAttr.get(
             pto.BLayoutAttr.get(pto.BLayout.RowMajor),
             pto.SLayoutAttr.get(pto.SLayout.NoneBox),
@@ -131,6 +131,17 @@ def build(
             entry = fn.add_entry_block()
 
         with InsertionPoint(entry):
+            """
+            For now we assume A: [bs, M, K], B: [K, N], C: [bs, M, N] and we do batched matmul (B is broadcasted).
+            MKN is known at compile-time while bs is not.
+
+            The reduction over the k dim is done in chunks of size BASEK. (So for A tiles are [M, BASEK] and for B: [BASEK, N])
+
+            Each core c=0,1,...,C-1 get allocated ceil(bs, C) batches (this is bad load-balancing for e.g. bs=9 C=8 since some cores does 0)
+
+
+            every multiplcation will use the same B, so make sure we keep it in fast mem
+            """
             out_ptr, a_ptr, b_ptr, bias_ptr, isBias, batch_i32 = entry.arguments
 
             cube_section = pto.SectionCubeOp()
@@ -140,7 +151,6 @@ def build(
                 # ---- constants ----
                 c0 = _idx_const(0)
                 c1 = _idx_const(1)
-                cOne = _idx_const(1)
 
                 cM = _idx_const(validM)
                 cK = _idx_const(validK)
@@ -167,8 +177,6 @@ def build(
                 b_end = arith.MinUIOp(b_end_unclamped, batch).result
 
 
-
-                # ---- make_tensor_view ----
                 # ---- make_tensor_view over full [batch*M, *] range ----
                 # A: [batch*M, validK], stride [validK, 1]
                 tvA = pto.MakeTensorViewOp(tv2_a, a_ptr, [cBM, cK], [cK, c1]).result
@@ -177,7 +185,7 @@ def build(
                 # OUT: [batch*M, validN], stride [validN, 1]
                 tvOut = pto.MakeTensorViewOp(tv2_out, out_ptr, [cBM, cN], [cN, c1]).result
                 # BIAS: [1, validN], stride [validN, 1]
-                tvBias = pto.MakeTensorViewOp(tv2_bias, bias_ptr, [cOne, cN], [cN, c1]).result
+                tvBias = pto.MakeTensorViewOp(tv2_bias, bias_ptr, [c1, cN], [cN, c1]).result
 
                 # ---- alloc tiles ----
                 aMatTile = pto.AllocTileOp(tile_buf_aMat).result
@@ -190,7 +198,7 @@ def build(
                 biasTile = pto.AllocTileOp(tile_buf_biasTile).result
 
                 # ---- valid dims (passed into ops; alloc has no valid operands) ----
-                # 对齐你 C++ TileLeft/Right/Acc/Bias 的 RowValid_/ColValid_
+                # Align with the C++ TileLeft/Right/Acc/Bias RowValid_/ColValid_ semantics
 
                 # ---- outer loop over batches assigned to this core ----
                 batch_loop = scf.ForOp(b_start, b_end, c1)
@@ -208,10 +216,10 @@ def build(
                         # subviews for this split-K and batch row range
                         svA = pto.PartitionViewOp(tile_view_a, tvA, offsets=[row_off, kOff], sizes=[cTileM, cBASEK]).result
                         svB = pto.PartitionViewOp(tile_view_b, tvB, offsets=[kOff, c0], sizes=[cBASEK, cTileN]).result
-                        svBias = pto.PartitionViewOp(tile_view_bias, tvBias, offsets=[c0, c0], sizes=[cOne, cTileN]).result
+                        svBias = pto.PartitionViewOp(tile_view_bias, tvBias, offsets=[c0, c0], sizes=[c1, cTileN]).result
 
                         # ---- TLOAD ----
-                        # 注意：TLOAD 的 valid dims 一般对应目标 tile 的有效区域（a/b/bias）
+                        # Note: TLOAD valid dims typically correspond to the destination tile's valid region (a/b/bias)
                         pto.TLoadOp(None, svA, aMatTile)
                         pto.TLoadOp(None, svB, bMatTile)
 
@@ -227,7 +235,7 @@ def build(
                         pto.wait_event  (TLOAD, TMOV_M2L, EVENT_ID0)
 
                         # ---- TMOV ----
-                        # TMOV 也传对应 tile 的 valid dims（a/b/bias）
+                        # TMOV also uses the corresponding tile valid dims (a/b/bias)
                         pto.TMovOp(None, aMatTile, aTile)
                         pto.TMovOp(None, bMatTile, bTile)
 
@@ -250,19 +258,19 @@ def build(
                         with InsertionPoint(if_i0.then_block):
                             if_bias0 = scf.IfOp(isBias, [], hasElse=True)
                             with InsertionPoint(if_bias0.then_block):
-                                # L0C 清空 + bias
-                                # 约定：valid_dims_c 用于 C 的有效区域
+                                # Clear accumulator tile and apply bias
+                                # Convention: valid_dims_c describes the valid region of C
                                 pto.TMatmulBiasOp(None,aTile, bTile, biasTile, cTile)
                                 scf.YieldOp([])
                             with InsertionPoint(if_bias0.else_block):
-                                # L0C 清空
+                                # Clear accumulator tile without bias
                                 pto.TMatmulOp(None, aTile, bTile, cTile)
                                 scf.YieldOp([])
                             scf.YieldOp([])
 
                         # else: i != 0
                         with InsertionPoint(if_i0.else_block):
-                            # L0C 不清空 accumulate
+                            # Do not clear accumulator tile; accumulate into existing C
                             pto.TMatmulAccOp(None, cTile, aTile, bTile, cTile)
                             scf.YieldOp([])
 
@@ -277,7 +285,7 @@ def build(
                     pto.wait_event  (TMATMUL, TSTORE_ACC, EVENT_ID0)
 
                     # ---- TSTORE ----
-                    # 写回 OUT，传 C 的 valid dims
+                    # Write back OUT using the valid dims of C
                     svOut = pto.PartitionViewOp(tile_view_out, tvOut, offsets=[row_off, c0], sizes=[cTileM, cTileN]).result
                     pto.TStoreOp(None, cTile, svOut)
 
