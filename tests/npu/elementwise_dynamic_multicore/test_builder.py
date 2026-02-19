@@ -128,6 +128,7 @@ def test_build_binary_kernels(compiled_lib):
 # The fixture guarantees the lib is compiled before either test runs.
 
 
+@pytest.mark.require_npu
 def test_binary_1d_precision(compiled_lib):
     torch.npu.set_device(_DEVICE)
     ref_fn = compiled_lib["ref_fn"]
@@ -156,6 +157,7 @@ def test_binary_1d_precision(compiled_lib):
         torch.testing.assert_close(z, ref_fn(x, y))
 
 
+@pytest.mark.require_npu
 def test_binary_2d_precision(compiled_lib):
     torch.npu.set_device(_DEVICE)
     ref_fn = compiled_lib["ref_fn"]

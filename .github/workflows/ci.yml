@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runs-on: ubuntu-24.04
+          - arch: aarch64
+            runs-on: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runs-on }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            --build-arg ARCH=${{ matrix.arch }} \
+            -t pto-dsl-ci:${{ matrix.arch }} \
+            -f docker/Dockerfile .
+
+      - name: Start container
+        run: |
+          docker create --name ci-container \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            pto-dsl-ci:${{ matrix.arch }} \
+            sleep infinity
+          docker start ci-container
+
+      - name: Install ptodsl
+        run: docker exec ci-container pip install -e ./ptodsl
+
+      - name: Run frontend tests
+        run: docker exec ci-container pytest -v ./tests/frontend
+
+      - name: Run NPU build tests
+        run: docker exec ci-container pytest -v -m "not require_npu" ./tests/npu
+
+      - name: Cleanup
+        if: always()
+        run: docker rm -f ci-container
