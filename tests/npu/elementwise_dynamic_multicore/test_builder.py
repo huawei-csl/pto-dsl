@@ -5,7 +5,6 @@ import subprocess
 
 import pytest
 import torch
-import torch_npu
 
 torch.manual_seed(0)
 
@@ -130,6 +129,7 @@ def test_build_binary_kernels(compiled_lib):
 
 @pytest.mark.require_npu
 def test_binary_1d_precision(compiled_lib):
+    import torch_npu
     torch.npu.set_device(_DEVICE)
     ref_fn = compiled_lib["ref_fn"]
     torch_dtype = TORCH_DTYPES[compiled_lib["dtype"]]
@@ -159,6 +159,7 @@ def test_binary_1d_precision(compiled_lib):
 
 @pytest.mark.require_npu
 def test_binary_2d_precision(compiled_lib):
+    import torch_npu
     torch.npu.set_device(_DEVICE)
     ref_fn = compiled_lib["ref_fn"]
     torch_dtype = TORCH_DTYPES[compiled_lib["dtype"]]
