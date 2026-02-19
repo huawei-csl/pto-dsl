@@ -70,6 +70,8 @@ jobs:
         run: pytest -v ./tests/frontend
 
       - name: Run NPU build tests
-        run: pytest -v -m "not require_npu" ./tests/npu
+        run: |
+          export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/Ascend/ascend-toolkit/latest/$(uname -i)-linux/devlib
+          pytest -v -m "not require_npu" ./tests/npu
         env:
           TORCH_DEVICE_BACKEND_AUTOLOAD: "0"
