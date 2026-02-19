@@ -1,7 +1,7 @@
 from contextlib import contextmanager
 
 from mlir.dialects import arith, pto, scf
-from mlir.ir import F32Type, IndexType, InsertionPoint, IntegerType
+from mlir.ir import F16Type, F32Type, IndexType, InsertionPoint, IntegerType
 
 
 def _unwrap(value):
@@ -69,8 +69,12 @@ def __getattr__(name):
     # when they are validated against PTO type support.
     if name == "float32":
         return F32Type.get()
+    if name == "float16":
+        return F16Type.get()
     if name == "int32":
         return IntegerType.get_signless(32)
+    if name == "int16":
+        return IntegerType.get_signless(16)
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 
@@ -162,10 +166,12 @@ def for_range(start, stop, step):
 
 
 def alloc_tile(tile_type, *, valid_row=None, valid_col=None):
-    if valid_row is not None and valid_col is not None:
-        return pto.AllocTileOp(tile_type, valid_row=_unwrap(valid_row), valid_col=_unwrap(valid_col)).result
-    else:
-        return pto.AllocTileOp(tile_type).result
+    kwargs = {}
+    if valid_row is not None:
+        kwargs["valid_row"] = _unwrap(valid_row)
+    if valid_col is not None:
+        kwargs["valid_col"] = _unwrap(valid_col)
+    return pto.AllocTileOp(tile_type, **kwargs).result
 
 
 def load(source, dest):
@@ -176,8 +182,40 @@ def add(lhs, rhs, out):
     pto.TAddOp(lhs, rhs, out)
 
 
+def sub(lhs, rhs, out):
+    pto.TSubOp(lhs, rhs, out)
+
+
 def div(lhs, rhs, out):
     pto.TDivOp(lhs, rhs, out)
+
+
+def mul(lhs, rhs, out):
+    pto.TMulOp(lhs, rhs, out)
+
+
+def or_(lhs, rhs, out):
+    pto.TOrOp(lhs, rhs, out)
+
+
+def exp(inp, out):
+    pto.TExpOp(inp, out)
+
+
+def log(inp, out):
+    pto.TLogOp(inp, out)
+
+
+def relu(inp, out):
+    pto.TReluOp(inp, out)
+
+
+def abs(inp, out):
+    pto.TAbsOp(inp, out)
+
+
+def sqrt(inp, out):
+    pto.TSqrtOp(inp, out)
 
 
 def store(source, dest):
