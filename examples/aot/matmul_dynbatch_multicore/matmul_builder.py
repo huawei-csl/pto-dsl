@@ -20,8 +20,6 @@ def build(
     M=128, K=128, N=128,
     validM=128, validK=128, validN=128,
     BASEK=32,
-    s_fractal_ab=512,
-    s_fractal_c=1024,
 ):
     assert K % BASEK == 0
     iters = K // BASEK
@@ -69,14 +67,14 @@ def build(
         cfg_mat = pto.TileBufConfigAttr.get(
             pto.BLayoutAttr.get(pto.BLayout.ColMajor),
             pto.SLayoutAttr.get(pto.SLayout.RowMajor),
-            s_fractal_ab,  # 这里也可以单独给 MAT 一个 size
+            pto.TileConfig.fractalABSize,
             pto.PadValueAttr.get(pto.PadValue.Null)
         )
 
         cfg_mat_bias = pto.TileBufConfigAttr.get(
             pto.BLayoutAttr.get(pto.BLayout.RowMajor),
             pto.SLayoutAttr.get(pto.SLayout.NoneBox),
-            s_fractal_ab,  # 这里也可以单独给 MAT 一个 size
+            pto.TileConfig.fractalABSize,
             pto.PadValueAttr.get(pto.PadValue.Null)
         )
 
@@ -85,7 +83,7 @@ def build(
         cfg_left = pto.TileBufConfigAttr.get(
             pto.BLayoutAttr.get(pto.BLayout.RowMajor),
             pto.SLayoutAttr.get(pto.SLayout.RowMajor),
-            s_fractal_ab,
+            pto.TileConfig.fractalABSize,
             pto.PadValueAttr.get(pto.PadValue.Null)
         )
 
@@ -93,7 +91,7 @@ def build(
         cfg_right = pto.TileBufConfigAttr.get(
             pto.BLayoutAttr.get(pto.BLayout.RowMajor),
             pto.SLayoutAttr.get(pto.SLayout.ColMajor),
-            s_fractal_ab,
+            pto.TileConfig.fractalABSize,
             pto.PadValueAttr.get(pto.PadValue.Null)
         )
 
@@ -101,7 +99,7 @@ def build(
         cfg_acc = pto.TileBufConfigAttr.get(
             pto.BLayoutAttr.get(pto.BLayout.ColMajor),
             pto.SLayoutAttr.get(pto.SLayout.RowMajor),
-            s_fractal_c,
+            pto.TileConfig.fractalCSize,
             pto.PadValueAttr.get(pto.PadValue.Null)
         )
 
