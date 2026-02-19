@@ -1,8 +1,8 @@
 # adapted from https://github.com/zhangstevenunity/PTOAS/blob/a301aa43b388d9b2e1ba0db8773b3a719e8c445b/test/samples/MatMul/tmatmulk.py
 
 from mlir.ir import (
-    Context, Location, InsertionPoint,
-    IndexType, IntegerType, F16Type, F32Type, StringAttr
+    Context, Location, InsertionPoint, Module,
+    IndexType, IntegerType, F16Type, F32Type
 )
 from mlir.dialects import func, arith, scf, pto, builtin
 from mlir.dialects.pto import (
@@ -27,8 +27,7 @@ def build(
     with Context() as ctx, Location.unknown():
         pto.register_dialect(ctx, load=True)
 
-        module = builtin.ModuleOp()
-        module.attributes["pto.device-spec"] = StringAttr.get("Ascend910B1")
+        module = Module.create()
 
         t_out = F32Type.get()
         t_a = F32Type.get()
