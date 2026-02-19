@@ -18,34 +18,55 @@ jobs:
             runs-on: ubuntu-24.04-arm
     runs-on: ${{ matrix.runs-on }}
 
+    container:
+      image: quay.io/ascend/cann:8.5.0-910b-ubuntu22.04-py3.11
+
+    env:
+      RELEASE_REPO: huawei-csl/PTOAS
+      RELEASE_TAG: 20260214.post1
+      CLI_DIR: /installers/ptoas-cli
+      PTOISA_COMMIT: 672ee54cb8905bb9f9abbe80ec26ed2054b7a0cc
+
     steps:
+      - name: Install system packages
+        run: apt-get update && apt-get install -y wget git
+
       - uses: actions/checkout@v4
 
-      - name: Build Docker image
+      - name: Install Python packages
         run: |
-          docker build \
-            --build-arg ARCH=${{ matrix.arch }} \
-            -t pto-dsl-ci:${{ matrix.arch }} \
-            -f docker/Dockerfile .
+          pip install --no-cache-dir torch==2.9.0 --index-url https://download.pytorch.org/whl/cpu
+          pip install --no-cache-dir torch-npu==2.9.0
+          pip install --no-cache-dir numpy pyyaml
+          pip install --no-cache-dir pytest pybind11 nanobind setuptools wheel
 
-      - name: Start container
+      - name: Install ptoas wheel
         run: |
-          docker create --name ci-container \
-            -v ${{ github.workspace }}:/workspace \
-            -w /workspace \
-            pto-dsl-ci:${{ matrix.arch }} \
-            sleep infinity
-          docker start ci-container
+          WHEEL_NAME=ptoas-0.1.1-cp311-none-manylinux_2_34_${{ matrix.arch }}.whl
+          wget https://github.com/${RELEASE_REPO}/releases/download/${RELEASE_TAG}/${WHEEL_NAME}
+          pip install ./${WHEEL_NAME}
+          python -c "import mlir.ir; from mlir.dialects import pto"
+
+      - name: Install ptoas CLI
+        run: |
+          CLI_TAR_NAME=ptoas-bin-${{ matrix.arch }}.tar.gz
+          wget https://github.com/${RELEASE_REPO}/releases/download/${RELEASE_TAG}/${CLI_TAR_NAME}
+          mkdir -p ${CLI_DIR}
+          tar zxf ./${CLI_TAR_NAME} -C ${CLI_DIR}
+          chmod +x ${CLI_DIR}/bin/ptoas
+          echo "${CLI_DIR}/bin" >> $GITHUB_PATH
+          echo "LD_LIBRARY_PATH=${CLI_DIR}/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> $GITHUB_ENV
+
+      - name: Clone pto-isa headers
+        run: |
+          git clone https://gitcode.com/cann/pto-isa.git /sources/pto-isa
+          cd /sources/pto-isa && git checkout ${PTOISA_COMMIT}
 
       - name: Install ptodsl
-        run: docker exec ci-container pip install -e ./ptodsl
+        run: pip install -e ./ptodsl
 
       - name: Run frontend tests
-        run: docker exec ci-container pytest -v ./tests/frontend
+        run: pytest -v ./tests/frontend
 
       - name: Run NPU build tests
-        run: docker exec ci-container pytest -v -m "not require_npu" ./tests/npu
-
-      - name: Cleanup
-        if: always()
-        run: docker rm -f ci-container
+        run: pytest -v -m "not require_npu" ./tests/npu
