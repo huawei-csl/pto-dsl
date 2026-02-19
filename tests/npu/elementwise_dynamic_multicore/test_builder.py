@@ -66,7 +66,7 @@ def compiled_lib(request):
         "op_name": op_name,
         "ref_fn": ref_fn,
         "dtype": dtype,
-        "lib": ctypes.CDLL(_lib_path(op_name, dtype)),
+        "lib_path": _lib_path(op_name, dtype),
     }
     os.remove(_lib_path(op_name, dtype))
 
@@ -134,7 +134,8 @@ def test_binary_1d_precision(compiled_lib):
     ref_fn = compiled_lib["ref_fn"]
     torch_dtype = TORCH_DTYPES[compiled_lib["dtype"]]
 
-    kernel = _lib_to_func_binary_1d(compiled_lib["lib"])
+    lib = ctypes.CDLL(compiled_lib["lib_path"])
+    kernel = _lib_to_func_binary_1d(lib)
 
     num_cores = 20 * 2
     tile_size = 1024
@@ -164,7 +165,8 @@ def test_binary_2d_precision(compiled_lib):
     ref_fn = compiled_lib["ref_fn"]
     torch_dtype = TORCH_DTYPES[compiled_lib["dtype"]]
 
-    kernel = _lib_to_func_binary_2d(compiled_lib["lib"])
+    lib = ctypes.CDLL(compiled_lib["lib_path"])
+    kernel = _lib_to_func_binary_2d(lib)
 
     num_cores = 20 * 2
     tile_size = 1024
