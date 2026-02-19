@@ -104,8 +104,30 @@ class TileBufConfig:
         return pto.TileBufConfigAttr.get(self._bl, self._sl, self._s_fractal_size, self._pd)
 
 
+def _default_tile_config(memory_space, shape):
+    space = memory_space.upper()
+    # Defaults mirror the explicit configs used by the verbose matmul builder.
+    if space == "MAT":
+        if len(shape) >= 1 and shape[0] == 1:
+            return TileBufConfig(blayout="RowMajor", slayout="NoneBox", s_fractal_size=pto.TileConfig.fractalABSize)
+        return TileBufConfig(blayout="ColMajor", slayout="RowMajor", s_fractal_size=pto.TileConfig.fractalABSize)
+    if space == "LEFT":
+        return TileBufConfig(blayout="RowMajor", slayout="RowMajor", s_fractal_size=pto.TileConfig.fractalABSize)
+    if space == "RIGHT":
+        return TileBufConfig(blayout="RowMajor", slayout="ColMajor", s_fractal_size=pto.TileConfig.fractalABSize)
+    if space == "ACC":
+        return TileBufConfig(blayout="ColMajor", slayout="RowMajor", s_fractal_size=pto.TileConfig.fractalCSize)
+    if space == "BIAS":
+        return TileBufConfig(blayout="RowMajor", slayout="NoneBox", s_fractal_size=pto.TileConfig.fractalABSize)
+    if space == "VEC":
+        return TileBufConfig()
+    raise ValueError(f"Unsupported memory_space '{memory_space}' for default tile config.")
+
+
 def TileBufType(*, shape, valid_shape, dtype, memory_space, config):
     space = pto.AddressSpaceAttr.get(getattr(pto.AddressSpace, memory_space))
+    if config is None:
+        config = _default_tile_config(memory_space, shape)
     cfg = config.attr if isinstance(config, TileBufConfig) else config
     return pto.TileBufType.get(shape, dtype, space, valid_shape, cfg)
 
@@ -158,6 +180,14 @@ def vector_section():
         yield
 
 
+@contextmanager
+def cube_section():
+    section = pto.SectionCubeOp()
+    block = section.body.blocks.append()
+    with InsertionPoint(block):
+        yield
+
+
 def for_range(start, stop, step):
     loop = scf.ForOp(_unwrap(start), _unwrap(stop), _unwrap(step))
     with InsertionPoint(loop.body):
@@ -176,6 +206,10 @@ def alloc_tile(tile_type, *, valid_row=None, valid_col=None):
 
 def load(source, dest):
     pto.TLoadOp(None, source, dest)
+
+
+def mov(source, dest):
+    pto.TMovOp(None, source, dest)
 
 
 def add(lhs, rhs, out):
@@ -222,8 +256,28 @@ def store(source, dest):
     pto.TStoreOp(None, source, dest)
 
 
+def matmul(lhs, rhs, out):
+    pto.TMatmulOp(None, lhs, rhs, out)
+
+
+def matmul_bias(lhs, rhs, bias, out):
+    pto.TMatmulBiasOp(None, lhs, rhs, bias, out)
+
+
+def matmul_acc(acc, lhs, rhs, out):
+    pto.TMatmulAccOp(None, acc, lhs, rhs, out)
+
+
 def ceil_div(a, b):
     return Value(arith.CeilDivSIOp(_unwrap(a), _unwrap(b)).result)
+
+
+def min_u(a, b):
+    return Value(arith.MinUIOp(_unwrap(a), _unwrap(b)).result)
+
+
+def eq(a, b):
+    return Value(arith.CmpIOp(arith.CmpIPredicate.eq, _unwrap(a), _unwrap(b)).result)
 
 
 def lt(a, b):
@@ -261,3 +315,50 @@ def if_(condition):
     with InsertionPoint(op.then_block):
         yield
         scf.YieldOp([])
+
+
+def if_else(condition, then_builder, else_builder):
+    op = scf.IfOp(_unwrap(condition), [], hasElse=True)
+    with InsertionPoint(op.then_block):
+        then_builder()
+        scf.YieldOp([])
+    with InsertionPoint(op.else_block):
+        else_builder()
+        scf.YieldOp([])
+    return op
+
+
+def _resolve_sync_op(sync_op):
+    if isinstance(sync_op, str):
+        normalized = sync_op.strip().upper()
+        if not normalized.startswith("T"):
+            normalized = f"T{normalized}"
+        try:
+            return getattr(pto, normalized)
+        except AttributeError as exc:
+            raise ValueError(f"Unsupported sync op type '{sync_op}'.") from exc
+    return sync_op
+
+
+def _resolve_event_id(event_id):
+    if isinstance(event_id, int):
+        if event_id < 0 or event_id > 7:
+            raise ValueError(f"event_id must be in range [0, 7], got {event_id}.")
+        return getattr(pto, f"EVENT_ID{event_id}")
+    return event_id
+
+
+def record_event(record_op, wait_op, event_id=0):
+    pto.record_event(_resolve_sync_op(record_op), _resolve_sync_op(wait_op), _resolve_event_id(event_id))
+
+
+def wait_event(record_op, wait_op, event_id=0):
+    pto.wait_event(_resolve_sync_op(record_op), _resolve_sync_op(wait_op), _resolve_event_id(event_id))
+
+
+def record_wait_pair(record_op, wait_op, event_id=0):
+    rec = _resolve_sync_op(record_op)
+    w = _resolve_sync_op(wait_op)
+    ev = _resolve_event_id(event_id)
+    pto.record_event(rec, w, ev)
+    pto.wait_event(rec, w, ev)

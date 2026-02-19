@@ -35,43 +35,25 @@ def test_matmul(verbose=False):
     torch.npu.set_device(device)
     dtype = torch.float32
 
-    bs = 5
     m, k, n = 128, 128, 128
-    torch.manual_seed(0)
-    a = torch.rand((bs, m,k), device=device, dtype=dtype)
-    b = torch.rand((k,n), device=device, dtype=dtype)
-    c = torch.zeros((bs, m, n), device=device, dtype=dtype)
-
+    batch_sizes = [5, 32, 66, 511]
+    block_dims = [1, 2, 10, 20]
     matmul_func = load_lib("./matmul_kernel.so")
-    matmul_func(c, a, b, batch_size=a.shape[0], block_dim=2)
-    torch.npu.synchronize()
 
-    c_ref = torch.matmul(a, b)
-    diff = (c - c_ref).abs().max()
-    print('max diff: ', diff)
+    torch.manual_seed(0)
 
+    for bs in batch_sizes:
+        a = torch.rand((bs, m, k), device=device, dtype=dtype)
+        b = torch.rand((k, n), device=device, dtype=dtype)
 
-    if verbose:
-        print('ref')
-        print(c_ref)
-        print('our')
-        print(c)
-        tol = 1e-3
-        correct = (c - c_ref).abs() <= tol
+        for block_dim in block_dims:
+            c = torch.empty((bs, m, n), device=device, dtype=dtype)
+            matmul_func(c, a, b, batch_size=a.shape[0], block_dim=block_dim)
+            torch.npu.synchronize()
 
-        batch_size, m_dim, n_dim = c.shape
-        step_m = 4
-        step_n = 4
-
-        for bi in range(batch_size):
-            print(f"\nBatch {bi}:")
-            for i in range(0, m_dim, step_m):
-                for j in range(0, n_dim, step_n):
-                    if correct[bi, i : i + step_m, j : j + step_n].all():
-                        print("X", end="")
-                    else:
-                        print(".", end="")
-                print("|")
+            c_ref = torch.matmul(a, b)
+            diff = (c - c_ref).abs().max()
+            print(f"config: bs={bs}, block_dim={block_dim}, max diff: {diff}")
 
 
 if __name__ == "__main__":
