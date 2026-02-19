@@ -16,21 +16,21 @@ The `.so` is deleted after all tests for that combination finish.
 
 ```bash
 cd tests/npu/generic_dynamic_multicore
-pytest --forked test_builder.py
+pytest test_builder.py
 ```
 
 ## Run a specific op and dtype
 
 ```bash
-pytest --forked test_builder.py -k "add-float32"
-pytest --forked test_builder.py -k "mul-float16"
+pytest test_builder.py -k "add-float32"
+pytest test_builder.py -k "mul-float16"
 ```
 
 ## Run only one test type
 
 ```bash
-pytest --forked test_builder.py -k "test_binary_1d_precision"
-pytest --forked test_builder.py -k "test_binary_2d_precision and add-float32"
+pytest test_builder.py -k "test_binary_1d_precision"
+pytest test_builder.py -k "test_binary_2d_precision and add-float32"
 ```
 
 ## Ops and dtypes
