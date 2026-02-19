@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runs-on: ubuntu-24.04
+          - arch: aarch64
+            runs-on: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runs-on }}
+
+    container:
+      image: quay.io/ascend/cann:8.5.0-910b-ubuntu22.04-py3.11
+
+    env:
+      RELEASE_REPO: huawei-csl/PTOAS
+      RELEASE_TAG: 20260214.post1
+      CLI_DIR: /installers/ptoas-cli
+      PTOISA_COMMIT: 672ee54cb8905bb9f9abbe80ec26ed2054b7a0cc
+
+    steps:
+      - name: Install system packages
+        run: apt-get update && apt-get install -y wget git
+
+      - uses: actions/checkout@v4
+
+      - name: Install Python packages
+        run: |
+          pip install --no-cache-dir torch==2.9.0 --index-url https://download.pytorch.org/whl/cpu
+          pip install --no-cache-dir torch-npu==2.9.0
+          pip install --no-cache-dir numpy pyyaml
+          pip install --no-cache-dir pytest pybind11 nanobind setuptools wheel
+
+      - name: Install ptoas wheel
+        run: |
+          WHEEL_NAME=ptoas-0.1.1-cp311-none-manylinux_2_34_${{ matrix.arch }}.whl
+          wget https://github.com/${RELEASE_REPO}/releases/download/${RELEASE_TAG}/${WHEEL_NAME}
+          pip install ./${WHEEL_NAME}
+          python -c "import mlir.ir; from mlir.dialects import pto"
+
+      - name: Install ptoas CLI
+        run: |
+          CLI_TAR_NAME=ptoas-bin-${{ matrix.arch }}.tar.gz
+          wget https://github.com/${RELEASE_REPO}/releases/download/${RELEASE_TAG}/${CLI_TAR_NAME}
+          mkdir -p ${CLI_DIR}
+          tar zxf ./${CLI_TAR_NAME} -C ${CLI_DIR}
+          chmod +x ${CLI_DIR}/bin/ptoas
+          echo "${CLI_DIR}/bin" >> $GITHUB_PATH
+          echo "LD_LIBRARY_PATH=${CLI_DIR}/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> $GITHUB_ENV
+
+      - name: Clone pto-isa headers
+        run: |
+          git clone https://gitcode.com/cann/pto-isa.git /sources/pto-isa
+          cd /sources/pto-isa && git checkout ${PTOISA_COMMIT}
+
+      - name: Install ptodsl
+        run: pip install -e ./ptodsl
+
+      - name: Run frontend tests
+        run: pytest -v ./tests/frontend
+
+      - name: Run NPU build tests
+        run: |
+          export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/Ascend/ascend-toolkit/latest/$(uname -i)-linux/devlib
+          pytest -v -m "not require_npu" ./tests/npu
+        env:
+          TORCH_DEVICE_BACKEND_AUTOLOAD: "0"

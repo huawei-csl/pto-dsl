@@ -5,7 +5,6 @@ import subprocess
 
 import pytest
 import torch
-import torch_npu
 
 torch.manual_seed(0)
 
@@ -67,7 +66,7 @@ def compiled_lib(request):
         "op_name": op_name,
         "ref_fn": ref_fn,
         "dtype": dtype,
-        "lib": ctypes.CDLL(_lib_path(op_name, dtype)),
+        "lib_path": _lib_path(op_name, dtype),
     }
     os.remove(_lib_path(op_name, dtype))
 
@@ -128,12 +127,15 @@ def test_build_binary_kernels(compiled_lib):
 # The fixture guarantees the lib is compiled before either test runs.
 
 
+@pytest.mark.require_npu
 def test_binary_1d_precision(compiled_lib):
+    import torch_npu
     torch.npu.set_device(_DEVICE)
     ref_fn = compiled_lib["ref_fn"]
     torch_dtype = TORCH_DTYPES[compiled_lib["dtype"]]
 
-    kernel = _lib_to_func_binary_1d(compiled_lib["lib"])
+    lib = ctypes.CDLL(compiled_lib["lib_path"])
+    kernel = _lib_to_func_binary_1d(lib)
 
     num_cores = 20 * 2
     tile_size = 1024
@@ -156,12 +158,15 @@ def test_binary_1d_precision(compiled_lib):
         torch.testing.assert_close(z, ref_fn(x, y))
 
 
+@pytest.mark.require_npu
 def test_binary_2d_precision(compiled_lib):
+    import torch_npu
     torch.npu.set_device(_DEVICE)
     ref_fn = compiled_lib["ref_fn"]
     torch_dtype = TORCH_DTYPES[compiled_lib["dtype"]]
 
-    kernel = _lib_to_func_binary_2d(compiled_lib["lib"])
+    lib = ctypes.CDLL(compiled_lib["lib_path"])
+    kernel = _lib_to_func_binary_2d(lib)
 
     num_cores = 20 * 2
     tile_size = 1024
