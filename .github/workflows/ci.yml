@@ -70,3 +70,5 @@ jobs:
 
       - name: Run NPU build tests
         run: pytest -v -m "not require_npu" ./tests/npu
+        env:
+          TORCH_DEVICE_BACKEND_AUTOLOAD: "0"
