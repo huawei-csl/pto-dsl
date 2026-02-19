@@ -129,27 +129,27 @@ def build_pythonic(
         isBias: "i1",
         batch_i32: "i32",
     ) -> None:
-        c0 = const(0)
-        c1 = const(1)
-        cM = const(validM)
-        cK = const(validK)
-        cN = const(validN)
-        cBASEK = const(BASEK)
-        cIter = const(iters)
-        cTileM = const(M)
-        cTileN = const(N)
-
-        batch = pto.index_cast(batch_i32)
-        cBM = batch * cM
-
-        num_blocks = pto.index_cast(pto.get_block_num())
-        batches_per_core = pto.ceil_div(batch, num_blocks)
-        bid = pto.index_cast(pto.get_block_idx())
-        b_start = bid * batches_per_core
-        b_end_unclamped = b_start + batches_per_core
-        b_end = pto.min_u(b_end_unclamped, batch)
-
         with pto.cube_section():
+            c0 = const(0)
+            c1 = const(1)
+            cM = const(validM)
+            cK = const(validK)
+            cN = const(validN)
+            cBASEK = const(BASEK)
+            cIter = const(iters)
+            cTileM = const(M)
+            cTileN = const(N)
+
+            batch = pto.index_cast(batch_i32)
+            cBM = batch * cM
+
+            num_blocks = pto.index_cast(pto.get_block_num())
+            batches_per_core = pto.ceil_div(batch, num_blocks)
+            bid = pto.index_cast(pto.get_block_idx())
+            b_start = bid * batches_per_core
+            b_end_unclamped = b_start + batches_per_core
+            b_end = pto.min_u(b_end_unclamped, batch)
+
             tvA = pto.as_tensor(tv2_a, ptr=a_ptr, shape=[cBM, cK], strides=[cK, c1])
             tvB = pto.as_tensor(tv2_b, ptr=b_ptr, shape=[cK, cN], strides=[cN, c1])
             tvOut = pto.as_tensor(tv2_out, ptr=out_ptr, shape=[cBM, cN], strides=[cN, c1])
