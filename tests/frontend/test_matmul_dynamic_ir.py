@@ -23,82 +23,72 @@ def build_pythonic(
     iters = K // BASEK
 
     def meta_data():
-        t_out = pto.float32
-        t_a = pto.float32
-        t_b = pto.float32
-        t_bias = pto.float32
+        dtype = pto.float32
+        ptr_dtype = pto.PtrType(dtype)
         i1 = IntegerType.get_signless(1)
         i32 = pto.int32
-        ptr_out = pto.PtrType(t_out)
-        ptr_a = pto.PtrType(t_a)
-        ptr_b = pto.PtrType(t_b)
-        ptr_bias = pto.PtrType(t_bias)
+        tv2_a = pto.TensorType(rank=2, dtype=dtype)
+        tv2_b = pto.TensorType(rank=2, dtype=dtype)
+        tv2_out = pto.TensorType(rank=2, dtype=dtype)
+        tv2_bias = pto.TensorType(rank=2, dtype=dtype)
 
-        tv2_a = pto.TensorType(rank=2, dtype=t_a)
-        tv2_b = pto.TensorType(rank=2, dtype=t_b)
-        tv2_out = pto.TensorType(rank=2, dtype=t_out)
-        tv2_bias = pto.TensorType(rank=2, dtype=t_bias)
-
-        tile_view_a = pto.SubTensorType(shape=[M, BASEK], dtype=t_a)
-        tile_view_b = pto.SubTensorType(shape=[BASEK, N], dtype=t_b)
-        tile_view_out = pto.SubTensorType(shape=[M, N], dtype=t_out)
-        tile_view_bias = pto.SubTensorType(shape=[1, N], dtype=t_bias)
+        tile_view_a = pto.SubTensorType(shape=[M, BASEK], dtype=dtype)
+        tile_view_b = pto.SubTensorType(shape=[BASEK, N], dtype=dtype)
+        tile_view_out = pto.SubTensorType(shape=[M, N], dtype=dtype)
+        tile_view_bias = pto.SubTensorType(shape=[1, N], dtype=dtype)
 
         tile_buf_aMat = pto.TileBufType(
             shape=[M, BASEK],
             valid_shape=[M, BASEK],
-            dtype=t_a,
+            dtype=dtype,
             memory_space="MAT",
             config=None,
         )
         tile_buf_bMat = pto.TileBufType(
             shape=[BASEK, N],
             valid_shape=[BASEK, N],
-            dtype=t_b,
+            dtype=dtype,
             memory_space="MAT",
             config=None,
         )
         tile_buf_biasData = pto.TileBufType(
             shape=[1, N],
             valid_shape=[1, N],
-            dtype=t_bias,
+            dtype=dtype,
             memory_space="MAT",
             config=None,
         )
         tile_buf_aTile = pto.TileBufType(
             shape=[M, BASEK],
             valid_shape=[M, BASEK],
-            dtype=t_a,
+            dtype=dtype,
             memory_space="LEFT",
             config=None,
         )
         tile_buf_bTile = pto.TileBufType(
             shape=[BASEK, N],
             valid_shape=[BASEK, N],
-            dtype=t_b,
+            dtype=dtype,
             memory_space="RIGHT",
             config=None,
         )
         tile_buf_cTile = pto.TileBufType(
             shape=[M, N],
             valid_shape=[M, N],
-            dtype=t_out,
+            dtype=dtype,
             memory_space="ACC",
             config=None,
         )
         tile_buf_biasTile = pto.TileBufType(
             shape=[1, N],
             valid_shape=[1, N],
-            dtype=t_bias,
+            dtype=dtype,
             memory_space="BIAS",
             config=None,
         )
 
         return {
-            "ptr_out": ptr_out,
-            "ptr_a": ptr_a,
-            "ptr_b": ptr_b,
-            "ptr_bias": ptr_bias,
+            "ptr_type": ptr_dtype,
             "i1": i1,
             "i32": i32,
             "tv2_a": tv2_a,
@@ -122,10 +112,10 @@ def build_pythonic(
 
     @to_ir_module(meta_data=meta_data)
     def RunTMATMULSplitK(
-        out_ptr: "ptr_out",
-        a_ptr: "ptr_a",
-        b_ptr: "ptr_b",
-        bias_ptr: "ptr_bias",
+        out_ptr: "ptr_type",
+        a_ptr: "ptr_type",
+        b_ptr: "ptr_type",
+        bias_ptr: "ptr_type",
         isBias: "i1",
         batch_i32: "i32",
     ) -> None:
@@ -242,26 +232,20 @@ def build_verbose(
         pto.register_dialect(ctx, load=True)
         module = Module.create()
 
-        t_out = F32Type.get()
-        t_a = F32Type.get()
-        t_b = F32Type.get()
-        t_bias = F32Type.get()
+        dtype = F32Type.get()
+        ptr_dtype = pto.PtrType.get(dtype)
         i1 = IntegerType.get_signless(1)
         i32 = IntegerType.get_signless(32)
-        ptr_out = pto.PtrType.get(t_out)
-        ptr_a = pto.PtrType.get(t_a)
-        ptr_b = pto.PtrType.get(t_b)
-        ptr_bias = pto.PtrType.get(t_bias)
 
-        tv2_a = pto.TensorViewType.get(2, t_a)
-        tv2_b = pto.TensorViewType.get(2, t_b)
-        tv2_out = pto.TensorViewType.get(2, t_out)
-        tv2_bias = pto.TensorViewType.get(2, t_bias)
+        tv2_a = pto.TensorViewType.get(2, dtype)
+        tv2_b = pto.TensorViewType.get(2, dtype)
+        tv2_out = pto.TensorViewType.get(2, dtype)
+        tv2_bias = pto.TensorViewType.get(2, dtype)
 
-        tile_view_a = pto.PartitionTensorViewType.get([M, BASEK], t_a)
-        tile_view_b = pto.PartitionTensorViewType.get([BASEK, N], t_b)
-        tile_view_out = pto.PartitionTensorViewType.get([M, N], t_out)
-        tile_view_bias = pto.PartitionTensorViewType.get([1, N], t_bias)
+        tile_view_a = pto.PartitionTensorViewType.get([M, BASEK], dtype)
+        tile_view_b = pto.PartitionTensorViewType.get([BASEK, N], dtype)
+        tile_view_out = pto.PartitionTensorViewType.get([M, N], dtype)
+        tile_view_bias = pto.PartitionTensorViewType.get([1, N], dtype)
 
         mat = pto.AddressSpaceAttr.get(pto.AddressSpace.MAT)
         left = pto.AddressSpaceAttr.get(pto.AddressSpace.LEFT)
@@ -306,15 +290,15 @@ def build_verbose(
             pto.PadValueAttr.get(pto.PadValue.Null),
         )
 
-        tile_buf_aMat = pto.TileBufType.get([M, BASEK], t_a, mat, [M, BASEK], cfg_mat)
-        tile_buf_bMat = pto.TileBufType.get([BASEK, N], t_b, mat, [BASEK, N], cfg_mat)
-        tile_buf_biasData = pto.TileBufType.get([1, N], t_bias, mat, [1, N], cfg_mat_bias)
-        tile_buf_aTile = pto.TileBufType.get([M, BASEK], t_a, left, [M, BASEK], cfg_left)
-        tile_buf_bTile = pto.TileBufType.get([BASEK, N], t_b, right, [BASEK, N], cfg_right)
-        tile_buf_cTile = pto.TileBufType.get([M, N], t_out, acc, [M, N], cfg_acc)
-        tile_buf_biasTile = pto.TileBufType.get([1, N], t_bias, bias, [1, N], cfg_bias)
+        tile_buf_aMat = pto.TileBufType.get([M, BASEK], dtype, mat, [M, BASEK], cfg_mat)
+        tile_buf_bMat = pto.TileBufType.get([BASEK, N], dtype, mat, [BASEK, N], cfg_mat)
+        tile_buf_biasData = pto.TileBufType.get([1, N], dtype, mat, [1, N], cfg_mat_bias)
+        tile_buf_aTile = pto.TileBufType.get([M, BASEK], dtype, left, [M, BASEK], cfg_left)
+        tile_buf_bTile = pto.TileBufType.get([BASEK, N], dtype, right, [BASEK, N], cfg_right)
+        tile_buf_cTile = pto.TileBufType.get([M, N], dtype, acc, [M, N], cfg_acc)
+        tile_buf_biasTile = pto.TileBufType.get([1, N], dtype, bias, [1, N], cfg_bias)
 
-        fn_ty = func.FunctionType.get([ptr_out, ptr_a, ptr_b, ptr_bias, i1, i32], [])
+        fn_ty = func.FunctionType.get([ptr_dtype, ptr_dtype, ptr_dtype, ptr_dtype, i1, i32], [])
         with InsertionPoint(module.body):
             fn = func.FuncOp("RunTMATMULSplitK", fn_ty)
             entry = fn.add_entry_block()

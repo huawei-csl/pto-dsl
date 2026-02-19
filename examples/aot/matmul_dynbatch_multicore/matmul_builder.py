@@ -17,45 +17,39 @@ def build(
     iters = K // BASEK
 
     def meta_data():
-        t_out = pto.float32
-        t_a = pto.float32
-        t_b = pto.float32
-        t_bias = pto.float32
+        dtype = pto.float32
+        ptr_dtype = pto.PtrType(dtype)
         i1 = IntegerType.get_signless(1)
         i32 = pto.int32
-        ptr_out = pto.PtrType(t_out)
-        ptr_a = pto.PtrType(t_a)
-        ptr_b = pto.PtrType(t_b)
-        ptr_bias = pto.PtrType(t_bias)
 
-        tv2_a = pto.TensorType(rank=2, dtype=t_a)
-        tv2_b = pto.TensorType(rank=2, dtype=t_b)
-        tv2_out = pto.TensorType(rank=2, dtype=t_out)
-        tv2_bias = pto.TensorType(rank=2, dtype=t_bias)
+        tv2_a = pto.TensorType(rank=2, dtype=dtype)
+        tv2_b = pto.TensorType(rank=2, dtype=dtype)
+        tv2_out = pto.TensorType(rank=2, dtype=dtype)
+        tv2_bias = pto.TensorType(rank=2, dtype=dtype)
 
-        tile_view_a = pto.SubTensorType(shape=[M, BASEK], dtype=t_a)
-        tile_view_b = pto.SubTensorType(shape=[BASEK, N], dtype=t_b)
-        tile_view_out = pto.SubTensorType(shape=[M, N], dtype=t_out)
-        tile_view_bias = pto.SubTensorType(shape=[1, N], dtype=t_bias)
+        tile_view_a = pto.SubTensorType(shape=[M, BASEK], dtype=dtype)
+        tile_view_b = pto.SubTensorType(shape=[BASEK, N], dtype=dtype)
+        tile_view_out = pto.SubTensorType(shape=[M, N], dtype=dtype)
+        tile_view_bias = pto.SubTensorType(shape=[1, N], dtype=dtype)
 
         tile_buf_aMat = pto.TileBufType(
             shape=[M, BASEK],
             valid_shape=[M, BASEK],
-            dtype=t_a,
+            dtype=dtype,
             memory_space="MAT",
             config=None,
         )
         tile_buf_bMat = pto.TileBufType(
             shape=[BASEK, N],
             valid_shape=[BASEK, N],
-            dtype=t_b,
+            dtype=dtype,
             memory_space="MAT",
             config=None,
         )
         tile_buf_biasData = pto.TileBufType(
             shape=[1, N],
             valid_shape=[1, N],
-            dtype=t_bias,
+            dtype=dtype,
             memory_space="MAT",
             config=None,
         )
@@ -63,37 +57,34 @@ def build(
         tile_buf_aTile = pto.TileBufType(
             shape=[M, BASEK],
             valid_shape=[M, BASEK],
-            dtype=t_a,
+            dtype=dtype,
             memory_space="LEFT",
             config=None,
         )
         tile_buf_bTile = pto.TileBufType(
             shape=[BASEK, N],
             valid_shape=[BASEK, N],
-            dtype=t_b,
+            dtype=dtype,
             memory_space="RIGHT",
             config=None,
         )
         tile_buf_cTile = pto.TileBufType(
             shape=[M, N],
             valid_shape=[M, N],
-            dtype=t_out,
+            dtype=dtype,
             memory_space="ACC",
             config=None,
         )
         tile_buf_biasTile = pto.TileBufType(
             shape=[1, N],
             valid_shape=[1, N],
-            dtype=t_bias,
+            dtype=dtype,
             memory_space="BIAS",
             config=None,
         )
 
         return {
-            "ptr_out": ptr_out,
-            "ptr_a": ptr_a,
-            "ptr_b": ptr_b,
-            "ptr_bias": ptr_bias,
+            "ptr_type": ptr_dtype,
             "i1": i1,
             "i32": i32,
             "tv2_a": tv2_a,
@@ -117,10 +108,10 @@ def build(
 
     @to_ir_module(meta_data=meta_data)
     def RunTMATMULSplitK(
-        out_ptr: "ptr_out",
-        a_ptr: "ptr_a",
-        b_ptr: "ptr_b",
-        bias_ptr: "ptr_bias",
+        out_ptr: "ptr_type",
+        a_ptr: "ptr_type",
+        b_ptr: "ptr_type",
+        bias_ptr: "ptr_type",
         isBias: "i1",
         batch_i32: "i32",
     ) -> None:
