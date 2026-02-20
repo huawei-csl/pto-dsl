@@ -19,10 +19,7 @@ def _idx_const(v: int):
 def build(
     M=128, K=128, N=128,
     validM=128, validK=128, validN=128,
-    BASEK=128,
 ):
-    assert K % BASEK == 0
-    iters = K // BASEK
 
     with Context() as ctx, Location.unknown():
         pto.register_dialect(ctx, load=True)
@@ -45,11 +42,11 @@ def build(
         # ---- tensor view types ----
         tv2_a = pto.TensorViewType.get(3, t_a)        # [bs, validM, validK]
         tv2_b = pto.TensorViewType.get(2, t_b)        # [validK, validN]
-        tv2_out = pto.TensorViewType.get(2, t_out)    # [validM, validN]
+        tv2_out = pto.TensorViewType.get(3, t_out)    # [bs, validM, validN]
 
         # ---- tile view types ----
-        tile_view_a = pto.PartitionTensorViewType.get([M, BASEK], t_a)
-        tile_view_b = pto.PartitionTensorViewType.get([BASEK, N], t_b)
+        tile_view_a = pto.PartitionTensorViewType.get([M, K], t_a)
+        tile_view_b = pto.PartitionTensorViewType.get([K, N], t_b)
         tile_view_out = pto.PartitionTensorViewType.get([M, N], t_out)
 
         # ---- address spaces ----
@@ -94,11 +91,11 @@ def build(
 
 
         # ---- tile buf types (each has its own cfg) ----
-        tile_buf_aMat = pto.TileBufType.get([M, BASEK], t_a, mat, [M, BASEK], cfg_mat)
-        tile_buf_bMat = pto.TileBufType.get([BASEK, N], t_b, mat, [BASEK, N], cfg_mat)
+        tile_buf_aMat = pto.TileBufType.get([M, K], t_a, mat, [M, K], cfg_mat)
+        tile_buf_bMat = pto.TileBufType.get([K, N], t_b, mat, [K, N], cfg_mat)
 
-        tile_buf_aTile = pto.TileBufType.get([M, BASEK], t_a, left, [M, BASEK], cfg_left)
-        tile_buf_bTile = pto.TileBufType.get([BASEK, N], t_b, right, [BASEK, N], cfg_right)
+        tile_buf_aTile = pto.TileBufType.get([M, K], t_a, left, [M, K], cfg_left)
+        tile_buf_bTile = pto.TileBufType.get([K, N], t_b, right, [K, N], cfg_right)
         tile_buf_cTile = pto.TileBufType.get([M, N], t_out, acc, [M,N], cfg_acc)
 
         # ---- function ----
@@ -113,7 +110,6 @@ def build(
             For now we assume A: [bs, M, K], B: [K, N], C: [bs, M, N] and we do batched matmul (B is broadcasted).
             MKN is known at compile-time while bs is not.
 
-            The reduction over the k dim is done in chunks of size BASEK. (So for A tiles are [M, BASEK] and for B: [BASEK, N])
 
             Each core c=0,1,...,C-1 get allocated ceil(bs, C) batches (this is bad load-balancing for e.g. bs=9 C=8 since some cores does 0)
 
@@ -132,8 +128,7 @@ def build(
                 cK = _idx_const(validK)
                 cN = _idx_const(validN)
                 cKM = _idx_const(validK*validM)
-                cBASEK = _idx_const(BASEK)
-                cIter = _idx_const(iters)
+                cMN = _idx_const(validM*validN)
                 cTileM = _idx_const(M)
                 cTileN = _idx_const(N)
 
@@ -157,7 +152,7 @@ def build(
                 # OUT: [batch*M, validN], stride [validN, 1]
                 tvA = pto.MakeTensorViewOp(tv2_a, a_ptr, [batch, cM, cK], [cKM, cK, c1]).result
                 tvB = pto.MakeTensorViewOp(tv2_b, b_ptr, [cK, cN], [cN, c1]).result
-                tvOut = pto.MakeTensorViewOp(tv2_out, out_ptr, [cBM, cN], [cN, c1]).result
+                tvOut = pto.MakeTensorViewOp(tv2_out, out_ptr, [batch, cM, cN], [cMN, cN, c1]).result
 
                 # ---- alloc tiles ----
                 aMatTile = pto.AllocTileOp(tile_buf_aMat).result
@@ -171,13 +166,10 @@ def build(
                 with InsertionPoint(batch_loop.body):
                     b_idx = batch_loop.induction_variable
 
-                    # Row offset for this batch within the [batch*M, *] views.
-                    row_off = arith.MulIOp(b_idx, cM).result
-
-                    # subviews for this split-K and batch row range
-                    svA = pto.PartitionViewOp(tile_view_a, tvA, offsets=[b_idx, c0, c0], sizes=[c1, cTileM, cBASEK]).result
-                    #svA = pto.PartitionViewOp(tile_view_a, tvA, offsets=[row_off, c0], sizes=[cTileM, cBASEK]).result
-                    svB = pto.PartitionViewOp(tile_view_b, tvB, offsets=[c0, c0], sizes=[cBASEK, cTileN]).result
+                    # subviews for this batch row range
+                    svA = pto.PartitionViewOp(tile_view_a, tvA, offsets=[b_idx, c0, c0], sizes=[c1, cTileM, cK]).result
+                    svB = pto.PartitionViewOp(tile_view_b, tvB, offsets=[c0, c0], sizes=[cK, cTileN]).result
+                    svOut = pto.PartitionViewOp(tile_view_out, tvOut, offsets=[b_idx, c0, c0], sizes=[c1, cTileM, cTileN]).result
 
                     # ---- TLOAD ----
                     # Note: TLOAD valid dims typically correspond to the destination tile's valid region (a/b/bias)
@@ -193,7 +185,6 @@ def build(
                     pto.TMovOp(None, aMatTile, aTile)
                     pto.TMovOp(None, bMatTile, bTile)
 
-
                     # ---- sync: MTE1 -> M ----
                     pto.record_event(TMOV_M2L, TMATMUL, EVENT_ID0)
                     pto.wait_event  (TMOV_M2L, TMATMUL, EVENT_ID0)
@@ -207,7 +198,6 @@ def build(
 
                     # ---- TSTORE ----
                     # Write back OUT using the valid dims of C
-                    svOut = pto.PartitionViewOp(tile_view_out, tvOut, offsets=[row_off, c0], sizes=[cTileM, cTileN]).result
                     pto.TStoreOp(None, cTile, svOut)
 
                     scf.YieldOp([])
