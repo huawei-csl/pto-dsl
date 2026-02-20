@@ -15,12 +15,17 @@ TORCH_DTYPES = {
     "float16": torch.float16,
 }
 
-# (dtype, (rows, cols)) — edit here to add/remove cases
+# (dtype, (rows, cols)) — edit here to add/remove cases, first dim can be any, the second a multiple of 32
 CASES = [
     ("float32", (32, 32)),
     ("float32", (16, 64)),
+    ("float32", (16, 128)),
+    ("float32", (53, 160)),
+    ("float32", (53, 192)),
     ("float16", (32, 32)),
     ("float16", (32, 128)),
+    ("float16", (32, 160)),
+    ("float16", (3, 160)),
 ]
 
 
@@ -49,11 +54,7 @@ def compiled_lib(request):
         ["bash", os.path.join(_DIR, "compile.sh"), dtype, str(rows), str(cols)],
         cwd=_DIR,
     )
-    yield {
-        "dtype": dtype,
-        "rows": rows,
-        "cols": cols
-    }
+    yield {"dtype": dtype, "rows": rows, "cols": cols}
     os.remove(_lib_path(dtype, rows, cols))
 
 
@@ -95,8 +96,12 @@ def test_gather_precision(compiled_lib):
     out = torch.empty(shape, device=_DEVICE, dtype=torch_dtype)
 
     torch.npu.synchronize()  # flush any pending work before using the kernel
-    fn(stream_ptr, _ctypes_ptr(out), _ctypes_ptr(src), _ctypes_ptr(indices))
+    fn(stream_ptr, _ctypes_ptr(src), _ctypes_ptr(indices), _ctypes_ptr(out))
     torch.npu.synchronize()
 
     ref = _gather_ref(src, indices)
     torch.testing.assert_close(out, ref)
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v", "-s"])

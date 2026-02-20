@@ -17,7 +17,7 @@ def generate_caller(dtype, rows, cols):
 #include "{fn}.cpp"
 
 extern "C" void call_{fn}(
-    void *stream, uint8_t *out, uint8_t *src, uint8_t *indices)
+    void *stream, uint8_t *src, uint8_t *indices, uint8_t *out)
 {{
     {fn}<<<20, nullptr, stream>>>(
         ({src_ctype} *)src, (int32_t *)indices, ({src_ctype} *)out);
