@@ -114,7 +114,7 @@ def build(
             Each core c=0,1,...,C-1 get allocated ceil(bs, C) batches (this is bad load-balancing for e.g. bs=9 C=8 since some cores does 0)
 
 
-            every multiplcation will use the same B, so make sure we keep it in fast mem
+            Since every multiplcation uses the same B, just load it once GM -> L1 -> L0B.
             """
             out_ptr, a_ptr, b_ptr, bias_ptr, isBias, batch_i32 = entry.arguments
 
@@ -161,6 +161,14 @@ def build(
                 bTile = pto.AllocTileOp(tile_buf_bTile).result
                 cTile = pto.AllocTileOp(tile_buf_cTile).result
 
+                svB = pto.PartitionViewOp(tile_view_b, tvB, offsets=[c0, c0], sizes=[cK, cTileN]).result
+                # Load GM into tile
+                pto.TLoadOp(None, svB, bMatTile)
+                # move from L1 to L0
+                pto.record_event(TLOAD, TMOV_M2L, EVENT_ID0)
+                pto.wait_event  (TLOAD, TMOV_M2L, EVENT_ID0)
+                pto.TMovOp(None, bMatTile, bTile)
+
                 # ---- outer loop over batches assigned to this core ----
                 batch_loop = scf.ForOp(b_start, b_end, c1)
                 with InsertionPoint(batch_loop.body):
@@ -168,13 +176,11 @@ def build(
 
                     # subviews for this batch row range
                     svA = pto.PartitionViewOp(tile_view_a, tvA, offsets=[b_idx, c0, c0], sizes=[c1, cTileM, cK]).result
-                    svB = pto.PartitionViewOp(tile_view_b, tvB, offsets=[c0, c0], sizes=[cK, cTileN]).result
                     svOut = pto.PartitionViewOp(tile_view_out, tvOut, offsets=[b_idx, c0, c0], sizes=[c1, cTileM, cTileN]).result
 
                     # ---- TLOAD ----
                     # Note: TLOAD valid dims typically correspond to the destination tile's valid region (a/b/bias)
                     pto.TLoadOp(None, svA, aMatTile)
-                    pto.TLoadOp(None, svB, bMatTile)
 
                     # ---- sync: MTE2 -> MTE1 ----
                     pto.record_event(TLOAD, TMOV_M2L, EVENT_ID0)
@@ -183,7 +189,6 @@ def build(
                     # ---- TMOV ----
                     # TMOV also uses the corresponding tile valid dims (a/b/bias)
                     pto.TMovOp(None, aMatTile, aTile)
-                    pto.TMovOp(None, bMatTile, bTile)
 
                     # ---- sync: MTE1 -> M ----
                     pto.record_event(TMOV_M2L, TMATMUL, EVENT_ID0)
