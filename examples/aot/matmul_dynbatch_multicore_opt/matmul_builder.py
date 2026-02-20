@@ -5,10 +5,7 @@ from mlir.ir import (
     IndexType, IntegerType, F16Type, F32Type, StringAttr
 )
 from mlir.dialects import func, arith, scf, pto, builtin
-from mlir.dialects.pto import (
-    TLOAD, TMOV_M2L, TMATMUL, TSTORE_ACC,
-    EVENT_ID0
-)
+from mlir.dialects.pto import ( TLOAD, TMOV_M2L, TMATMUL, TSTORE_ACC, EVENT_ID0)
 from mlir.dialects.arith import CmpIPredicate
 
 
@@ -56,7 +53,6 @@ def build(
         acc = pto.AddressSpaceAttr.get(pto.AddressSpace.ACC)
 
         # ---- configs (3rd arg = s_fractal_size) ----
-        # Note: these layout/pad settings are reasonable defaults; adjust to match your C++ Tile definitions if needed.
         # MAT tile: used for transfers, typically row_major
         cfg_mat = pto.TileBufConfigAttr.get(
             pto.BLayoutAttr.get(pto.BLayout.ColMajor),
@@ -90,10 +86,8 @@ def build(
         )
 
 
-        # ---- tile buf types (each has its own cfg) ----
         tile_buf_aMat = pto.TileBufType.get([M, K], t_a, mat, [M, K], cfg_mat)
         tile_buf_bMat = pto.TileBufType.get([K, N], t_b, mat, [K, N], cfg_mat)
-
         tile_buf_aTile = pto.TileBufType.get([M, K], t_a, left, [M, K], cfg_left)
         tile_buf_bTile = pto.TileBufType.get([K, N], t_b, right, [K, N], cfg_right)
         tile_buf_cTile = pto.TileBufType.get([M, N], t_out, acc, [M,N], cfg_acc)
@@ -109,9 +103,6 @@ def build(
             """
             For now we assume A: [bs, M, K], B: [K, N], C: [bs, M, N] and we do batched matmul (B is broadcasted).
             MKN is known at compile-time while bs is not.
-
-
-            Each core c=0,1,...,C-1 get allocated ceil(bs, C) batches (this is bad load-balancing for e.g. bs=9 C=8 since some cores does 0)
 
 
             Since every multiplcation uses the same B, just load it once GM -> L1 -> L0B.
@@ -136,20 +127,22 @@ def build(
                 # Total logical rows for A/C: [batch, M, *] -> [batch*M, *]
                 cBM = arith.MulIOp(batch, cM).result
 
-                # ---- batch partitioning across blocks ----
-                # Assign ceil(batch / numBlocks) batches per core.
+                # Distribute batches over cores. Each core gets B//C, and B%C cores gets +1
                 num_blocks = arith.IndexCastOp(IndexType.get(), pto.GetBlockNumOp().result).result
-                batches_per_core = arith.CeilDivSIOp(batch, num_blocks).result
-                bid = arith.IndexCastOp(IndexType.get(), pto.GetBlockIdxOp().result).result
+                bid        = arith.IndexCastOp(IndexType.get(), pto.GetBlockIdxOp().result).result
 
-                b_start = arith.MulIOp(bid, batches_per_core).result
-                b_end_unclamped = arith.AddIOp(b_start, batches_per_core).result
-                b_end = arith.MinUIOp(b_end_unclamped, batch).result
+                base = arith.DivSIOp(batch, num_blocks).result
+                rem  = arith.RemSIOp(batch, num_blocks).result
+                lt_rem = arith.CmpIOp(arith.CmpIPredicate.slt, bid, rem).result
+                min_bid_rem = arith.MinUIOp(bid, rem).result
+                b_start = arith.AddIOp(arith.MulIOp(bid, base).result, min_bid_rem).result
+                length = arith.AddIOp(base, arith.SelectOp(lt_rem, c1, c0).result).result
+                b_end = arith.MinUIOp(arith.AddIOp(b_start, length).result, batch).result
 
                 # ---- make_tensor_view over full [batch*M, *] range ----
-                # A: [batch*M, validK], stride [validK, 1]
+                # A: [batch, M, validK], stride [K*M, K, 1]
                 # B: [validK, validN], stride [validN, 1] (shared across batches)
-                # OUT: [batch*M, validN], stride [validN, 1]
+                # OUT: [batch, M, validN], stride [M*N, N, 1]
                 tvA = pto.MakeTensorViewOp(tv2_a, a_ptr, [batch, cM, cK], [cKM, cK, c1]).result
                 tvB = pto.MakeTensorViewOp(tv2_b, b_ptr, [cK, cN], [cN, c1]).result
                 tvOut = pto.MakeTensorViewOp(tv2_out, out_ptr, [batch, cM, cN], [cMN, cN, c1]).result
@@ -164,9 +157,9 @@ def build(
                 svB = pto.PartitionViewOp(tile_view_b, tvB, offsets=[c0, c0], sizes=[cK, cTileN]).result
                 # Load GM into tile
                 pto.TLoadOp(None, svB, bMatTile)
-                # move from L1 to L0
                 pto.record_event(TLOAD, TMOV_M2L, EVENT_ID0)
                 pto.wait_event  (TLOAD, TMOV_M2L, EVENT_ID0)
+                # move from L1 to L0
                 pto.TMovOp(None, bMatTile, bTile)
 
                 # ---- outer loop over batches assigned to this core ----
@@ -178,7 +171,6 @@ def build(
                     svA = pto.PartitionViewOp(tile_view_a, tvA, offsets=[b_idx, c0, c0], sizes=[c1, cTileM, cK]).result
                     svOut = pto.PartitionViewOp(tile_view_out, tvOut, offsets=[b_idx, c0, c0], sizes=[c1, cTileM, cTileN]).result
 
-                    # ---- TLOAD ----
                     # Note: TLOAD valid dims typically correspond to the destination tile's valid region (a/b/bias)
                     pto.TLoadOp(None, svA, aMatTile)
 
@@ -186,7 +178,6 @@ def build(
                     pto.record_event(TLOAD, TMOV_M2L, EVENT_ID0)
                     pto.wait_event  (TLOAD, TMOV_M2L, EVENT_ID0)
 
-                    # ---- TMOV ----
                     # TMOV also uses the corresponding tile valid dims (a/b/bias)
                     pto.TMovOp(None, aMatTile, aTile)
 
@@ -201,7 +192,6 @@ def build(
                     pto.record_event(TMATMUL, TSTORE_ACC, EVENT_ID0)
                     pto.wait_event  (TMATMUL, TSTORE_ACC, EVENT_ID0)
 
-                    # ---- TSTORE ----
                     # Write back OUT using the valid dims of C
                     pto.TStoreOp(None, cTile, svOut)
 
