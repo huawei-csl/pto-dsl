@@ -27,74 +27,26 @@ def build_pythonic(
         ptr_dtype = pto.PtrType(dtype)
         i1 = IntegerType.get_signless(1)
         i32 = pto.int32
-        tv2_a = pto.TensorType(rank=2, dtype=dtype)
-        tv2_b = pto.TensorType(rank=2, dtype=dtype)
-        tv2_out = pto.TensorType(rank=2, dtype=dtype)
-        tv2_bias = pto.TensorType(rank=2, dtype=dtype)
+        tensor_type = pto.TensorType(rank=2, dtype=dtype)
 
         tile_view_a = pto.SubTensorType(shape=[M, BASEK], dtype=dtype)
         tile_view_b = pto.SubTensorType(shape=[BASEK, N], dtype=dtype)
         tile_view_out = pto.SubTensorType(shape=[M, N], dtype=dtype)
         tile_view_bias = pto.SubTensorType(shape=[1, N], dtype=dtype)
 
-        tile_buf_aMat = pto.TileBufType(
-            shape=[M, BASEK],
-            valid_shape=[M, BASEK],
-            dtype=dtype,
-            memory_space="MAT",
-            config=None,
-        )
-        tile_buf_bMat = pto.TileBufType(
-            shape=[BASEK, N],
-            valid_shape=[BASEK, N],
-            dtype=dtype,
-            memory_space="MAT",
-            config=None,
-        )
-        tile_buf_biasData = pto.TileBufType(
-            shape=[1, N],
-            valid_shape=[1, N],
-            dtype=dtype,
-            memory_space="MAT",
-            config=None,
-        )
-        tile_buf_aTile = pto.TileBufType(
-            shape=[M, BASEK],
-            valid_shape=[M, BASEK],
-            dtype=dtype,
-            memory_space="LEFT",
-            config=None,
-        )
-        tile_buf_bTile = pto.TileBufType(
-            shape=[BASEK, N],
-            valid_shape=[BASEK, N],
-            dtype=dtype,
-            memory_space="RIGHT",
-            config=None,
-        )
-        tile_buf_cTile = pto.TileBufType(
-            shape=[M, N],
-            valid_shape=[M, N],
-            dtype=dtype,
-            memory_space="ACC",
-            config=None,
-        )
-        tile_buf_biasTile = pto.TileBufType(
-            shape=[1, N],
-            valid_shape=[1, N],
-            dtype=dtype,
-            memory_space="BIAS",
-            config=None,
-        )
+        tile_buf_aMat = pto.TileBufType(shape=[M, BASEK], dtype=dtype, memory_space="MAT")
+        tile_buf_bMat = pto.TileBufType(shape=[BASEK, N], dtype=dtype, memory_space="MAT")
+        tile_buf_biasData = pto.TileBufType(shape=[1, N], dtype=dtype, memory_space="MAT")
+        tile_buf_aTile = pto.TileBufType(shape=[M, BASEK], dtype=dtype, memory_space="LEFT")
+        tile_buf_bTile = pto.TileBufType(shape=[BASEK, N], dtype=dtype, memory_space="RIGHT")
+        tile_buf_cTile = pto.TileBufType(shape=[M, N], dtype=dtype, memory_space="ACC")
+        tile_buf_biasTile = pto.TileBufType(shape=[1, N], dtype=dtype, memory_space="BIAS")
 
         return {
             "ptr_type": ptr_dtype,
             "i1": i1,
             "i32": i32,
-            "tv2_a": tv2_a,
-            "tv2_b": tv2_b,
-            "tv2_out": tv2_out,
-            "tv2_bias": tv2_bias,
+            "tensor_type": tensor_type,
             "tile_view_a": tile_view_a,
             "tile_view_b": tile_view_b,
             "tile_view_out": tile_view_out,
@@ -140,10 +92,10 @@ def build_pythonic(
             b_end_unclamped = b_start + batches_per_core
             b_end = pto.min_u(b_end_unclamped, batch)
 
-            tvA = pto.as_tensor(tv2_a, ptr=a_ptr, shape=[cBM, cK], strides=[cK, c1])
-            tvB = pto.as_tensor(tv2_b, ptr=b_ptr, shape=[cK, cN], strides=[cN, c1])
-            tvOut = pto.as_tensor(tv2_out, ptr=out_ptr, shape=[cBM, cN], strides=[cN, c1])
-            tvBias = pto.as_tensor(tv2_bias, ptr=bias_ptr, shape=[c1, cN], strides=[cN, c1])
+            tvA = pto.as_tensor(tensor_type, ptr=a_ptr, shape=[cBM, cK], strides=[cK, c1])
+            tvB = pto.as_tensor(tensor_type, ptr=b_ptr, shape=[cK, cN], strides=[cN, c1])
+            tvOut = pto.as_tensor(tensor_type, ptr=out_ptr, shape=[cBM, cN], strides=[cN, c1])
+            tvBias = pto.as_tensor(tensor_type, ptr=bias_ptr, shape=[c1, cN], strides=[cN, c1])
 
             aMatTile = pto.alloc_tile(tile_buf_aMat)
             bMatTile = pto.alloc_tile(tile_buf_bMat)
@@ -237,10 +189,7 @@ def build_verbose(
         i1 = IntegerType.get_signless(1)
         i32 = IntegerType.get_signless(32)
 
-        tv2_a = pto.TensorViewType.get(2, dtype)
-        tv2_b = pto.TensorViewType.get(2, dtype)
-        tv2_out = pto.TensorViewType.get(2, dtype)
-        tv2_bias = pto.TensorViewType.get(2, dtype)
+        tensor_type = pto.TensorViewType.get(2, dtype)
 
         tile_view_a = pto.PartitionTensorViewType.get([M, BASEK], dtype)
         tile_view_b = pto.PartitionTensorViewType.get([BASEK, N], dtype)
@@ -330,10 +279,10 @@ def build_verbose(
                 b_end_unclamped = arith.AddIOp(b_start, batches_per_core).result
                 b_end = arith.MinUIOp(b_end_unclamped, batch).result
 
-                tvA = pto.MakeTensorViewOp(tv2_a, a_ptr, [cBM, cK], [cK, c1]).result
-                tvB = pto.MakeTensorViewOp(tv2_b, b_ptr, [cK, cN], [cN, c1]).result
-                tvOut = pto.MakeTensorViewOp(tv2_out, out_ptr, [cBM, cN], [cN, c1]).result
-                tvBias = pto.MakeTensorViewOp(tv2_bias, bias_ptr, [c1, cN], [cN, c1]).result
+                tvA = pto.MakeTensorViewOp(tensor_type, a_ptr, [cBM, cK], [cK, c1]).result
+                tvB = pto.MakeTensorViewOp(tensor_type, b_ptr, [cK, cN], [cN, c1]).result
+                tvOut = pto.MakeTensorViewOp(tensor_type, out_ptr, [cBM, cN], [cN, c1]).result
+                tvBias = pto.MakeTensorViewOp(tensor_type, bias_ptr, [c1, cN], [cN, c1]).result
 
                 aMatTile = pto.AllocTileOp(tile_buf_aMat).result
                 bMatTile = pto.AllocTileOp(tile_buf_bMat).result
