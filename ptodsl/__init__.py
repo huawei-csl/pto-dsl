@@ -221,14 +221,14 @@ class JitWrapper:
                 cpp_args.append(f"{cpp_t} {param.name}")
                 launch_args.append(param.name)
 
-        wrapper_sig = ", ".join(["void *stream"] + cpp_args)
+        wrapper_sig = ", ".join(["uint32_t blockDim", "void *stream"] + cpp_args)
         kernel_call = ", ".join(launch_args)
         return (
             f'#include "{kernel_cpp_name}"\n'
             f"#include <cstdint>\n\n"
             f'extern "C" void call_kernel({wrapper_sig})\n'
             "{\n"
-            f"    {self._fn.__name__}<<<{self._block_dim}, nullptr, stream>>>({kernel_call});\n"
+            f"    {self._fn.__name__}<<<blockDim, nullptr, stream>>>({kernel_call});\n"
             "}\n"
         )
 
@@ -293,7 +293,7 @@ class JitWrapper:
         self._compile_shared_library(caller_path, lib_path)
 
         self._lib = ctypes.CDLL(str(lib_path))
-        self._lib.call_kernel.argtypes = [ctypes.c_void_p] + [
+        self._lib.call_kernel.argtypes = [ctypes.c_uint32, ctypes.c_void_p] + [
             ctypes.c_void_p if _is_ptr_type(arg_type) else _scalar_ctype(arg_type)
             for arg_type in self._arg_types
         ]
@@ -341,8 +341,18 @@ class JitWrapper:
             stream_ptr = torch.npu.current_stream()._as_parameter_
 
         call_args = self._prepare_call_args(args)
-        self._lib.call_kernel(_normalize_stream_ptr(stream_ptr), *call_args)
+        self._lib.call_kernel(
+            ctypes.c_uint32(self._block_dim),
+            _normalize_stream_ptr(stream_ptr),
+            *call_args,
+        )
         return None
+
+    def set_block_dim(self, block_dim):
+        if not isinstance(block_dim, int) or block_dim <= 0:
+            raise ValueError("`block_dim` must be a positive integer.")
+        self._block_dim = block_dim
+        return self
 
     @property
     def library_path(self):

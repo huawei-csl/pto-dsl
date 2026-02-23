@@ -9,7 +9,6 @@ const = pto.const
 
 
 def build_kernel(
-    block_dim,
     M=128,
     K=128,
     N=128,
@@ -109,7 +108,7 @@ def build_kernel(
             "tile_buf_biasTile": tile_buf_biasTile,
         }
 
-    @jit(meta_data=meta_data, block_dim=block_dim, enable_insert_sync=False)
+    @jit(meta_data=meta_data, block_dim=1, enable_insert_sync=False)
     def RunTMATMULSplitK(
         out_ptr: "ptr_type",
         a_ptr: "ptr_type",
@@ -237,7 +236,7 @@ def test_matmul():
 
     torch.manual_seed(0)
 
-    kernels = {block_dim: build_kernel(block_dim) for block_dim in block_dims}
+    kernel = build_kernel()
     null_ptr = 0
     use_bias = 0
 
@@ -247,7 +246,8 @@ def test_matmul():
 
         for block_dim in block_dims:
             c = torch.empty((bs, m, n), device=device, dtype=dtype)
-            kernels[block_dim](c, a, b, null_ptr, use_bias, a.shape[0])
+            kernel.set_block_dim(block_dim)
+            kernel(c, a, b, null_ptr, use_bias, a.shape[0])
             torch.npu.synchronize()
 
             c_ref = torch.matmul(a, b)

@@ -32,11 +32,12 @@ def test_generate_caller_cpp_for_multicore_add_signature():
 
     assert '#include "kernel.cpp"' in caller_cpp
     assert (
-        'extern "C" void call_kernel(void *stream, uint8_t *arg0, uint8_t *arg1, uint8_t *arg2, '
-        "int32_t arg_vrow_i32, int32_t arg_vcol_i32)"
+        'extern "C" void call_kernel(uint32_t blockDim, void *stream, uint8_t *arg0, '
+        "uint8_t *arg1, uint8_t *arg2, int32_t arg_vrow_i32, int32_t arg_vcol_i32)"
     ) in caller_cpp
     assert (
-        "vec_add_kernel<<<20, nullptr, stream>>>((float *)arg0, (float *)arg1, (float *)arg2, "
+        "vec_add_kernel<<<blockDim, nullptr, stream>>>((float *)arg0, (float *)arg1, "
+        "(float *)arg2, "
         "arg_vrow_i32, arg_vcol_i32);"
     ) in caller_cpp
 
@@ -55,9 +56,10 @@ def test_generate_caller_cpp_maps_pointer_and_scalar_types():
     caller_cpp = wrapper._generate_caller_cpp("generated.cpp")
 
     assert (
-        'extern "C" void call_kernel(void *stream, uint8_t *data, int64_t count, int64_t idx)'
+        'extern "C" void call_kernel(uint32_t blockDim, void *stream, uint8_t *data, '
+        "int64_t count, int64_t idx)"
     ) in caller_cpp
-    assert "mixed_kernel<<<7, nullptr, stream>>>((int8_t *)data, count, idx);" in caller_cpp
+    assert "mixed_kernel<<<blockDim, nullptr, stream>>>((int8_t *)data, count, idx);" in caller_cpp
 
 
 def test_generate_caller_cpp_for_dynamic_1d_add_signature():
@@ -80,10 +82,20 @@ def test_generate_caller_cpp_for_dynamic_1d_add_signature():
     caller_cpp = wrapper._generate_caller_cpp("kernel.cpp")
 
     assert (
-        'extern "C" void call_kernel(void *stream, uint8_t *arg0, uint8_t *arg1, '
-        "uint8_t *arg2, int32_t argN)"
+        'extern "C" void call_kernel(uint32_t blockDim, void *stream, uint8_t *arg0, '
+        "uint8_t *arg1, uint8_t *arg2, int32_t argN)"
     ) in caller_cpp
     assert (
-        "vec_add_1d_dynamic<<<20, nullptr, stream>>>((float *)arg0, (float *)arg1, "
+        "vec_add_1d_dynamic<<<blockDim, nullptr, stream>>>((float *)arg0, (float *)arg1, "
         "(float *)arg2, argN);"
     ) in caller_cpp
+
+
+def test_set_block_dim_updates_runtime_launch_dim():
+    def vec_add_kernel(arg0: "ptr_type") -> None:
+        return None
+
+    wrapper = JitWrapper(vec_add_kernel, meta_data=lambda: {}, block_dim=1)
+    wrapper.set_block_dim(20)
+
+    assert wrapper._block_dim == 20
