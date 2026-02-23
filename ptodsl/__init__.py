@@ -9,6 +9,7 @@ from mlir.dialects import func, pto
 from mlir.ir import Context, InsertionPoint, Location, Module
 
 from .language import wrap_value
+from .bench import do_bench
 
 
 def _resolve_meta(meta_fn):
@@ -374,4 +375,4 @@ def jit(
     return decorator
 
 
-__all__ = ["JitWrapper", "jit", "to_ir_module"]
+__all__ = ["JitWrapper", "jit", "to_ir_module", "do_bench"]
