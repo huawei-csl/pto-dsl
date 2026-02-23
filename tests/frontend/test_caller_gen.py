@@ -58,3 +58,32 @@ def test_generate_caller_cpp_maps_pointer_and_scalar_types():
         'extern "C" void call_kernel(void *stream, uint8_t *data, int64_t count, int64_t idx)'
     ) in caller_cpp
     assert "mixed_kernel<<<7, nullptr, stream>>>((int8_t *)data, count, idx);" in caller_cpp
+
+
+def test_generate_caller_cpp_for_dynamic_1d_add_signature():
+    def vec_add_1d_dynamic(
+        arg0: "ptr_type",
+        arg1: "ptr_type",
+        arg2: "ptr_type",
+        argN: "index_dtype",
+    ) -> None:
+        return None
+
+    wrapper = JitWrapper(vec_add_1d_dynamic, meta_data=lambda: {}, block_dim=20)
+    wrapper._arg_types = [
+        _FakeType("!pto.ptr<f32>"),
+        _FakeType("!pto.ptr<f32>"),
+        _FakeType("!pto.ptr<f32>"),
+        _FakeType("i32"),
+    ]
+
+    caller_cpp = wrapper._generate_caller_cpp("kernel.cpp")
+
+    assert (
+        'extern "C" void call_kernel(void *stream, uint8_t *arg0, uint8_t *arg1, '
+        "uint8_t *arg2, int32_t argN)"
+    ) in caller_cpp
+    assert (
+        "vec_add_1d_dynamic<<<20, nullptr, stream>>>((float *)arg0, (float *)arg1, "
+        "(float *)arg2, argN);"
+    ) in caller_cpp
