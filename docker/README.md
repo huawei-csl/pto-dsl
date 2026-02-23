@@ -30,3 +30,16 @@ sudo docker run --rm -it --ipc=host --privileged \
     -v $HOME:/mounted_home -w /mounted_home \
     pto_dsl:$RELEASE_TAG /bin/bash
 ```
+
+## Appendix: NPU driver
+
+Use above docker env together with CANN 25.5.0 driver and firmware:
+
+```bash
+wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/Ascend%20HDK/Ascend%20HDK%2025.5.0/Ascend-hdk-910b-npu-driver_25.5.0_linux-aarch64.run
+wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/Ascend%20HDK/Ascend%20HDK%2025.5.0/Ascend-hdk-910b-npu-firmware_7.8.0.5.216.run
+
+sudo reboot now
+sudo bash ./Ascend-hdk-910b-npu-driver_25.5.0_linux-aarch64.run --full --install-for-all
+sudo bash ./Ascend-hdk-910b-npu-firmware_7.8.0.5.216.run --full
+```
