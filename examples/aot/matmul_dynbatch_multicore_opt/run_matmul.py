@@ -2,6 +2,9 @@ import ctypes
 import time
 import torch
 import torch_npu
+import matplotlib.pyplot as plt
+
+from ptodsl import do_bench
 
 
 def torch_to_ctypes(tensor):
@@ -9,7 +12,6 @@ def torch_to_ctypes(tensor):
 
 
 def _dtype_nbytes(dtype: torch.dtype) -> int:
-    # torch.dtype doesn't expose itemsize directly.
     return torch.empty((), dtype=dtype).element_size()
 
 
@@ -22,13 +24,10 @@ def matmul_io_bytes(a: torch.Tensor, b: torch.Tensor, c: torch.Tensor) -> int:
     # Simple traffic model: read A + read B + write C.
     # Does not include cache effects or intermediate buffers.
     elt = _dtype_nbytes(a.dtype)
-    #return (a.numel() + b.numel() + c.numel()) * elt
-    return (a.numel() + b.numel())  * elt
+    return (a.numel() + b.numel() + c.numel()) * elt
+    #return (a.numel() + b.numel())  * elt
 
 
-def _sync_if_needed(device: str) -> None:
-    if device.startswith("npu"):
-        torch.npu.synchronize()
 
 
 def benchmark(
@@ -41,18 +40,7 @@ def benchmark(
     flops: int | None = None,
     io_bytes: int | None = None,
 ) -> dict:
-    for _ in range(warmup):
-        fn()
-    _sync_if_needed(device)
-
-    t0 = time.perf_counter()
-    for _ in range(iters):
-        fn()
-    _sync_if_needed(device)
-    t1 = time.perf_counter()
-
-    total_s = t1 - t0
-    avg_s = total_s / iters
+    avg_s = do_bench(fn, warmup_iters=warmup, benchmark_iters=iters, unit='s')
     stats = {"name": name, "iters": iters, "avg_ms": avg_s * 1e3}
     if flops is not None:
         stats["tflops"] = (flops / avg_s) / 1e12
@@ -92,86 +80,15 @@ def load_lib(lib_path):
     return matmul_func
 
 
-def test_matmul(verbose=False):
-    device = "npu:6"
-    torch.set_default_device(device)
-    torch.npu.set_device(device)
-    dtype = torch.float32
 
-    for blk in range(1,25):
-        bs = 24*20
-        m, k, n = 128, 128, 128
-        torch.manual_seed(0)
-        a = torch.rand((bs, m, k), device=device, dtype=dtype)
-        b = torch.rand((k, n), device=device, dtype=dtype)
-        c = torch.zeros((bs, m, n), device=device, dtype=dtype)
-
-        matmul_func = load_lib("./matmul_kernel.so")
-        torch.npu.synchronize()
-
-        c_ref = torch.matmul(a, b)
-        diff = (c - c_ref).abs().max()
-        print('max diff: ', diff)
-
-        flops = matmul_flops(bs, m, k, n)
-        io_bytes = matmul_io_bytes(a, b, c)
-
-        print_benchmark(
-            benchmark(
-                "custom_kernel",
-                lambda: matmul_func(c, a, b, batch_size=a.shape[0], block_dim=blk),
-                device=device,
-                warmup=0,
-                iters=20,
-                flops=flops,
-                io_bytes=io_bytes,
-            )
-        )
-        print_benchmark(
-            benchmark(
-                "torch.matmul",
-                lambda: torch.matmul(a, b, out=c),
-                device=device,
-                warmup=20,
-                iters=100,
-                flops=flops,
-                io_bytes=io_bytes,
-            )
-        )
-
-
-    if verbose:
-        print('ref')
-        print(c_ref)
-        print('our')
-        print(c)
-        tol = 1e-3
-        correct = (c - c_ref).abs() <= tol
-
-        batch_size, m_dim, n_dim = c.shape
-        step_m = 4
-        step_n = 4
-
-        for bi in range(batch_size):
-            print(f"\nBatch {bi}:")
-            for i in range(0, m_dim, step_m):
-                for j in range(0, n_dim, step_n):
-                    if correct[bi, i : i + step_m, j : j + step_n].all():
-                        print("X", end="")
-                    else:
-                        print(".", end="")
-                print("|")
-
-
-import matplotlib.pyplot as plt
 
 def plot_benchmark():
-    device = "npu:6"
+    device = "npu:7"
     torch.set_default_device(device)
     torch.npu.set_device(device)
     dtype = torch.float32
 
-    blk_values = list(range(1, 41))
+    blk_values = list(range(1, 25))
     pto_results, torch_results = [], []
 
     matmul_func = load_lib("./matmul_kernel.so")  # assume defined
@@ -179,15 +96,6 @@ def plot_benchmark():
 
     bs, m, k, n = 24*200, 128, 128, 128
     for blk in blk_values:
-
-        b_percore = (bs+blk-1)//blk
-        cores_needed = (bs+b_percore-1)//b_percore
-
-        print(f'cores {blk} and cores used {cores_needed}')
-
-
-
-
         a = torch.rand((bs, m, k), device=device, dtype=dtype)
         b = torch.rand((k, n), device=device, dtype=dtype)
         c = torch.zeros((bs, m, n), device=device, dtype=dtype)
@@ -195,15 +103,16 @@ def plot_benchmark():
         # correctness check
         matmul_func(c, a, b, batch_size=bs, block_dim=blk)
         torch.npu.synchronize()
-        assert (c - torch.matmul(a, b)).abs().max() <= 1e-5
+        c_ref = torch.matmul(a, b)
+        diff = (c - c_ref).abs().max()
+        assert  diff <= 1e-5, diff
 
         flops = matmul_flops(bs, m, k, n)
         io_bytes = matmul_io_bytes(a, b, c)
 
-        # benchmarks
         torch_b = benchmark("torch.matmul",
                             lambda: torch.matmul(a, b, out=c),
-                            device=device, warmup=20, iters=100,
+                            device=device, warmup=20, iters=20,
                             flops=flops, io_bytes=io_bytes)['gbps']
         pto = benchmark("custom_kernel",
                         lambda: matmul_func(c, a, b, batch_size=bs, block_dim=blk),
@@ -217,7 +126,7 @@ def plot_benchmark():
     # plot results
     plt.figure(figsize=(8,5))
     plt.plot(blk_values, pto_results, 'o-', label='mlir')
-    plt.plot(blk_values, torch_results, 's-', label='torch.matmul')
+    plt.plot(blk_values, torch_results, 's-', label='torch.matmul (all cores)')
     plt.xlabel('Number of cores')
     plt.ylabel('Bandwidth (GB/s)')
     plt.title(
@@ -231,5 +140,4 @@ def plot_benchmark():
     plt.savefig('our.png')
 
 if __name__ == "__main__":
-#    test_matmul()
     plot_benchmark()
