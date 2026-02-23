@@ -128,7 +128,7 @@ def plot_benchmark():
     plt.plot(blk_values, pto_results, 'o-', label='mlir')
     plt.plot(blk_values, torch_results, 's-', label='torch.matmul (all cores)')
     plt.xlabel('Number of cores')
-    plt.ylabel('Bandwidth (GB/s)')
+    plt.ylabel('Bandwidth (Read A+B write C) (GB/s)')
     plt.title(
         f"""Benchmark: Custom Kernel vs torch.matmul\n
          A: {tuple(a.shape)} B: {tuple(b.shape)}, C: {tuple(c.shape)} \n
