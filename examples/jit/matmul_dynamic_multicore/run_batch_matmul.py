@@ -129,34 +129,28 @@ def build_kernel(
 
                     pto.load(svA, aMatTile)
                     pto.load(svB, bMatTile)
-                    pto.if_else(
-                        isBias,
-                        lambda: pto.load(svBias, biasDataTile),
-                        lambda: None,
-                    )
+                    with pto.if_context(isBias):
+                        pto.load(svBias, biasDataTile)
 
                     pto.record_wait_pair("LOAD", "MOV_M2L", event_id=0)
 
                     pto.mov(aMatTile, aTile)
                     pto.mov(bMatTile, bTile)
-                    pto.if_else(
-                        isBias,
-                        lambda: pto.mov(biasDataTile, biasTile),
-                        lambda: None,
-                    )
+                    with pto.if_context(isBias):
+                        pto.mov(biasDataTile, biasTile)
 
                     pto.record_wait_pair("MOV_M2L", "MATMUL", event_id=0)
 
                     is_i0 = pto.eq(i, c0)
 
                     def _first_iter():
-                        pto.if_else(
+                        pto.cond(
                             isBias,
                             lambda: pto.matmul_bias(aTile, bTile, biasTile, cTile),
                             lambda: pto.matmul(aTile, bTile, cTile),
                         )
 
-                    pto.if_else(
+                    pto.cond(
                         is_i0,
                         _first_iter,
                         lambda: pto.matmul_acc(cTile, aTile, bTile, cTile),
