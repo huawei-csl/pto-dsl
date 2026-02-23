@@ -27,3 +27,7 @@ pip install -e ./ptodsl
 ## Usage
 
 See [examples](./examples) and [tests](./tests)
+
+## Contribute
+
+See [contribute_guide.md](./contribute_guide.md)
