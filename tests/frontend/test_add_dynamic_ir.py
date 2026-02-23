@@ -73,7 +73,7 @@ def vec_add_1d_dynamic(
             need_truncate = tiles_end_this_core > num_tiles_global
             remaining_tiles = num_tiles_global - tile_offset_this_core
 
-            tiles_to_process = pto.if_else_yield(
+            tiles_to_process = pto.select(
                 need_truncate, remaining_tiles, num_tiles_per_core
             )
             elements_to_process = tiles_to_process * c_tile
@@ -173,12 +173,9 @@ def build_verbose():
                         num_tiles_global, tile_offset_this_core
                     ).result
 
-                    tiles_to_process_if = scf.IfOp(need_truncate, [IndexType.get()], hasElse=True)
-                    with InsertionPoint(tiles_to_process_if.then_block):
-                        scf.YieldOp([remaining_tiles])
-                    with InsertionPoint(tiles_to_process_if.else_block):
-                        scf.YieldOp([num_tiles_per_core])
-                    tiles_to_process = tiles_to_process_if.results[0]
+                    tiles_to_process = arith.SelectOp(
+                        need_truncate, remaining_tiles, num_tiles_per_core
+                    ).result
 
                     elements_to_process = arith.MulIOp(tiles_to_process, c_tile).result
                     has_elements = arith.CmpIOp(
