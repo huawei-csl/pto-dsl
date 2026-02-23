@@ -31,6 +31,7 @@ class ExampleResult:
     commands: list[str]
     command_results: list[CommandResult]
     status: str
+    elapsed_seconds: float = 0.0
     error: str = ""
 
 
@@ -64,6 +65,7 @@ def extract_commands(readme_path: Path) -> list[str]:
 
 
 def run_example(example_name: str, readme_path: Path, commands: list[str]) -> ExampleResult:
+    example_start = time.time()
     if not commands:
         return ExampleResult(
             name=example_name,
@@ -71,6 +73,7 @@ def run_example(example_name: str, readme_path: Path, commands: list[str]) -> Ex
             commands=commands,
             command_results=[],
             status="FAILED",
+            elapsed_seconds=time.time() - example_start,
             error="No runnable commands found in README fenced code blocks.",
         )
 
@@ -100,6 +103,7 @@ def run_example(example_name: str, readme_path: Path, commands: list[str]) -> Ex
                 commands=commands,
                 command_results=command_results,
                 status="FAILED",
+                elapsed_seconds=time.time() - example_start,
                 error=f"Command failed: {command}",
             )
 
@@ -109,6 +113,7 @@ def run_example(example_name: str, readme_path: Path, commands: list[str]) -> Ex
         commands=commands,
         command_results=command_results,
         status="PASSED",
+        elapsed_seconds=time.time() - example_start,
     )
 
 
@@ -165,7 +170,7 @@ def main() -> int:
         commands = extract_commands(readme)
         result = run_example(example_name, readme, commands)
         results.append(result)
-        print(f"{result.name:<60} {result.status}")
+        print(f"{result.name:<48} {result.status:<7} [{result.elapsed_seconds:.2f}s]")
 
     elapsed = time.time() - start
     passed = [r for r in results if r.status == "PASSED"]
@@ -176,9 +181,9 @@ def main() -> int:
     print("short summary info")
     print("=" * 78)
     for result in failed:
-        print(f"FAILED {result.name}")
+        print(f"FAILED {result.name} [{result.elapsed_seconds:.2f}s]")
     for result in passed:
-        print(f"PASSED {result.name}")
+        print(f"PASSED {result.name} [{result.elapsed_seconds:.2f}s]")
     print("=" * 78)
     print(f"{len(passed)} passed, {len(failed)} failed in {elapsed:.2f}s")
 
