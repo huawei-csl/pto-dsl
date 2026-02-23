@@ -73,8 +73,7 @@ def vec_add_1d_dynamic(
             need_truncate = tiles_end_this_core > num_tiles_global
             remaining_tiles = num_tiles_global - tile_offset_this_core
 
-            # Keep the same scf.if with result pattern as the verbose IR builder.
-            tiles_to_process = pto.if_else_yield(
+            tiles_to_process = pto.select(
                 need_truncate, remaining_tiles, num_tiles_per_core
             )
 
