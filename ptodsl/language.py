@@ -332,12 +332,6 @@ def cond(condition, then_builder, else_builder):
         scf.YieldOp([])
     return op
 
-
-# Backward-compatible aliases for older DSL call sites.
-if_ = if_context
-if_else = cond
-
-
 def _resolve_sync_op(sync_op):
     if isinstance(sync_op, str):
         normalized = sync_op.strip().upper()
