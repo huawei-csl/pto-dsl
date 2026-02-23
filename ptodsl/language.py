@@ -234,6 +234,14 @@ def or_(lhs, rhs, out):
     pto.TOrOp(lhs, rhs, out)
 
 
+def gather(src, out, indices=None, *, mask_pattern=None):
+    if mask_pattern is not None:
+        mp = pto.MaskPatternAttr.get(getattr(pto.MaskPattern, mask_pattern))
+        pto.TGatherOp(src, out, maskPattern=mp)
+    else:
+        pto.TGatherOp(src, out, indices=indices)
+
+
 def exp(inp, out):
     pto.TExpOp(inp, out)
 
