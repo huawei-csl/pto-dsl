@@ -129,15 +129,21 @@ def build_kernel(
 
                     pto.load(svA, aMatTile)
                     pto.load(svB, bMatTile)
-                    with pto.if_context(isBias):
-                        pto.load(svBias, biasDataTile)
+                    pto.cond(
+                        isBias,
+                        lambda: pto.load(svBias, biasDataTile),
+                        lambda: None,
+                    )
 
                     pto.record_wait_pair("LOAD", "MOV_M2L", event_id=0)
 
                     pto.mov(aMatTile, aTile)
                     pto.mov(bMatTile, bTile)
-                    with pto.if_context(isBias):
-                        pto.mov(biasDataTile, biasTile)
+                    pto.cond(
+                        isBias,
+                        lambda: pto.mov(biasDataTile, biasTile),
+                        lambda: None,
+                    )
 
                     pto.record_wait_pair("MOV_M2L", "MATMUL", event_id=0)
 
