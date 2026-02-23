@@ -24,7 +24,7 @@ jobs:
 
     env:
       RELEASE_REPO: huawei-csl/PTOAS
-      RELEASE_TAG: 20260214.post1
+      RELEASE_TAG: 20260221
       CLI_DIR: /installers/ptoas-cli
       PTOISA_COMMIT: 672ee54cb8905bb9f9abbe80ec26ed2054b7a0cc
 
