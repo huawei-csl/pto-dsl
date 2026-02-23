@@ -298,11 +298,14 @@ def select(cond, true_val, false_val):
     return Value(arith.SelectOp(_unwrap(cond), _unwrap(true_val), _unwrap(false_val)).result)
 
 
+def _normalize_type(type_or_factory):
+    if hasattr(type_or_factory, "get"):
+        return type_or_factory.get()
+    return type_or_factory
+
+
 def if_else_yield(condition, then_value, else_value, result_type=IndexType):
-    if hasattr(result_type, "get"):
-        scf_result_type = result_type.get()
-    else:
-        scf_result_type = result_type
+    scf_result_type = _normalize_type(result_type)
     op = scf.IfOp(_unwrap(condition), [scf_result_type], hasElse=True)
     with InsertionPoint(op.then_block):
         scf.YieldOp([_unwrap(then_value)])
@@ -312,14 +315,14 @@ def if_else_yield(condition, then_value, else_value, result_type=IndexType):
 
 
 @contextmanager
-def if_(condition):
+def if_context(condition):
     op = scf.IfOp(_unwrap(condition))
     with InsertionPoint(op.then_block):
         yield
         scf.YieldOp([])
 
 
-def if_else(condition, then_builder, else_builder):
+def cond(condition, then_builder, else_builder):
     op = scf.IfOp(_unwrap(condition), [], hasElse=True)
     with InsertionPoint(op.then_block):
         then_builder()
@@ -328,7 +331,6 @@ def if_else(condition, then_builder, else_builder):
         else_builder()
         scf.YieldOp([])
     return op
-
 
 def _resolve_sync_op(sync_op):
     if isinstance(sync_op, str):

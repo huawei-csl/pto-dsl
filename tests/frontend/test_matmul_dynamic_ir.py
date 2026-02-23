@@ -130,25 +130,27 @@ def build_pythonic(
 
                     pto.load(svA, aMatTile)
                     pto.load(svB, bMatTile)
-                    pto.if_else(isBias, lambda: pto.load(svBias, biasDataTile), lambda: None)
+                    with pto.if_context(isBias):
+                        pto.load(svBias, biasDataTile)
 
                     pto.record_wait_pair("LOAD", "MOV_M2L", event_id=0)
 
                     pto.mov(aMatTile, aTile)
                     pto.mov(bMatTile, bTile)
-                    pto.if_else(isBias, lambda: pto.mov(biasDataTile, biasTile), lambda: None)
+                    with pto.if_context(isBias):
+                        pto.mov(biasDataTile, biasTile)
 
                     pto.record_wait_pair("MOV_M2L", "MATMUL", event_id=0)
                     is_i0 = pto.eq(i, c0)
 
                     def _first_iter():
-                        pto.if_else(
+                        pto.cond(
                             isBias,
                             lambda: pto.matmul_bias(aTile, bTile, biasTile, cTile),
                             lambda: pto.matmul(aTile, bTile, cTile),
                         )
 
-                    pto.if_else(
+                    pto.cond(
                         is_i0,
                         _first_iter,
                         lambda: pto.matmul_acc(cTile, aTile, bTile, cTile),
@@ -312,11 +314,9 @@ def build_verbose(
                         pto.TLoadOp(None, svA, aMatTile)
                         pto.TLoadOp(None, svB, bMatTile)
 
-                        if_load_bias = scf.IfOp(isBias, [], hasElse=True)
+                        if_load_bias = scf.IfOp(isBias)
                         with InsertionPoint(if_load_bias.then_block):
                             pto.TLoadOp(None, svBias, biasDataTile)
-                            scf.YieldOp([])
-                        with InsertionPoint(if_load_bias.else_block):
                             scf.YieldOp([])
 
                         pto.record_event(TLOAD, TMOV_M2L, EVENT_ID0)
@@ -325,11 +325,9 @@ def build_verbose(
                         pto.TMovOp(None, aMatTile, aTile)
                         pto.TMovOp(None, bMatTile, bTile)
 
-                        if_mov_bias = scf.IfOp(isBias, [], hasElse=True)
+                        if_mov_bias = scf.IfOp(isBias)
                         with InsertionPoint(if_mov_bias.then_block):
                             pto.TMovOp(None, biasDataTile, biasTile)
-                            scf.YieldOp([])
-                        with InsertionPoint(if_mov_bias.else_block):
                             scf.YieldOp([])
 
                         pto.record_event(TMOV_M2L, TMATMUL, EVENT_ID0)
