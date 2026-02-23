@@ -124,8 +124,10 @@ def _default_tile_config(memory_space, shape):
     raise ValueError(f"Unsupported memory_space '{memory_space}' for default tile config.")
 
 
-def TileBufType(*, shape, valid_shape, dtype, memory_space, config):
+def TileBufType(*, shape, dtype, memory_space, valid_shape=None, config=None):
     space = pto.AddressSpaceAttr.get(getattr(pto.AddressSpace, memory_space))
+    if valid_shape is None:
+        valid_shape = shape
     if config is None:
         config = _default_tile_config(memory_space, shape)
     cfg = config.attr if isinstance(config, TileBufConfig) else config

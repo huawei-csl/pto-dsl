@@ -1,10 +1,14 @@
 from mlir.ir import IntegerType
 
-from ptodsl import to_ir_module
+from ptodsl import jit
 import ptodsl.language as pto
+import torch
+import torch_npu
+
+const = pto.const
 
 
-def build(
+def build_kernel(
     M=128,
     K=128,
     N=128,
@@ -56,9 +60,7 @@ def build(
             "tile_buf_biasTile": tile_buf_biasTile,
         }
 
-    const = pto.const
-
-    @to_ir_module(meta_data=meta_data)
+    @jit(meta_data=meta_data, block_dim=1, enable_insert_sync=False)
     def RunTMATMULSplitK(
         out_ptr: "ptr_type",
         a_ptr: "ptr_type",
@@ -174,5 +176,36 @@ def build(
     return RunTMATMULSplitK
 
 
+def test_matmul():
+    device = "npu:6"
+    torch.set_default_device(device)
+    torch.npu.set_device(device)
+    dtype = torch.float32
+
+    m, k, n = 128, 128, 128
+    batch_sizes = [5, 32, 66, 511]
+    block_dims = [1, 2, 10, 20]
+
+    torch.manual_seed(0)
+
+    kernel = build_kernel()
+    null_ptr = 0
+    use_bias = 0
+
+    for bs in batch_sizes:
+        a = torch.rand((bs, m, k), device=device, dtype=dtype)
+        b = torch.rand((k, n), device=device, dtype=dtype)
+
+        for block_dim in block_dims:
+            c = torch.empty((bs, m, n), device=device, dtype=dtype)
+            kernel.set_block_dim(block_dim)
+            kernel(c, a, b, null_ptr, use_bias, a.shape[0])
+            torch.npu.synchronize()
+
+            c_ref = torch.matmul(a, b)
+            diff = (c - c_ref).abs().max()
+            print(f"config: bs={bs}, block_dim={block_dim}, max diff: {diff}")
+
+
 if __name__ == "__main__":
-    print(build())
+    test_matmul()
