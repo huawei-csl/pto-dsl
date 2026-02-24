@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
-"""Run all examples by executing commands from each example README."""
+"""Run all examples by executing commands from each example README.
+
+Environment:
+    PTODSL_TEST_DEVICE_ID: NPU device id used by example/test scripts (e.g. 0).
+    If unset, those scripts default to 0 (resolved to npu:0) and print a warning.
+"""
 
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -14,6 +20,7 @@ from pathlib import Path
 
 README_NAME = "README.md"
 SUPPORTED_LANGS = {"bash", "sh", "shell", ""}
+DEVICE_ENV_VAR = "PTODSL_TEST_DEVICE_ID"
 
 
 @dataclass
@@ -159,6 +166,13 @@ def main() -> int:
     args = parser.parse_args()
 
     examples_root = args.root.resolve()
+    device = os.getenv(DEVICE_ENV_VAR)
+    if device:
+        print(f"Using {DEVICE_ENV_VAR}={device}")
+    else:
+        print(
+            f"Warning: {DEVICE_ENV_VAR} is not set; scripts default to 0 (resolved to npu:0)."
+        )
     readmes = discover_example_readmes(examples_root)
     print_header(len(readmes))
 
