@@ -17,3 +17,12 @@ bisheng \
     -std=gnu++17 \
     ./caller.cpp \
     -o ./add_lib.so
+
+
+bisheng \
+    -I${ASCEND_TOOLKIT_HOME}/include \
+    -fPIC -shared -std=c++17 \
+    -xcce \
+    --npu-arch=dav-2201 -DMEMORY_BASE \
+    ./change_vector_mask.cpp \
+    -o ./mask_lib.so
