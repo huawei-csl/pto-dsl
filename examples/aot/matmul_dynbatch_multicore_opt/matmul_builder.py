@@ -194,6 +194,10 @@ def build(
 
                     # Write back OUT using the valid dims of C
                     pto.TStoreOp(None, cTile, svOut)
+                    # TSTORE uses FIXPIPE to write back to GM from L0C.
+                    # Make sure TSTORE op has finished before next MATMUL op overwrites L0C:
+                    pto.record_event(TSTORE_ACC, TMATMUL, EVENT_ID0)
+                    pto.wait_event  (TSTORE_ACC, TMATMUL, EVENT_ID0)
 
                     scf.YieldOp([])
 
