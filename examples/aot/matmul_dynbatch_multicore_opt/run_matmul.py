@@ -2,7 +2,10 @@ import ctypes
 import time
 import torch
 import torch_npu
-import matplotlib.pyplot as plt
+try:
+    import matplotlib.pyplot as plt
+except ImportError:
+    plt = None
 
 from ptodsl import do_bench
 
@@ -121,8 +124,16 @@ def plot_benchmark():
 
         pto_results.append(pto)
         torch_results.append(torch_b)
+        print(
+            f"cores={blk:2d} | custom_kernel={pto:.2f} GB/s | "
+            f"torch.matmul={torch_b:.2f} GB/s"
+        )
 
     total_mb = 4 * (a.numel() + b.numel() + c.numel()) / 10**6
+    if plt is None:
+        print("Warning: matplotlib is not installed; skipping plot generation.")
+        return
+
     # plot results
     plt.figure(figsize=(8,5))
     plt.plot(blk_values, pto_results, 'o-', label='mlir')
