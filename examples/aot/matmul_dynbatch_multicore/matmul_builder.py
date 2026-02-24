@@ -164,6 +164,7 @@ def build(
                     sizes=[cTileM, cTileN],
                 )
                 pto.store(cTile, svOut)
+                pto.record_wait_pair("STORE_ACC", "MATMUL", event_id=0)
 
     return RunTMATMULSplitK
 
