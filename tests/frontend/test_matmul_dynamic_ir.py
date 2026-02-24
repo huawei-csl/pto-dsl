@@ -359,6 +359,8 @@ def build_verbose(
                         tile_view_out, tvOut, offsets=[row_off, c0], sizes=[cTileM, cTileN]
                     ).result
                     pto.TStoreOp(None, cTile, svOut)
+                    pto.record_event(TSTORE_ACC, TMATMUL, EVENT_ID0)
+                    pto.wait_event(TSTORE_ACC, TMATMUL, EVENT_ID0)
                     scf.YieldOp([])
 
             func.ReturnOp([])
