@@ -106,24 +106,9 @@ def build(
 
                 for i in pto.for_range(c0, cIter, c1):
                     kOff = i * cBASEK
-                    svA = pto.slice_view(
-                        tile_view_a,
-                        source=tvA,
-                        offsets=[row_off, kOff],
-                        sizes=[cTileM, cBASEK],
-                    )
-                    svB = pto.slice_view(
-                        tile_view_b,
-                        source=tvB,
-                        offsets=[kOff, c0],
-                        sizes=[cBASEK, cTileN],
-                    )
-                    svBias = pto.slice_view(
-                        tile_view_bias,
-                        source=tvBias,
-                        offsets=[c0, c0],
-                        sizes=[c1, cTileN],
-                    )
+                    svA = pto.slice_view(tile_view_a, source=tvA, offsets=[row_off, kOff], sizes=[cTileM, cBASEK])
+                    svB = pto.slice_view(tile_view_b, source=tvB, offsets=[kOff, c0], sizes=[cBASEK, cTileN])
+                    svBias = pto.slice_view(tile_view_bias, source=tvBias, offsets=[c0, c0], sizes=[c1, cTileN])
 
                     pto.load(svA, aMatTile)
                     pto.load(svB, bMatTile)
@@ -157,13 +142,9 @@ def build(
                     pto.record_wait_pair("MATMUL", "LOAD", event_id=0)
 
                 pto.record_wait_pair("MATMUL", "STORE_ACC", event_id=0)
-                svOut = pto.slice_view(
-                    tile_view_out,
-                    source=tvOut,
-                    offsets=[row_off, c0],
-                    sizes=[cTileM, cTileN],
-                )
+                svOut = pto.slice_view(tile_view_out, source=tvOut, offsets=[row_off, c0], sizes=[cTileM, cTileN])
                 pto.store(cTile, svOut)
+                pto.record_wait_pair("STORE_ACC", "MATMUL", event_id=0)
 
     return RunTMATMULSplitK
 

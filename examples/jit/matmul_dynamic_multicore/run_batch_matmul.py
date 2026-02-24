@@ -166,6 +166,7 @@ def build_kernel(
                     sizes=[cTileM, cTileN],
                 )
                 pto.store(cTile, svOut)
+                pto.record_wait_pair("STORE_ACC", "MATMUL", event_id=0)
 
     return RunTMATMULSplitK
 
@@ -191,11 +192,6 @@ def test_matmul():
         b = torch.rand((k, n), device=device, dtype=dtype)
 
         for block_dim in block_dims:
-
-            if bs == 511 and block_dim > 1:
-                # TODO: fix bug https://github.com/huawei-csl/pto-dsl/issues/35
-                continue
-
             c = torch.empty((bs, m, n), device=device, dtype=dtype)
             kernel.set_block_dim(block_dim)
             kernel(c, a, b, null_ptr, use_bias, a.shape[0])
