@@ -2,6 +2,7 @@ from ptodsl import jit
 import ptodsl.language as pto
 import torch
 import torch_npu
+from ptodsl.test_util import get_test_device
 
 const = pto.const
 
@@ -63,7 +64,7 @@ def vec_add_kernel(
 
 
 def test_add():
-    device = "npu:1"
+    device = get_test_device()
     torch.npu.set_device(device)
 
     shape = (1, 1024 * 20)  # tensor shape hard-coded as the kernel

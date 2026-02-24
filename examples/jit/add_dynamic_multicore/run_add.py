@@ -2,6 +2,7 @@ from ptodsl import jit
 import ptodsl.language as pto
 import torch
 import torch_npu
+from ptodsl.test_util import get_test_device
 
 const = pto.const
 
@@ -100,7 +101,7 @@ def vec_add_1d_dynamic(
 
 
 def test_add():
-    device = "npu:7"
+    device = get_test_device()
     torch.npu.set_device(device)
 
     # shape parameter hard-coded as kernel

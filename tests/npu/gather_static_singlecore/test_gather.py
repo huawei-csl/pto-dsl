@@ -4,11 +4,12 @@ import subprocess
 
 import pytest
 import torch
+from ptodsl.test_util import get_test_device
 
 torch.manual_seed(0)
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
-_DEVICE = "npu:6"
+_DEVICE = get_test_device()
 
 TORCH_DTYPES = {
     "float32": torch.float32,

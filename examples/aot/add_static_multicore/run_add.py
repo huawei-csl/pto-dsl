@@ -1,6 +1,7 @@
 import ctypes
 import torch
 import torch_npu
+from ptodsl.test_util import get_test_device
 
 
 def torch_to_ctypes(tensor):
@@ -31,7 +32,7 @@ def lib_to_func(lib):
 
 
 def test_add():
-    device = "npu:0"
+    device = get_test_device()
     torch.npu.set_device(device)
 
     lib_path = "./add_lib.so"
