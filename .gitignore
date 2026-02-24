@@ -4,3 +4,5 @@
 __pycache__
 
 extra-info
+
+*.ptodsl_jit
