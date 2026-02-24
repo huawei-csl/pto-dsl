@@ -58,8 +58,8 @@ def build_hadamard_kernel(fn_name="hadamard_kernel", dtype=None, rows=32, cols=3
     _meta_data = lambda: meta_data(dtype, rows, cols)
 
     def _kernel(
-        arg0: "ptr_src",  # src (T*) shape [rows, cols]
-        arg1: "ptr_out",  # out (T*) shape [rows, cols]  (used as workspace + final)
+        arg0: "ptr_src",
+        arg1: "ptr_out",
     ) -> None:
         c0 = const(0)
         c1 = const(1)
@@ -68,7 +68,6 @@ def build_hadamard_kernel(fn_name="hadamard_kernel", dtype=None, rows=32, cols=3
         ccol = const(cols)
         chalf = const(half)
 
-        # Multi-core partitioning: divide rows across cores
         cid = pto.get_block_idx()
         sub_bid = pto.get_subblock_idx()
         sub_bnum = pto.get_subblock_num()
@@ -80,6 +79,7 @@ def build_hadamard_kernel(fn_name="hadamard_kernel", dtype=None, rows=32, cols=3
 
         rows_per_core = pto.ceil_div(crow, num_cores)
         row_start = vid_idx * rows_per_core
+        row_end_unclamped = row_start + rows_per_core
 
         with pto.vector_section():
             tv_src = pto.as_tensor(tv2_src, ptr=arg0, shape=[crow, ccol], strides=[ccol, c1])
@@ -91,30 +91,50 @@ def build_hadamard_kernel(fn_name="hadamard_kernel", dtype=None, rows=32, cols=3
             sumTile  = pto.alloc_tile(tile_buf_half)
             diffTile = pto.alloc_tile(tile_buf_half)
 
-            with pto.if_(row_start < crow):
-                row_end_unclamped = row_start + rows_per_core
-                row_end = pto.if_else_yield(row_end_unclamped > crow, crow, row_end_unclamped)
+            with pto.if_context(row_start < crow):
+                need_trunc = row_end_unclamped > crow
 
-                for s in pto.for_range(row_start, row_end, c1):
-                    sv_src_row = pto.slice_view(tile_view_row,  source=tv_src, offsets=[s, c0],    sizes=[c1, ccol])
-                    sv_out_row = pto.slice_view(tile_view_row,  source=tv_out, offsets=[s, c0],    sizes=[c1, ccol])
-                    sv_out_lo  = pto.slice_view(tile_view_half, source=tv_out, offsets=[s, c0],    sizes=[c1, chalf])
-                    sv_out_hi  = pto.slice_view(tile_view_half, source=tv_out, offsets=[s, chalf], sizes=[c1, chalf])
+                def _loop_truncated():
+                    # stop at crow
+                    for s in pto.for_range(row_start, crow, c1):
+                        sv_src_row = pto.slice_view(tile_view_row,  source=tv_src, offsets=[s, c0],    sizes=[c1, ccol])
+                        sv_out_row = pto.slice_view(tile_view_row,  source=tv_out, offsets=[s, c0],    sizes=[c1, ccol])
+                        sv_out_lo  = pto.slice_view(tile_view_half, source=tv_out, offsets=[s, c0],    sizes=[c1, chalf])
+                        sv_out_hi  = pto.slice_view(tile_view_half, source=tv_out, offsets=[s, chalf], sizes=[c1, chalf])
 
-                    pto.load(sv_src_row, xTile)
-                    pto.store(xTile, sv_out_row)
+                        pto.load(sv_src_row, xTile)
+                        pto.store(xTile, sv_out_row)
 
-                    for _ in pto.for_range(c0, clog, c1):
-                        pto.load(sv_out_row, xTile)
+                        for _ in pto.for_range(c0, clog, c1):
+                            pto.load(sv_out_row, xTile)
+                            pto.gather(xTile, evenTile, mask_pattern="P0101")
+                            pto.gather(xTile, oddTile, mask_pattern="P1010")
+                            pto.add(evenTile, oddTile, sumTile)
+                            pto.sub(evenTile, oddTile, diffTile)
+                            pto.store(sumTile,  sv_out_lo)
+                            pto.store(diffTile, sv_out_hi)
 
-                        pto.gather(xTile, evenTile, mask_pattern="P0101")
-                        pto.gather(xTile, oddTile, mask_pattern="P1010")
+                def _loop_full():
+                    # stop at row_end_unclamped
+                    for s in pto.for_range(row_start, row_end_unclamped, c1):
+                        sv_src_row = pto.slice_view(tile_view_row,  source=tv_src, offsets=[s, c0],    sizes=[c1, ccol])
+                        sv_out_row = pto.slice_view(tile_view_row,  source=tv_out, offsets=[s, c0],    sizes=[c1, ccol])
+                        sv_out_lo  = pto.slice_view(tile_view_half, source=tv_out, offsets=[s, c0],    sizes=[c1, chalf])
+                        sv_out_hi  = pto.slice_view(tile_view_half, source=tv_out, offsets=[s, chalf], sizes=[c1, chalf])
 
-                        pto.add(evenTile, oddTile, sumTile)
-                        pto.sub(evenTile, oddTile, diffTile)
+                        pto.load(sv_src_row, xTile)
+                        pto.store(xTile, sv_out_row)
 
-                        pto.store(sumTile,  sv_out_lo)
-                        pto.store(diffTile, sv_out_hi)
+                        for _ in pto.for_range(c0, clog, c1):
+                            pto.load(sv_out_row, xTile)
+                            pto.gather(xTile, evenTile, mask_pattern="P0101")
+                            pto.gather(xTile, oddTile, mask_pattern="P1010")
+                            pto.add(evenTile, oddTile, sumTile)
+                            pto.sub(evenTile, oddTile, diffTile)
+                            pto.store(sumTile,  sv_out_lo)
+                            pto.store(diffTile, sv_out_hi)
+
+                pto.cond(need_trunc, _loop_truncated, _loop_full)
 
     _kernel.__name__ = fn_name
     return to_ir_module(meta_data=_meta_data)(_kernel)
