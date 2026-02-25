@@ -92,11 +92,14 @@ def SubTensorType(*, shape, dtype):
 
 class TileBufConfig:
     def __init__(self, blayout="RowMajor", slayout="NoneBox", s_fractal_size=512, pad="Null"):
+        def _enum_or_int(v):
+            return int(v.value) if hasattr(v, "value") else int(v)
+
         # TODO: expose and validate a broader set of tile buffer knobs if PTO adds
         # more layout/padding/fractal settings that should be configurable here.
-        self._bl = pto.BLayoutAttr.get(getattr(pto.BLayout, blayout))
-        self._sl = pto.SLayoutAttr.get(getattr(pto.SLayout, slayout))
-        self._pd = pto.PadValueAttr.get(getattr(pto.PadValue, pad))
+        self._bl = pto.BLayoutAttr.get(_enum_or_int(getattr(pto.BLayout, blayout)))
+        self._sl = pto.SLayoutAttr.get(_enum_or_int(getattr(pto.SLayout, slayout)))
+        self._pd = pto.PadValueAttr.get(_enum_or_int(getattr(pto.PadValue, pad)))
         self._s_fractal_size = s_fractal_size
 
     @property
@@ -125,7 +128,11 @@ def _default_tile_config(memory_space, shape):
 
 
 def TileBufType(*, shape, dtype, memory_space, valid_shape=None, config=None):
-    space = pto.AddressSpaceAttr.get(getattr(pto.AddressSpace, memory_space))
+    _space_alias = {
+        "VEC": "UB",
+    }
+    resolved_space = _space_alias.get(memory_space, memory_space)
+    space = pto.AddressSpaceAttr.get(getattr(pto.AddressSpace, resolved_space))
     if valid_shape is None:
         valid_shape = shape
     if config is None:
@@ -176,17 +183,23 @@ def slice_view(subtensor_type, *, source, offsets, sizes):
 
 @contextmanager
 def vector_section():
-    section = pto.SectionVectorOp()
-    block = section.body.blocks.append()
-    with InsertionPoint(block):
+    if hasattr(pto, "SectionVectorOp"):
+        section = pto.SectionVectorOp()
+        block = section.body.blocks.append()
+        with InsertionPoint(block):
+            yield
+    else:
         yield
 
 
 @contextmanager
 def cube_section():
-    section = pto.SectionCubeOp()
-    block = section.body.blocks.append()
-    with InsertionPoint(block):
+    if hasattr(pto, "SectionCubeOp"):
+        section = pto.SectionCubeOp()
+        block = section.body.blocks.append()
+        with InsertionPoint(block):
+            yield
+    else:
         yield
 
 
