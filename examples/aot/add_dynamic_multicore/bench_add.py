@@ -26,23 +26,36 @@ def lib_to_func(lib):
 
 def bench_add(add_func, x, y, z, warmup_iters=5, benchmark_iters=50):
     io_bytes = x.numel() * x.element_size() * 3
+    # Overwrite a large buffer between launches to reduce L2 cache reuse.
+    cache = torch.empty((256 * 1024 * 1024,), dtype=torch.int8, device=x.device)
 
     def time_op(fn):
         for _ in range(warmup_iters):
             fn()
         torch.npu.synchronize()
 
-        start_event = torch.npu.Event(enable_timing=True)
-        end_event = torch.npu.Event(enable_timing=True)
+        mixed_start = torch.npu.Event(enable_timing=True)
+        mixed_end = torch.npu.Event(enable_timing=True)
+        cache_start = torch.npu.Event(enable_timing=True)
+        cache_end = torch.npu.Event(enable_timing=True)
 
-        start_event.record()
+        mixed_start.record()
         for _ in range(benchmark_iters):
+            cache.zero_()
             fn()
-        end_event.record()
+        mixed_end.record()
         torch.npu.synchronize()
 
-        total_ms = start_event.elapsed_time(end_event)
-        return total_ms / benchmark_iters
+        cache_start.record()
+        for _ in range(benchmark_iters):
+            cache.zero_()
+        cache_end.record()
+        torch.npu.synchronize()
+
+        mixed_total_ms = mixed_start.elapsed_time(mixed_end)
+        cache_total_ms = cache_start.elapsed_time(cache_end)
+        kernel_total_ms = max(mixed_total_ms - cache_total_ms, 0.0)
+        return kernel_total_ms / benchmark_iters
 
     custom_ms = time_op(lambda: add_func(x, y, z))
     torch_add_ms = time_op(lambda: torch.add(x, y, out=z))
