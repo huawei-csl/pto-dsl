@@ -64,7 +64,7 @@ def bench_add(add_func, x, y, z, warmup_iters=5, benchmark_iters=50):
     torch_add_bw_gbs = (io_bytes / (torch_add_ms / 1e3)) / 1e9
 
     print(
-        f"add_func: {custom_ms:.3f} ms, "
+        f"add_double_func: {custom_ms:.3f} ms, "
         f"effective bandwidth: {custom_bw_gbs:.3f} GB/s "
         f"(IO={io_bytes / 1e6:.2f} MB)"
     )
@@ -79,7 +79,7 @@ if __name__ == "__main__":
     device = get_test_device()
     torch.npu.set_device(device)
 
-    lib = ctypes.CDLL("./add_lib.so")
+    lib = ctypes.CDLL("./add_double_lib.so")
     add_func = lib_to_func(lib)
 
     num_cores = 24 * 2  # match kernel num cores * 2

@@ -1,7 +1,7 @@
-rm -f add.pto add.cpp add_lib.so
+rm -f add_double.pto add_double.cpp add_double_lib.so
 
-python ./add_builder.py > ./add.pto
-ptoas --enable-insert-sync ./add.pto -o ./add.cpp
+python ./add_double_builder.py > ./add_double.pto
+ptoas --enable-insert-sync ./add_double.pto -o ./add_double.cpp
 
 bisheng \
     -I${ASCEND_TOOLKIT_HOME}/include \
@@ -15,5 +15,6 @@ bisheng \
     -mllvm -cce-aicore-dcci-insert-for-scalar=false \
     --npu-arch=dav-2201 -DMEMORY_BASE \
     -std=gnu++17 \
+    -DKERNEL_CPP="\"add_double.cpp\"" \
     ./caller.cpp \
-    -o ./add_lib.so
+    -o ./add_double_lib.so
