@@ -69,9 +69,10 @@ if __name__ == "__main__":
     lib = ctypes.CDLL("./add_lib.so")
     add_func = lib_to_func(lib)
 
-    num_cores = 20 * 2
+    num_cores = 24 * 2
     tile_size = 1024
-    tile_count = 20 * num_cores
+    num_rounds = 20  # each core iterate this many times
+    tile_count = num_rounds * num_cores
     shape = tile_size * tile_count
 
     torch.manual_seed(0)

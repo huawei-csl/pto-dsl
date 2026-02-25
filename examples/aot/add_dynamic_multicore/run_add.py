@@ -39,7 +39,7 @@ def test_add():
     add_func = lib_to_func(lib)
 
     # shape parameter hard-coded as kernel
-    num_cores = 20 * 2
+    num_cores = 24 * 2
     tile_size = 1024
     # Keep shapes aligned to tile size, but vary tile counts so they are not
     # required to be multiples of `num_cores`.
