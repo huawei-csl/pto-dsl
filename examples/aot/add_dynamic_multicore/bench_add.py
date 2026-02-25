@@ -69,8 +69,8 @@ if __name__ == "__main__":
     lib = ctypes.CDLL("./add_lib.so")
     add_func = lib_to_func(lib)
 
-    num_cores = 24 * 2
-    tile_size = 1024
+    num_cores = 24 * 2  # match kernel num cores * 2
+    tile_size = 8192  # match kernel tile size
     num_rounds = 20  # each core iterate this many times
     tile_count = num_rounds * num_cores
     shape = tile_size * tile_count
