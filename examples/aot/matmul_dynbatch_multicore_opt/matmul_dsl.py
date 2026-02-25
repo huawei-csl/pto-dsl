@@ -9,6 +9,7 @@ def build(M=128, K=128, N=128):
         dtype = pto.float32
         ptr_dtype = pto.PtrType(dtype)
         i32 = pto.int32
+        i1 = IntegerType.get_signless(1)
 
         # todo: add 3d tensors for A/C
         tensor_type = pto.TensorType(rank=2, dtype=dtype)
@@ -25,6 +26,7 @@ def build(M=128, K=128, N=128):
         return {
             "ptr_type": ptr_dtype,
             "i32": i32,
+            "i1": i1,
             "tensor_type": tensor_type,
             "tile_view_a": tile_view_a,
             "tile_view_b": tile_view_b,
@@ -43,6 +45,8 @@ def build(M=128, K=128, N=128):
         out_ptr: "ptr_type",
         a_ptr: "ptr_type",
         b_ptr: "ptr_type",
+        bias_ptr: "ptr_type",
+        isBias: "i1",
         batch_i32: "i32",
     ) -> None:
         with pto.cube_section():
