@@ -1,4 +1,7 @@
-#include "add.cpp"
+#ifndef KERNEL_CPP
+#define KERNEL_CPP "add.cpp"
+#endif
+#include KERNEL_CPP
 
 #define NUM_CORES 24  // hard-coded to 910B2
 

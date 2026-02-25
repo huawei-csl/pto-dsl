@@ -24,7 +24,7 @@ def lib_to_func(lib):
     return add_func
 
 
-def bench_add(add_func, x, y, z, warmup_iters=5, benchmark_iters=50):
+def bench_add(add_funcs, x, y, warmup_iters=5, benchmark_iters=50):
     io_bytes = x.numel() * x.element_size() * 3
     # Overwrite a large buffer between launches to reduce L2 cache reuse.
     cache = torch.empty((256 * 1024 * 1024,), dtype=torch.int8, device=x.device)
@@ -57,17 +57,20 @@ def bench_add(add_func, x, y, z, warmup_iters=5, benchmark_iters=50):
         kernel_total_ms = max(mixed_total_ms - cache_total_ms, 0.0)
         return kernel_total_ms / benchmark_iters
 
-    custom_ms = time_op(lambda: add_func(x, y, z))
-    torch_add_ms = time_op(lambda: torch.add(x, y, out=z))
+    for name, add_func in add_funcs.items():
+        z = torch.empty_like(x)
+        custom_ms = time_op(lambda: add_func(x, y, z))
+        custom_bw_gbs = (io_bytes / (custom_ms / 1e3)) / 1e9
+        print(
+            f"{name}: {custom_ms:.3f} ms, "
+            f"effective bandwidth: {custom_bw_gbs:.3f} GB/s "
+            f"(IO={io_bytes / 1e6:.2f} MB)"
+        )
 
-    custom_bw_gbs = (io_bytes / (custom_ms / 1e3)) / 1e9
+    z = torch.empty_like(x)
+    torch_add_ms = time_op(lambda: torch.add(x, y, out=z))
     torch_add_bw_gbs = (io_bytes / (torch_add_ms / 1e3)) / 1e9
 
-    print(
-        f"add_func: {custom_ms:.3f} ms, "
-        f"effective bandwidth: {custom_bw_gbs:.3f} GB/s "
-        f"(IO={io_bytes / 1e6:.2f} MB)"
-    )
     print(
         f"torch.add: {torch_add_ms:.3f} ms, "
         f"effective bandwidth: {torch_add_bw_gbs:.3f} GB/s "
@@ -79,8 +82,12 @@ if __name__ == "__main__":
     device = get_test_device()
     torch.npu.set_device(device)
 
-    lib = ctypes.CDLL("./add_lib.so")
-    add_func = lib_to_func(lib)
+    single_lib = ctypes.CDLL("./add_lib.so")
+    double_lib = ctypes.CDLL("./add_double_lib.so")
+    add_funcs = {
+        "add_single_buffer": lib_to_func(single_lib),
+        "add_double_buffer": lib_to_func(double_lib),
+    }
 
     num_cores = 24 * 2  # match kernel num cores * 2
     tile_size = 8192  # match kernel tile size
@@ -92,10 +99,11 @@ if __name__ == "__main__":
     dtype = torch.float32
     x = torch.rand(shape, device=device, dtype=dtype)
     y = torch.rand(shape, device=device, dtype=dtype)
-    z = torch.empty(shape, device=device, dtype=dtype)
+    for name, add_func in add_funcs.items():
+        z = torch.empty(shape, device=device, dtype=dtype)
+        add_func(x, y, z)
+        torch.npu.synchronize()
+        torch.testing.assert_close(z, x + y)
+        print(f"{name} correctness check passed")
 
-    add_func(x, y, z)
-    torch.npu.synchronize()
-    torch.testing.assert_close(z, x + y)
-
-    bench_add(add_func, x, y, z)
+    bench_add(add_funcs, x, y)
