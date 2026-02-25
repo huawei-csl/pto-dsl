@@ -12,8 +12,8 @@ def build(M=128, K=128, N=128):
         i32 = pto.int32
         i1 = IntegerType.get_signless(1)
 
-        # todo: add 3d tensors for A/C
         tensor_type = pto.TensorType(rank=2, dtype=dtype)
+        tensor_type3d = pto.TensorType(rank=3, dtype=dtype)
 
         tile_view_a = pto.SubTensorType(shape=[M, K], dtype=dtype)
         tile_view_b = pto.SubTensorType(shape=[K, N], dtype=dtype)
@@ -29,6 +29,7 @@ def build(M=128, K=128, N=128):
             "i32": i32,
             "i1": i1,
             "tensor_type": tensor_type,
+            "tensor_type3d": tensor_type3d,
             "tile_view_a": tile_view_a,
             "tile_view_b": tile_view_b,
             "tile_view_out": tile_view_out,
@@ -67,9 +68,9 @@ def build(M=128, K=128, N=128):
             b_end_unclamped = b_start + batches_per_core
             b_end = pto.min_u(b_end_unclamped, batch)
 
-            tvA = pto.as_tensor(tensor_type, ptr=a_ptr, shape=[cBM, cK], strides=[cK, c1])
+            tvA = pto.as_tensor(tensor_type3d, ptr=a_ptr, shape=[batch, cM, cK], strides=[cK*CM, cK, c1])
             tvB = pto.as_tensor(tensor_type, ptr=b_ptr, shape=[cK, cN], strides=[cN, c1])
-            tvOut = pto.as_tensor(tensor_type, ptr=out_ptr, shape=[cBM, cN], strides=[cN, c1])
+            tvOut = pto.as_tensor(tensor_type3d, ptr=out_ptr, shape=[batch, cM, cN], strides=[cM*cN, cN, c1])
 
             aMatTile = pto.alloc_tile(tile_buf_aMat)
             bMatTile = pto.alloc_tile(tile_buf_bMat)
@@ -86,9 +87,9 @@ def build(M=128, K=128, N=128):
             for b_idx in pto.for_range(b_start, b_end, c1):
                 row_off = b_idx * cM
 
-                svA = pto.slice_view(tile_view_a, source=tvA, offsets=[row_off, c0], sizes=[cM, cK])
+                svA = pto.slice_view(tile_view_a, source=tvA, offsets=[b_idx, c0, c0], sizes=[c1, cM, cK])
                 svB = pto.slice_view(tile_view_b, source=tvB, offsets=[c0, c0], sizes=[cK, cN])
-                svOut = pto.slice_view(tile_view_out, source=tvOut, offsets=[row_off, c0], sizes=[cM, cN])
+                svOut = pto.slice_view(tile_view_out, source=tvOut, offsets=[b_idx, c0, c0], sizes=[c1, cM, cN])
 
                 pto.wait_event("MOV_M2L", "LOAD", event_id=0)
                 pto.load(svA, aMatTile)
