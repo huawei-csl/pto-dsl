@@ -95,13 +95,12 @@ def vec_add_1d_dynamic(
                     sv2 = pto.slice_view(
                         subtensor_type, source=tv2, offsets=[offset_global], sizes=[c_tile]
                     )
-                    tile_parity = i % c2
-                    with pto.if_context(tile_parity == c0):
+                    with pto.if_context((i % c2) == c0, has_else=True) as branch:
                         pto.load(sv0, tb0_ping)
                         pto.load(sv1, tb1_ping)
                         pto.add(tb0_ping, tb1_ping, tb2_ping)
                         pto.store(tb2_ping, sv2)
-                    with pto.if_context(tile_parity == c1):
+                    with branch.else_context():
                         pto.load(sv0, tb0_pong)
                         pto.load(sv1, tb1_pong)
                         pto.add(tb0_pong, tb1_pong, tb2_pong)
