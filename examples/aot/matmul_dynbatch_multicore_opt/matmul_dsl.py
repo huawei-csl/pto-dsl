@@ -6,7 +6,8 @@ import ptodsl.language as pto
 
 def build(M=128, K=128, N=128):
     def meta_data():
-        dtype = pto.float32
+        dtype = pto.float16
+        dtype_acc_tile = pto.float32
         ptr_dtype = pto.PtrType(dtype)
         i32 = pto.int32
         i1 = IntegerType.get_signless(1)
@@ -21,7 +22,7 @@ def build(M=128, K=128, N=128):
         tile_buf_bMat = pto.TileBufType(shape=[K, N], dtype=dtype, memory_space="MAT")
         tile_buf_aTile = pto.TileBufType(shape=[M, K], dtype=dtype, memory_space="LEFT")
         tile_buf_bTile = pto.TileBufType(shape=[K, N], dtype=dtype, memory_space="RIGHT")
-        tile_buf_cTile = pto.TileBufType(shape=[M, N], dtype=dtype, memory_space="ACC")
+        tile_buf_cTile = pto.TileBufType(shape=[M, N], dtype=dtype_acc_tile, memory_space="ACC")
 
         return {
             "ptr_type": ptr_dtype,
