@@ -1,7 +1,7 @@
 Usage:
 
 ```bash
-RELEASE_TAG=20260224
+RELEASE_TAG=20260225
 sudo docker build \
     --build-arg RELEASE_TAG=$RELEASE_TAG \
     . -t pto_dsl:$RELEASE_TAG
