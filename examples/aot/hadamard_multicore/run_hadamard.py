@@ -68,8 +68,8 @@ def run(dtype: str, n: int, batch: int = 32) -> None:
     stream_ptr = torch.npu.current_stream()._as_parameter_
 
     x     = torch.rand(batch, n, device=_DEVICE, dtype=torch_dtype)  # input data
-    out = torch.empty_like(x,  device=_DEVICE,dtype=torch_dtype)  # output buffer
     x_ref = x.clone()
+    out = torch.empty_like(x,  device=_DEVICE,dtype=torch_dtype)  # output buffer
 
     torch.npu.synchronize()
     fn(
@@ -80,10 +80,8 @@ def run(dtype: str, n: int, batch: int = 32) -> None:
     torch.npu.synchronize()
 
     ref = fwht_ref(x_ref)
-    print(out)
-    print(ref)
     torch.testing.assert_close(
-        out, ref, rtol=1e-2, atol=1e-2
+        out, ref.to(torch_dtype), rtol=1e-2, atol=1e-2
     )
     print(f"  PASS  dtype={dtype}  n={n}  batch={batch}")
     os.remove(lib_path(dtype, n))

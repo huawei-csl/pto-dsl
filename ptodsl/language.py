@@ -206,6 +206,13 @@ def alloc_tile(tile_type, *, valid_row=None, valid_col=None):
     return pto.AllocTileOp(tile_type, **kwargs).result
 
 
+def bind_tile(tile_type, source, config=None):
+    if config is None:
+        config = TileBufConfig()
+    cfg = config.attr if isinstance(config, TileBufConfig) else config
+    return pto.BindTileOp(tile_type, source, cfg).result
+
+
 def load(source, dest):
     pto.TLoadOp(None, source, dest)
 
@@ -306,11 +313,24 @@ def select(cond, true_val, false_val):
     return Value(arith.SelectOp(_unwrap(cond), _unwrap(true_val), _unwrap(false_val)).result)
 
 
+class IfBranch:
+    def __init__(self, op):
+        self._op = op
+
+    @contextmanager
+    def else_(self):
+        with InsertionPoint.at_block_terminator(self._op.else_block):
+            yield
+
+
 @contextmanager
 def if_context(condition):
-    op = scf.IfOp(_unwrap(condition))
+    op = scf.IfOp(_unwrap(condition), [], hasElse=True)
+    branch = IfBranch(op)
     with InsertionPoint(op.then_block):
-        yield
+        yield branch
+        scf.YieldOp([])
+    with InsertionPoint(op.else_block):
         scf.YieldOp([])
 
 
