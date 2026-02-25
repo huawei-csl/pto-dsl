@@ -57,9 +57,7 @@ def build(M=128, K=128, N=128):
             cM = const(M)
             cK = const(K)
             cN = const(N)
-
             batch = pto.index_cast(batch_i32)
-            cBM = batch * cM
 
             num_blocks = pto.index_cast(pto.get_block_num())
             batches_per_core = pto.ceil_div(batch, num_blocks)
@@ -68,7 +66,7 @@ def build(M=128, K=128, N=128):
             b_end_unclamped = b_start + batches_per_core
             b_end = pto.min_u(b_end_unclamped, batch)
 
-            tvA = pto.as_tensor(tensor_type3d, ptr=a_ptr, shape=[batch, cM, cK], strides=[cK*CM, cK, c1])
+            tvA = pto.as_tensor(tensor_type3d, ptr=a_ptr, shape=[batch, cM, cK], strides=[cK*cM, cK, c1])
             tvB = pto.as_tensor(tensor_type, ptr=b_ptr, shape=[cK, cN], strides=[cN, c1])
             tvOut = pto.as_tensor(tensor_type3d, ptr=out_ptr, shape=[batch, cM, cN], strides=[cM*cN, cN, c1])
 
