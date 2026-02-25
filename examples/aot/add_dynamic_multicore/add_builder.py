@@ -9,7 +9,7 @@ def meta_data():
     index_dtype = pto.int32
     ptr_type = pto.PtrType(dtype)
     tensor_type = pto.TensorType(rank=1, dtype=dtype)
-    tile_length = 1024  # TODO: increase to 8192 for better DMA util
+    tile_length = 8192  # >=16 KB DMA gets high BW util
     subtensor_type = pto.SubTensorType(shape=[1, tile_length], dtype=dtype)
     tile_cfg = pto.TileBufConfig()
     tile_type = pto.TileBufType(
