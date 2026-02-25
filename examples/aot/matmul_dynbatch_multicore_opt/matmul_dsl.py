@@ -4,26 +4,20 @@ from ptodsl import to_ir_module
 import ptodsl.language as pto
 
 
-def build(
-    M=128,
-    K=128,
-    N=128,
-):
+def build(M=128, K=128, N=128):
     def meta_data():
         dtype = pto.float32
         ptr_dtype = pto.PtrType(dtype)
         i32 = pto.int32
 
-        # todo: add 3d tensors
+        # todo: add 3d tensors for A/C
         tensor_type = pto.TensorType(rank=2, dtype=dtype)
 
         tile_view_a = pto.SubTensorType(shape=[M, K], dtype=dtype)
         tile_view_b = pto.SubTensorType(shape=[K, N], dtype=dtype)
         tile_view_out = pto.SubTensorType(shape=[M, N], dtype=dtype)
-
         tile_buf_aMat = pto.TileBufType(shape=[M, K], dtype=dtype, memory_space="MAT")
         tile_buf_bMat = pto.TileBufType(shape=[K, N], dtype=dtype, memory_space="MAT")
-
         tile_buf_aTile = pto.TileBufType(shape=[M, K], dtype=dtype, memory_space="LEFT")
         tile_buf_bTile = pto.TileBufType(shape=[K, N], dtype=dtype, memory_space="RIGHT")
         tile_buf_cTile = pto.TileBufType(shape=[M, N], dtype=dtype, memory_space="ACC")
@@ -78,39 +72,52 @@ def build(
             bTile = pto.alloc_tile(tile_buf_bTile)
             cTile = pto.alloc_tile(tile_buf_cTile)
 
+            # signal to LOAD that L1 can be overwritten
+            pto.record_event("MOV_M2L", "LOAD", event_id=0)
+            # signal to MOV that L0 can be overwritten
+            pto.record_event("MATMUL", "MOV_M2L", event_id=0)
+            # signal to MATMUL that it can overwrite L0C
+            pto.record_event("STORE_ACC", "MATMUL", event_id=0)
             for b_idx in pto.for_range(b_start, b_end, c1):
                 row_off = b_idx * cM
 
                 svA = pto.slice_view(tile_view_a, source=tvA, offsets=[row_off, c0], sizes=[cM, cK])
                 svB = pto.slice_view(tile_view_b, source=tvB, offsets=[c0, c0], sizes=[cK, cN])
-                svBias = pto.slice_view(tile_view_bias, source=tvBias, offsets=[c0, c0], sizes=[c1, cN])
+                svOut = pto.slice_view(tile_view_out, source=tvOut, offsets=[row_off, c0], sizes=[cM, cN])
 
+                pto.wait_event("MOV_M2L", "LOAD", event_id=0)
                 pto.load(svA, aMatTile)
                 pto.load(svB, bMatTile)
 
-                # Load from GM->L1 must finish before we move into L0
+                # Before moving data from L1 into L0 we must know
+                # 1) The load has finished
+                # 2) the L0 can be overwritten
                 pto.record_wait_pair("LOAD", "MOV_M2L", event_id=0)
+                pto.wait_event("MATMUL", "MOV_M2l", event_id=0)
 
                 pto.mov(aMatTile, aTile)
                 pto.mov(bMatTile, bTile)
+                # signal to LOAD that L1 can be overwritten
+                pto.record_event("MOV_M2L", "LOAD", event_id=0)
 
                 # Moves into L0 must finish before we do the matmul
                 pto.record_wait_pair("MOV_M2L", "MATMUL", event_id=0)
-                pto.matmul(aTile, bTile, cTile),
-                
-                # not needed since no loop again so we wont be loading?
-                # matmul must be completed before we load?
-                # Not really? when doing matmul we must make sure L0 is not overwritten
-                # Load can happen at same time?
-                pto.record_wait_pair("MATMUL", "LOAD", event_id=0)
+                # L0C must be ready to be overwritten
+                pto.wait_event("STORE_ACC", "MATMUL", event_id=0)
+                pto.matmul(aTile, bTile, cTile)
 
                 # matmul must be completed before we do store
                 pto.record_wait_pair("MATMUL", "STORE_ACC", event_id=0)
-                svOut = pto.slice_view(tile_view_out, source=tvOut, offsets=[row_off, c0], sizes=[cM, cN])
+                # also signal to MOV that L0A/B can be overwritten again
+                pto.record_event("MATMUL", "MOV_M2L", event_id=0)
                 pto.store(cTile, svOut)
 
-                # Store must have finished writing back to GM before matmul comes in and overwrites the L0C
-                pto.record_wait_pair("STORE_ACC", "MATMUL", event_id=0)
+                # signal to MATMUL that it can overwrite L0C
+                pto.record_event("STORE_ACC", "MATMUL", event_id=0)
+
+            pto.wait_event("MOV_M2L", "LOAD", event_id=0)
+            pto.wait_event("MATMUL", "MOV_M2L", event_id=0)
+            pto.wait_event("STORE_ACC", "MATMUL", event_id=0)
 
     return RunTMATMULSplitK
 
