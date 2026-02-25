@@ -75,6 +75,11 @@ def build(M=128, K=128, N=128):
             aTile = pto.alloc_tile(tile_buf_aTile)
             bTile = pto.alloc_tile(tile_buf_bTile)
             cTile = pto.alloc_tile(tile_buf_cTile)
+            # Put B in L0B
+            svB = pto.slice_view(tile_view_b, source=tvB, offsets=[c0, c0], sizes=[cK, cN])
+            pto.load(svB, bMatTile)
+            pto.record_wait_pair("LOAD", "MOV_M2L", event_id=0)
+            pto.mov(bMatTile, bTile)
 
             # signal to LOAD that L1 can be overwritten
             pto.record_event("MOV_M2L", "LOAD", event_id=0)
@@ -83,15 +88,12 @@ def build(M=128, K=128, N=128):
             # signal to MATMUL that it can overwrite L0C
             pto.record_event("STORE_ACC", "MATMUL", event_id=0)
             for b_idx in pto.for_range(b_start, b_end, c1):
-                row_off = b_idx * cM
 
                 svA = pto.slice_view(tile_view_a, source=tvA, offsets=[b_idx, c0, c0], sizes=[c1, cM, cK])
-                svB = pto.slice_view(tile_view_b, source=tvB, offsets=[c0, c0], sizes=[cK, cN])
                 svOut = pto.slice_view(tile_view_out, source=tvOut, offsets=[b_idx, c0, c0], sizes=[c1, cM, cN])
 
                 pto.wait_event("MOV_M2L", "LOAD", event_id=0)
                 pto.load(svA, aMatTile)
-                pto.load(svB, bMatTile)
 
                 # Before moving data from L1 into L0 we must know
                 # 1) The load has finished
@@ -100,7 +102,6 @@ def build(M=128, K=128, N=128):
                 pto.wait_event("MATMUL", "MOV_M2l", event_id=0)
 
                 pto.mov(aMatTile, aTile)
-                pto.mov(bMatTile, bTile)
                 # signal to LOAD that L1 can be overwritten
                 pto.record_event("MOV_M2L", "LOAD", event_id=0)
 
