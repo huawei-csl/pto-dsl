@@ -306,11 +306,26 @@ def select(cond, true_val, false_val):
     return Value(arith.SelectOp(_unwrap(cond), _unwrap(true_val), _unwrap(false_val)).result)
 
 
+class _IfElseBranch:
+    def __init__(self, if_op):
+        self._if_op = if_op
+    @contextmanager
+    def else_context(self):
+        with InsertionPoint(self._if_op.else_block):
+            yield
+            scf.YieldOp([])
+
 @contextmanager
-def if_context(condition):
-    op = scf.IfOp(_unwrap(condition))
+def if_context(condition, has_else=False):
+    if has_else:
+        op = scf.IfOp(_unwrap(condition), [], hasElse=True)
+        branch = _IfElseBranch(op)
+    else:
+        op = scf.IfOp(_unwrap(condition))
+        branch = None
+
     with InsertionPoint(op.then_block):
-        yield
+        yield branch
         scf.YieldOp([])
 
 
