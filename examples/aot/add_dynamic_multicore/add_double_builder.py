@@ -38,6 +38,7 @@ def vec_add_1d_dynamic(
 ) -> None:
     c0 = const(0)
     c1 = const(1)
+    c2 = const(2)
     c_tile = const(tile_length)
 
     cid = pto.get_block_idx()
@@ -61,9 +62,13 @@ def vec_add_1d_dynamic(
         tv1 = pto.as_tensor(tensor_type, ptr=arg1, shape=[total_elements], strides=[c1])
         tv2 = pto.as_tensor(tensor_type, ptr=arg2, shape=[total_elements], strides=[c1])
 
-        tb0 = pto.alloc_tile(tile_type)
-        tb1 = pto.alloc_tile(tile_type)
-        tb2 = pto.alloc_tile(tile_type)
+        # Ping/pong tile buffers for software pipelining.
+        tb0_ping = pto.alloc_tile(tile_type)
+        tb1_ping = pto.alloc_tile(tile_type)
+        tb2_ping = pto.alloc_tile(tile_type)
+        tb0_pong = pto.alloc_tile(tile_type)
+        tb1_pong = pto.alloc_tile(tile_type)
+        tb2_pong = pto.alloc_tile(tile_type)
 
         # Skip whole core if its starting tile is already out-of-bound.
         with pto.if_context(tile_offset_this_core < num_tiles_global):
@@ -90,11 +95,16 @@ def vec_add_1d_dynamic(
                     sv2 = pto.slice_view(
                         subtensor_type, source=tv2, offsets=[offset_global], sizes=[c_tile]
                     )
-
-                    pto.load(sv0, tb0)
-                    pto.load(sv1, tb1)
-                    pto.add(tb0, tb1, tb2)
-                    pto.store(tb2, sv2)
+                    with pto.if_context((i % c2) == c0, has_else=True) as branch:
+                        pto.load(sv0, tb0_ping)
+                        pto.load(sv1, tb1_ping)
+                        pto.add(tb0_ping, tb1_ping, tb2_ping)
+                        pto.store(tb2_ping, sv2)
+                    with branch.else_context():
+                        pto.load(sv0, tb0_pong)
+                        pto.load(sv1, tb1_pong)
+                        pto.add(tb0_pong, tb1_pong, tb2_pong)
+                        pto.store(tb2_pong, sv2)
 
 
 if __name__ == "__main__":

@@ -30,16 +30,15 @@ def lib_to_func(lib):
     return add_func
 
 
-def test_add():
+def test_add(lib_path="./add_lib.so"):
     device = get_test_device()
     torch.npu.set_device(device)
 
-    lib_path = "./add_lib.so"
     lib = ctypes.CDLL(lib_path)
     add_func = lib_to_func(lib)
 
     # shape parameter hard-coded as kernel
-    num_cores = 20 * 2
+    num_cores = 24 * 2
     tile_size = 1024
     # Keep shapes aligned to tile size, but vary tile counts so they are not
     # required to be multiples of `num_cores`.
@@ -63,3 +62,4 @@ def test_add():
 
 if __name__ == "__main__":
     test_add()
+    test_add("./add_double_lib.so")
