@@ -24,7 +24,7 @@ def lib_to_func(lib):
     return add_func
 
 
-def bench_add(add_func, x, y, z, warmup_iters=5, benchmark_iters=50):
+def bench_add(add_func, x, y, z, kernel_name="add_func", warmup_iters=5, benchmark_iters=50):
     io_bytes = x.numel() * x.element_size() * 3
     # Overwrite a large buffer between launches to reduce L2 cache reuse.
     cache = torch.empty((256 * 1024 * 1024,), dtype=torch.int8, device=x.device)
@@ -64,7 +64,7 @@ def bench_add(add_func, x, y, z, warmup_iters=5, benchmark_iters=50):
     torch_add_bw_gbs = (io_bytes / (torch_add_ms / 1e3)) / 1e9
 
     print(
-        f"add_func: {custom_ms:.3f} ms, "
+        f"{kernel_name}: {custom_ms:.3f} ms, "
         f"effective bandwidth: {custom_bw_gbs:.3f} GB/s "
         f"(IO={io_bytes / 1e6:.2f} MB)"
     )
@@ -75,11 +75,11 @@ def bench_add(add_func, x, y, z, warmup_iters=5, benchmark_iters=50):
     )
 
 
-if __name__ == "__main__":
+def run_bench(lib_path, kernel_name):
     device = get_test_device()
     torch.npu.set_device(device)
 
-    lib = ctypes.CDLL("./add_lib.so")
+    lib = ctypes.CDLL(lib_path)
     add_func = lib_to_func(lib)
 
     num_cores = 24 * 2  # match kernel num cores * 2
@@ -98,4 +98,9 @@ if __name__ == "__main__":
     torch.npu.synchronize()
     torch.testing.assert_close(z, x + y)
 
-    bench_add(add_func, x, y, z)
+    bench_add(add_func, x, y, z, kernel_name=kernel_name)
+
+
+if __name__ == "__main__":
+    run_bench("./add_lib.so", "add_func")
+    run_bench("./add_double_lib.so", "add_double_func")
