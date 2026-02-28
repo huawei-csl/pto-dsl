@@ -67,6 +67,12 @@ class Value:
     def __ge__(self, other):
         return Value._cmp(self, other, arith.CmpIPredicate.sge)
 
+    def __eq__(self, other):
+        return Value._cmp(self, other, arith.CmpIPredicate.eq)
+
+    def __ne__(self, other):
+        return Value._cmp(self, other, arith.CmpIPredicate.ne)
+
     def __getattr__(self, item):
         return getattr(self.raw, item)
 
