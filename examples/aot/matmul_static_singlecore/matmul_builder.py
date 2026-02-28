@@ -1,7 +1,5 @@
 # adapted from https://github.com/zhangstevenunity/PTOAS/blob/a301aa43b388d9b2e1ba0db8773b3a719e8c445b/test/samples/MatMul/tmatmulk.py
 
-from mlir.ir import IntegerType
-
 from ptodsl import to_ir_module
 import ptodsl.language as pto
 
@@ -20,8 +18,8 @@ def build(
 
     def meta_data():
         dtype = pto.float32
+        i1 = pto.bool
         ptr_type = pto.PtrType(dtype)
-        i1 = IntegerType.get_signless(1)
 
         tensor_type = pto.TensorType(rank=2, dtype=dtype)
 
