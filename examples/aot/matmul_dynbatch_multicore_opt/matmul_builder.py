@@ -81,8 +81,8 @@ def build(
             num_blocks = pto.index_cast(pto.get_block_num())
             bid = pto.index_cast(pto.get_block_idx())
 
-            base = pto.div_s(batch, num_blocks)
-            rem = pto.rem_s(batch, num_blocks)
+            base = batch // num_blocks
+            rem = batch % num_blocks
             lt_rem = pto.lt(bid, rem)
             min_bid_rem = pto.min_u(bid, rem)
             b_start = bid * base + min_bid_rem
