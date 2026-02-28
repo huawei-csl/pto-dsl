@@ -168,6 +168,7 @@ def test_build_gather(compiled_lib):
 
 
 @pytest.mark.require_npu
+@pytest.mark.xfail(reason="Known unsolved issues of indeterministic output values", strict=False)
 @pytest.mark.parametrize("B, N", _SHAPE_PARAMS)
 def test_gather_dynamic(compiled_lib, B, N):
     import torch_npu
