@@ -67,6 +67,8 @@ def wrap_value(value):
 def __getattr__(name):
     # TODO: add more builtin dtype aliases (for example float16/bfloat16/int8/int64)
     # when they are validated against PTO type support.
+    if name == "bool":
+        return IntegerType.get_signless(1)
     if name == "float32":
         return F32Type.get()
     if name == "float16":
