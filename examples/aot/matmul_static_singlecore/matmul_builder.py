@@ -1,6 +1,6 @@
 # adapted from https://github.com/zhangstevenunity/PTOAS/blob/a301aa43b388d9b2e1ba0db8773b3a719e8c445b/test/samples/MatMul/tmatmulk.py
 
-from mlir.ir import IntegerType, StringAttr
+from mlir.ir import IntegerType
 
 from ptodsl import to_ir_module
 import ptodsl.language as pto
@@ -14,8 +14,6 @@ def build(
     validK=256,
     validN=32,
     BASEK=32,
-    s_fractal_ab=512,
-    s_fractal_c=1024,
 ):
     assert K % BASEK == 0
     iters = K // BASEK
@@ -32,55 +30,12 @@ def build(
         tile_view_out = pto.SubTensorType(shape=[M, N], dtype=dtype)
         tile_view_bias = pto.SubTensorType(shape=[1, N], dtype=dtype)
 
-        cfg_mat = pto.TileBufConfig(
-            blayout="ColMajor",
-            slayout="RowMajor",
-            s_fractal_size=s_fractal_ab,
-            pad="Null",
-        )
-        cfg_mat_bias = pto.TileBufConfig(
-            blayout="RowMajor",
-            slayout="NoneBox",
-            s_fractal_size=s_fractal_ab,
-            pad="Null",
-        )
-        cfg_left = pto.TileBufConfig(
-            blayout="RowMajor",
-            slayout="RowMajor",
-            s_fractal_size=s_fractal_ab,
-            pad="Null",
-        )
-        cfg_right = pto.TileBufConfig(
-            blayout="RowMajor",
-            slayout="ColMajor",
-            s_fractal_size=s_fractal_ab,
-            pad="Null",
-        )
-        cfg_acc = pto.TileBufConfig(
-            blayout="ColMajor",
-            slayout="RowMajor",
-            s_fractal_size=s_fractal_c,
-            pad="Null",
-        )
-
-        tile_buf_aMat = pto.TileBufType(
-            shape=[M, BASEK], dtype=dtype, memory_space="MAT", config=cfg_mat
-        )
-        tile_buf_bMat = pto.TileBufType(
-            shape=[BASEK, N], dtype=dtype, memory_space="MAT", config=cfg_mat
-        )
-        tile_buf_biasData = pto.TileBufType(
-            shape=[1, N], dtype=dtype, memory_space="MAT", config=cfg_mat_bias
-        )
-        tile_buf_aTile = pto.TileBufType(
-            shape=[M, BASEK], dtype=dtype, memory_space="LEFT", config=cfg_left
-        )
-        tile_buf_bTile = pto.TileBufType(
-            shape=[BASEK, N], dtype=dtype, memory_space="RIGHT", config=cfg_right
-        )
-        tile_buf_cTile = pto.TileBufType(
-            shape=[M, N], dtype=dtype, memory_space="ACC", config=cfg_acc
-        )
+        tile_buf_aMat = pto.TileBufType(shape=[M, BASEK], dtype=dtype, memory_space="MAT")
+        tile_buf_bMat = pto.TileBufType(shape=[BASEK, N], dtype=dtype, memory_space="MAT")
+        tile_buf_biasData = pto.TileBufType(shape=[1, N], dtype=dtype, memory_space="MAT")
+        tile_buf_aTile = pto.TileBufType(shape=[M, BASEK], dtype=dtype, memory_space="LEFT")
+        tile_buf_bTile = pto.TileBufType(shape=[BASEK, N], dtype=dtype, memory_space="RIGHT")
+        tile_buf_cTile = pto.TileBufType(shape=[M, N], dtype=dtype, memory_space="ACC")
         tile_buf_biasTile = pto.TileBufType(
             shape=[1, N], dtype=dtype, memory_space="BIAS"
         )
