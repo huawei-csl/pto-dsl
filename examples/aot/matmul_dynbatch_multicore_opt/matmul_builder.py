@@ -1,209 +1,137 @@
 # adapted from https://github.com/zhangstevenunity/PTOAS/blob/a301aa43b388d9b2e1ba0db8773b3a719e8c445b/test/samples/MatMul/tmatmulk.py
 
-from mlir.ir import (
-    Context, Location, InsertionPoint,
-    IndexType, IntegerType, F16Type, F32Type, StringAttr
-)
-from mlir.dialects import func, arith, scf, pto, builtin
-from mlir.dialects.pto import ( TLOAD, TMOV_M2L, TMATMUL, TSTORE_ACC, EVENT_ID0)
-from mlir.dialects.arith import CmpIPredicate
-
-
-def _idx_const(v: int):
-    return arith.ConstantOp(IndexType.get(), v).result
+from ptodsl import to_ir_module
+import ptodsl.language as pto
 
 
 def build(
-    M=128, K=128, N=128,
-    validM=128, validK=128, validN=128,
+    M=128,
+    K=128,
+    N=128,
+    validM=128,
+    validK=128,
+    validN=128,
 ):
+    def meta_data():
+        dtype = pto.float32
+        ptr_type = pto.PtrType(dtype)
+        bool_type = pto.bool
+        index_dtype = pto.int32
 
-    with Context() as ctx, Location.unknown():
-        pto.register_dialect(ctx, load=True)
+        tv_a = pto.TensorType(rank=3, dtype=dtype)
+        tv_b = pto.TensorType(rank=2, dtype=dtype)
+        tv_out = pto.TensorType(rank=3, dtype=dtype)
 
-        module = builtin.ModuleOp()
-        module.attributes["pto.device-spec"] = StringAttr.get("Ascend910B1")
+        tile_view_a = pto.SubTensorType(shape=[M, K], dtype=dtype)
+        tile_view_b = pto.SubTensorType(shape=[K, N], dtype=dtype)
+        tile_view_out = pto.SubTensorType(shape=[M, N], dtype=dtype)
 
-        t_out = F32Type.get()
-        t_a = F32Type.get()
-        t_b = F32Type.get()
-        t_bias = F32Type.get()
-        i1 = IntegerType.get_signless(1)
-        i32 = IntegerType.get_signless(32)
-        ptr_out = pto.PtrType.get(t_out)
-        ptr_a = pto.PtrType.get(t_a)
-        ptr_b = pto.PtrType.get(t_b)
-        ptr_bias = pto.PtrType.get(t_bias)
+        tile_buf_aMat = pto.TileBufType(shape=[M, K], dtype=dtype, memory_space="MAT")
+        tile_buf_bMat = pto.TileBufType(shape=[K, N], dtype=dtype, memory_space="MAT")
+        tile_buf_aTile = pto.TileBufType(shape=[M, K], dtype=dtype, memory_space="LEFT")
+        tile_buf_bTile = pto.TileBufType(shape=[K, N], dtype=dtype, memory_space="RIGHT")
+        tile_buf_cTile = pto.TileBufType(shape=[M, N], dtype=dtype, memory_space="ACC")
 
+        return {
+            "ptr_type": ptr_type,
+            "bool_type": bool_type,
+            "index_dtype": index_dtype,
+            "tv_a": tv_a,
+            "tv_b": tv_b,
+            "tv_out": tv_out,
+            "tile_view_a": tile_view_a,
+            "tile_view_b": tile_view_b,
+            "tile_view_out": tile_view_out,
+            "tile_buf_aMat": tile_buf_aMat,
+            "tile_buf_bMat": tile_buf_bMat,
+            "tile_buf_aTile": tile_buf_aTile,
+            "tile_buf_bTile": tile_buf_bTile,
+            "tile_buf_cTile": tile_buf_cTile,
+        }
 
-        # ---- tensor view types ----
-        tv2_a = pto.TensorViewType.get(3, t_a)        # [bs, validM, validK]
-        tv2_b = pto.TensorViewType.get(2, t_b)        # [validK, validN]
-        tv2_out = pto.TensorViewType.get(3, t_out)    # [bs, validM, validN]
+    const = pto.const
 
-        # ---- tile view types ----
-        tile_view_a = pto.PartitionTensorViewType.get([M, K], t_a)
-        tile_view_b = pto.PartitionTensorViewType.get([K, N], t_b)
-        tile_view_out = pto.PartitionTensorViewType.get([M, N], t_out)
+    @to_ir_module(meta_data=meta_data)
+    def RunTMATMULSplitK(
+        out_ptr: "ptr_type",
+        a_ptr: "ptr_type",
+        b_ptr: "ptr_type",
+        bias_ptr: "ptr_type",
+        isBias: "bool_type",
+        batch_i32: "index_dtype",
+    ) -> None:
+        # Keep unused args to preserve original function signature/ABI.
+        _ = bias_ptr
+        _ = isBias
 
-        # ---- address spaces ----
-        mat = pto.AddressSpaceAttr.get(pto.AddressSpace.MAT)
-        left = pto.AddressSpaceAttr.get(pto.AddressSpace.LEFT)
-        right = pto.AddressSpaceAttr.get(pto.AddressSpace.RIGHT)
-        acc = pto.AddressSpaceAttr.get(pto.AddressSpace.ACC)
+        with pto.cube_section():
+            c0 = const(0)
+            c1 = const(1)
+            cM = const(validM)
+            cK = const(validK)
+            cN = const(validN)
+            cKM = const(validK * validM)
+            cMN = const(validM * validN)
+            cTileM = const(M)
+            cTileN = const(N)
 
-        # ---- configs (3rd arg = s_fractal_size) ----
-        # MAT tile: used for transfers, typically row_major
-        cfg_mat = pto.TileBufConfigAttr.get(
-            pto.BLayoutAttr.get(pto.BLayout.ColMajor),
-            pto.SLayoutAttr.get(pto.SLayout.RowMajor),
-            pto.TileConfig.fractalABSize,
-            pto.PadValueAttr.get(pto.PadValue.Null)
-        )
+            batch = pto.index_cast(batch_i32)
 
-        # LEFT tile：TileLeft ... BLayout RowMajor, SLayout RowMajor, fractalAB
-        cfg_left = pto.TileBufConfigAttr.get(
-            pto.BLayoutAttr.get(pto.BLayout.RowMajor),
-            pto.SLayoutAttr.get(pto.SLayout.RowMajor),
-            pto.TileConfig.fractalABSize,
-            pto.PadValueAttr.get(pto.PadValue.Null)
-        )
+            # Distribute batches over cores with "base + remainder" policy.
+            num_blocks = pto.index_cast(pto.get_block_num())
+            bid = pto.index_cast(pto.get_block_idx())
 
-        # RIGHT tile：TileRight ... BLayout RowMajor, SLayout ColMajor, fractalAB
-        cfg_right = pto.TileBufConfigAttr.get(
-            pto.BLayoutAttr.get(pto.BLayout.RowMajor),
-            pto.SLayoutAttr.get(pto.SLayout.ColMajor),
-            pto.TileConfig.fractalABSize,
-            pto.PadValueAttr.get(pto.PadValue.Null)
-        )
+            base = batch // num_blocks
+            rem = batch % num_blocks
+            lt_rem = pto.lt(bid, rem)
+            min_bid_rem = pto.min_u(bid, rem)
+            b_start = bid * base + min_bid_rem
+            length = base + pto.select(lt_rem, c1, c0)
+            b_end = pto.min_u(b_start + length, batch)
 
-        # ACC tile：TileAcc ... BLayout ColMajor, SLayout RowMajor, fractalC
-        cfg_acc = pto.TileBufConfigAttr.get(
-            pto.BLayoutAttr.get(pto.BLayout.ColMajor),
-            pto.SLayoutAttr.get(pto.SLayout.RowMajor),
-            pto.TileConfig.fractalCSize,
-            pto.PadValueAttr.get(pto.PadValue.Null)
-        )
+            tvA = pto.as_tensor(tv_a, ptr=a_ptr, shape=[batch, cM, cK], strides=[cKM, cK, c1])
+            tvB = pto.as_tensor(tv_b, ptr=b_ptr, shape=[cK, cN], strides=[cN, c1])
+            tvOut = pto.as_tensor(tv_out, ptr=out_ptr, shape=[batch, cM, cN], strides=[cMN, cN, c1])
 
+            aMatTile = pto.alloc_tile(tile_buf_aMat)
+            bMatTile = pto.alloc_tile(tile_buf_bMat)
+            aTile = pto.alloc_tile(tile_buf_aTile)
+            bTile = pto.alloc_tile(tile_buf_bTile)
+            cTile = pto.alloc_tile(tile_buf_cTile)
 
-        tile_buf_aMat = pto.TileBufType.get([M, K], t_a, mat, [M, K], cfg_mat)
-        tile_buf_bMat = pto.TileBufType.get([K, N], t_b, mat, [K, N], cfg_mat)
-        tile_buf_aTile = pto.TileBufType.get([M, K], t_a, left, [M, K], cfg_left)
-        tile_buf_bTile = pto.TileBufType.get([K, N], t_b, right, [K, N], cfg_right)
-        tile_buf_cTile = pto.TileBufType.get([M, N], t_out, acc, [M,N], cfg_acc)
+            # B is shared across batches: load once GM->L1->L0B.
+            svB = pto.slice_view(tile_view_b, source=tvB, offsets=[c0, c0], sizes=[cK, cTileN])
+            pto.load(svB, bMatTile)
+            pto.record_wait_pair("LOAD", "MOV_M2L", event_id=0)
+            pto.mov(bMatTile, bTile)
 
-        # ---- function ----
-        # (out, A, B, bias, isBias, batchSize)
-        fn_ty = func.FunctionType.get([ptr_out, ptr_a, ptr_b, ptr_bias, i1, i32], [])
-        with InsertionPoint(module.body):
-            fn = func.FuncOp("RunTMATMULSplitK", fn_ty)
-            entry = fn.add_entry_block()
+            for b_idx in pto.for_range(b_start, b_end, c1):
+                svA = pto.slice_view(
+                    tile_view_a,
+                    source=tvA,
+                    offsets=[b_idx, c0, c0],
+                    sizes=[c1, cTileM, cK],
+                )
+                svOut = pto.slice_view(
+                    tile_view_out,
+                    source=tvOut,
+                    offsets=[b_idx, c0, c0],
+                    sizes=[c1, cTileM, cTileN],
+                )
 
-        with InsertionPoint(entry):
-            """
-            For now we assume A: [bs, M, K], B: [K, N], C: [bs, M, N] and we do batched matmul (B is broadcasted).
-            MKN is known at compile-time while bs is not.
+                pto.load(svA, aMatTile)
+                pto.record_wait_pair("LOAD", "MOV_M2L", event_id=0)
 
+                pto.mov(aMatTile, aTile)
+                pto.record_wait_pair("MOV_M2L", "MATMUL", event_id=0)
+                pto.matmul(aTile, bTile, cTile)
+                pto.record_wait_pair("MATMUL", "LOAD", event_id=0)
 
-            Since every multiplcation uses the same B, just load it once GM -> L1 -> L0B.
-            """
-            out_ptr, a_ptr, b_ptr, bias_ptr, isBias, batch_i32 = entry.arguments
+                pto.record_wait_pair("MATMUL", "STORE_ACC", event_id=0)
+                pto.store(cTile, svOut)
+                pto.record_wait_pair("STORE_ACC", "MATMUL", event_id=0)
 
-            cube_section = pto.SectionCubeOp()
-            cube_block = cube_section.body.blocks.append()
-
-            with InsertionPoint(cube_block):
-                c0 = _idx_const(0)
-                c1 = _idx_const(1)
-                cM = _idx_const(validM)
-                cK = _idx_const(validK)
-                cN = _idx_const(validN)
-                cKM = _idx_const(validK*validM)
-                cMN = _idx_const(validM*validN)
-                cTileM = _idx_const(M)
-                cTileN = _idx_const(N)
-
-                batch = arith.IndexCastOp(IndexType.get(), batch_i32).result
-                # Total logical rows for A/C: [batch, M, *] -> [batch*M, *]
-                cBM = arith.MulIOp(batch, cM).result
-
-                # Distribute batches over cores. Each core gets B//C, and B%C cores gets +1
-                num_blocks = arith.IndexCastOp(IndexType.get(), pto.GetBlockNumOp().result).result
-                bid        = arith.IndexCastOp(IndexType.get(), pto.GetBlockIdxOp().result).result
-
-                base = arith.DivSIOp(batch, num_blocks).result
-                rem  = arith.RemSIOp(batch, num_blocks).result
-                lt_rem = arith.CmpIOp(arith.CmpIPredicate.slt, bid, rem).result
-                min_bid_rem = arith.MinUIOp(bid, rem).result
-                b_start = arith.AddIOp(arith.MulIOp(bid, base).result, min_bid_rem).result
-                length = arith.AddIOp(base, arith.SelectOp(lt_rem, c1, c0).result).result
-                b_end = arith.MinUIOp(arith.AddIOp(b_start, length).result, batch).result
-
-                # ---- make_tensor_view over full [batch*M, *] range ----
-                # A: [batch, M, validK], stride [K*M, K, 1]
-                # B: [validK, validN], stride [validN, 1] (shared across batches)
-                # OUT: [batch, M, validN], stride [M*N, N, 1]
-                tvA = pto.MakeTensorViewOp(tv2_a, a_ptr, [batch, cM, cK], [cKM, cK, c1]).result
-                tvB = pto.MakeTensorViewOp(tv2_b, b_ptr, [cK, cN], [cN, c1]).result
-                tvOut = pto.MakeTensorViewOp(tv2_out, out_ptr, [batch, cM, cN], [cMN, cN, c1]).result
-
-                # ---- alloc tiles ----
-                aMatTile = pto.AllocTileOp(tile_buf_aMat).result
-                bMatTile = pto.AllocTileOp(tile_buf_bMat).result
-                aTile = pto.AllocTileOp(tile_buf_aTile).result
-                bTile = pto.AllocTileOp(tile_buf_bTile).result
-                cTile = pto.AllocTileOp(tile_buf_cTile).result
-
-                svB = pto.PartitionViewOp(tile_view_b, tvB, offsets=[c0, c0], sizes=[cK, cTileN]).result
-                # Load GM into tile
-                pto.TLoadOp(None, svB, bMatTile)
-                pto.record_event(TLOAD, TMOV_M2L, EVENT_ID0)
-                pto.wait_event  (TLOAD, TMOV_M2L, EVENT_ID0)
-                # move from L1 to L0
-                pto.TMovOp(None, bMatTile, bTile)
-
-                # ---- outer loop over batches assigned to this core ----
-                batch_loop = scf.ForOp(b_start, b_end, c1)
-                with InsertionPoint(batch_loop.body):
-                    b_idx = batch_loop.induction_variable
-
-                    # subviews for this batch row range
-                    svA = pto.PartitionViewOp(tile_view_a, tvA, offsets=[b_idx, c0, c0], sizes=[c1, cTileM, cK]).result
-                    svOut = pto.PartitionViewOp(tile_view_out, tvOut, offsets=[b_idx, c0, c0], sizes=[c1, cTileM, cTileN]).result
-
-                    # Note: TLOAD valid dims typically correspond to the destination tile's valid region (a/b/bias)
-                    pto.TLoadOp(None, svA, aMatTile)
-
-                    # ---- sync: MTE2 -> MTE1 ----
-                    pto.record_event(TLOAD, TMOV_M2L, EVENT_ID0)
-                    pto.wait_event  (TLOAD, TMOV_M2L, EVENT_ID0)
-
-                    # TMOV also uses the corresponding tile valid dims (a/b/bias)
-                    pto.TMovOp(None, aMatTile, aTile)
-
-                    # ---- sync: MTE1 -> M ----
-                    pto.record_event(TMOV_M2L, TMATMUL, EVENT_ID0)
-                    pto.wait_event  (TMOV_M2L, TMATMUL, EVENT_ID0)
-                    pto.TMatmulOp(None, aTile, bTile, cTile)
-                    pto.record_event(TMATMUL, TLOAD, EVENT_ID0)
-                    pto.wait_event  (TMATMUL, TLOAD, EVENT_ID0)
-
-                    # ---- after split-K loop for this batch ----
-                    pto.record_event(TMATMUL, TSTORE_ACC, EVENT_ID0)
-                    pto.wait_event  (TMATMUL, TSTORE_ACC, EVENT_ID0)
-
-                    # Write back OUT using the valid dims of C
-                    pto.TStoreOp(None, cTile, svOut)
-                    # TSTORE uses FIXPIPE to write back to GM from L0C.
-                    # Make sure TSTORE op has finished before next MATMUL op overwrites L0C:
-                    pto.record_event(TSTORE_ACC, TMATMUL, EVENT_ID0)
-                    pto.wait_event  (TSTORE_ACC, TMATMUL, EVENT_ID0)
-
-                    scf.YieldOp([])
-
-            func.ReturnOp([])
-        module.operation.verify()
-        return module
+    return RunTMATMULSplitK
 
 
 if __name__ == "__main__":
