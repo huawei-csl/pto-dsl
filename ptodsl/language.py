@@ -38,6 +38,12 @@ class Value:
     def __rfloordiv__(self, other):
         return Value(arith.DivUIOp(_unwrap(other), _unwrap(self)).result)
 
+    def __mod__(self, other):
+        return Value(arith.RemUIOp(_unwrap(self), _unwrap(other)).result)
+
+    def __rmod__(self, other):
+        return Value(arith.RemUIOp(_unwrap(other), _unwrap(self)).result)
+
     @staticmethod
     def _cmp(lhs, rhs, predicate):
         return Value(arith.CmpIOp(predicate, _unwrap(lhs), _unwrap(rhs)).result)
@@ -282,6 +288,14 @@ def matmul_acc(acc, lhs, rhs, out):
 
 def ceil_div(a, b):
     return Value(arith.CeilDivSIOp(_unwrap(a), _unwrap(b)).result)
+
+
+def div_s(a, b):
+    return Value(arith.DivSIOp(_unwrap(a), _unwrap(b)).result)
+
+
+def rem_s(a, b):
+    return Value(arith.RemSIOp(_unwrap(a), _unwrap(b)).result)
 
 
 def min_u(a, b):
