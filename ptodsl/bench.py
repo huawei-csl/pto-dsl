@@ -36,15 +36,16 @@ def do_bench(
         fn()
     torch_npu.npu.synchronize()
 
+    # It's not easy to time a kernel in a way that satisfies the following two at the same time:
+    # 1) Ignores cache flushing, and 2) Ignoring kernel launch overhead. Here we ignore cache flushing.
     for i in range(benchmark_iters):
         if flush_cache:
             cache.zero_()
-        torch_npu.npu.synchronize()
         start_events[i].record()
         fn()
         end_events[i].record()
-        torch_npu.npu.synchronize()
 
+    torch_npu.npu.synchronize()
     f = {"s": 1e-3, "ms": 1e0, "us": 1e3, "ns": 1e6}[unit]
     times = [f * s.elapsed_time(e) for s, e in zip(start_events, end_events)]
     if aggregation == "mean":
