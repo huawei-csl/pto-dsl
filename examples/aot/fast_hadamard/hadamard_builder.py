@@ -147,6 +147,7 @@ def build_fast_hadamard(fn_name="fast_hadamard_fp16", manual_sync=False):
 
                                         if manual_sync:
                                             pto.wait_event("VEC", "LOAD", event_id=0)
+                                            pto.wait_event("STORE_VEC", "VEC", event_id=0)
                                         pto.load(sv_row, tb_row_0)
                                         if manual_sync:
                                             pto.record_wait_pair("LOAD", "VEC", event_id=0)
@@ -188,6 +189,7 @@ def build_fast_hadamard(fn_name="fast_hadamard_fp16", manual_sync=False):
 
                                             if manual_sync:
                                                 pto.wait_event("VEC", "LOAD", event_id=1)
+                                                pto.wait_event("STORE_VEC", "VEC", event_id=1)
                                             pto.load(sv_row, tb_row_1)
                                             if manual_sync:
                                                 pto.record_wait_pair("LOAD", "VEC", event_id=1)
