@@ -177,9 +177,15 @@ def build_fast_hadamard(fn_name="fast_hadamard_fp16", manual_sync=False):
                                                     "VEC", "STORE_VEC", event_id=0
                                                 )
                                             pto.store(tb_first_0, sv_first)
-                                            # `pto.barrier("STORE_VEC")` needs fix https://github.com/huawei-csl/pto-dsl/pull/52
-                                            # if manual_sync:
-                                            #     pto.barrier("STORE_VEC")
+                                            if manual_sync:
+                                                # Equivalent to the generated C++ set/wait sync
+                                                # pair between half stores.
+                                                pto.wait_event(
+                                                    "STORE_VEC", "VEC", event_id=0
+                                                )
+                                                pto.wait_event(
+                                                    "VEC", "STORE_VEC", event_id=0
+                                                )
                                             pto.store(tb_second_0, sv_second)
                                             if manual_sync:
                                                 pto.record_event(
@@ -243,9 +249,15 @@ def build_fast_hadamard(fn_name="fast_hadamard_fp16", manual_sync=False):
                                                         "VEC", "STORE_VEC", event_id=1
                                                     )
                                                 pto.store(tb_first_1, sv_first)
-                                                # `pto.barrier("STORE_VEC")` needs fix https://github.com/huawei-csl/pto-dsl/pull/52
-                                                # if manual_sync:
-                                                #     pto.barrier("STORE_VEC")
+                                                if manual_sync:
+                                                    # Equivalent to the generated C++ set/wait sync
+                                                    # pair between half stores.
+                                                    pto.wait_event(
+                                                        "STORE_VEC", "VEC", event_id=1
+                                                    )
+                                                    pto.wait_event(
+                                                        "VEC", "STORE_VEC", event_id=1
+                                                    )
                                                 pto.store(tb_second_1, sv_second)
                                                 if manual_sync:
                                                     pto.record_event(
