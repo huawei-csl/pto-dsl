@@ -6,27 +6,24 @@ _DTYPE_TO_CTYPE = {
 }
 
 
-def case_id(dtype, n):
-    return f"{dtype}_n{n}"
-
-
-def generate_caller(dtype, n):
+def generate_caller(dtype):
     src_ctype = _DTYPE_TO_CTYPE[dtype]
-    fn = case_id(dtype, n)
+    fn = f"{dtype}_dynamic"
     return f"""\
 #include "{fn}.cpp"
 
 extern "C" void call_{fn}(
-    void *stream, uint8_t *src, uint8_t *out, int32_t rows)
+    void *stream, uint8_t *src, uint8_t *out,
+    int32_t rows, int32_t cols, int32_t log2_cols)
 {{
     {fn}<<<20, nullptr, stream>>>(
-        ({src_ctype} *)src, ({src_ctype} *)out, rows);
+        ({src_ctype} *)src, ({src_ctype} *)out, rows, cols, log2_cols);
 }}
 """
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 3:
-        print("Usage: python caller.py <dtype> <N>", file=sys.stderr)
+    if len(sys.argv) < 2:
+        print("Usage: python caller.py <dtype>", file=sys.stderr)
         sys.exit(1)
-    print(generate_caller(sys.argv[1], int(sys.argv[2])))
+    print(generate_caller(sys.argv[1]))

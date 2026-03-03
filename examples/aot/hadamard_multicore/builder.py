@@ -6,72 +6,87 @@ const = pto.const
 DTYPES = {
     "float32": lambda: pto.float32,
     "float16": lambda: pto.float16,
+    "int32": lambda: pto.int32,
+    "int16": lambda: pto.int16,
 }
 
+TILE_LENGTH = 32
+TILE_HALF   = TILE_LENGTH // 2
 
-def meta_data(dtype=None, cols=32):
+
+def meta_data(dtype=None):
     if dtype is None:
         dtype = "float32"
     if isinstance(dtype, str):
         dtype = DTYPES[dtype]()
 
-    half = cols // 2
     tile_cfg = pto.TileBufConfig()
+    i32 = pto.int32
 
     ptr_type = pto.PtrType(dtype)
-    tensor_type = pto.TensorType(rank=1, dtype=dtype)
-    subtensor_row = pto.SubTensorType(shape=[1, cols], dtype=dtype)
-    subtensor_half = pto.SubTensorType(shape=[1, half], dtype=dtype)
+    tensor_type    = pto.TensorType(rank=1, dtype=dtype)
+    subtensor_tile = pto.SubTensorType(shape=[1, TILE_LENGTH], dtype=dtype)
+    subtensor_half = pto.SubTensorType(shape=[1, TILE_HALF],   dtype=dtype)
     tile_row = pto.TileBufType(
-        shape=[1, cols], valid_shape=[1, cols],
+        shape=[1, TILE_LENGTH], valid_shape=[1, TILE_LENGTH],
         dtype=dtype, memory_space="VEC", config=tile_cfg,
     )
     tile_half = pto.TileBufType(
-        shape=[1, half], valid_shape=[1, half],
+        shape=[1, TILE_HALF], valid_shape=[1, TILE_HALF],
         dtype=dtype, memory_space="VEC", config=tile_cfg,
     )
 
     return {
-        "ptr_type": ptr_type,
-        "index_dtype": pto.int32,
-        "tensor_type": tensor_type,
-        "subtensor_row": subtensor_row,
+        "ptr_type":      ptr_type,
+        "index_dtype":   i32,
+        "tensor_type":   tensor_type,
+        "subtensor_tile": subtensor_tile,
         "subtensor_half": subtensor_half,
-        "tile_row": tile_row,
+        "tile_row":  tile_row,
         "tile_half": tile_half,
     }
 
 
-def build_hadamard_kernel(fn_name="hadamard_kernel", dtype=None, cols=32):
-    assert cols > 0 and (cols & (cols - 1) == 0), "cols (n) must be a power of two."
-    log2_n = cols.bit_length() - 1
-    half = cols // 2
+def build_hadamard_kernel_dynamic(fn_name="hadamard_kernel_dynamic", dtype=None):
+    """Hadamard kernel tiled at TILE_LENGTH=32 using P0101/P1010 gather patterns.
 
-    _meta_data = lambda: meta_data(dtype, cols)
+    Kernel arguments:
+      arg0    – src ptr
+      arg1    – out ptr
+      argRows – number of rows  (int32, runtime)
+      argCols – number of cols  (int32, runtime, must be a power-of-2 multiple of TILE_LENGTH)
+      argLog  – log2(argCols)  (int32, runtime)
+    """
+    _meta_data = lambda: meta_data(dtype)
 
     def _kernel(
-        arg0: "ptr_type",
-        arg1: "ptr_type",
-        argN: "index_dtype",
+        arg0:    "ptr_type",
+        arg1:    "ptr_type",
+        argRows: "index_dtype",
+        argCols: "index_dtype",
+        argLog:  "index_dtype",
     ) -> None:
-        c0 = const(0)
-        c1 = const(1)
-        ccol = const(cols)
-        chalf = const(half)
-        clog = const(log2_n)
+        c0    = const(0)
+        c1    = const(1)
+        ctile = const(TILE_LENGTH)
+        chalf = const(TILE_HALF)
 
-        crow = pto.index_cast(argN)
-        cid = pto.get_block_idx()
-        sub_bid = pto.get_subblock_idx()
+        crow = pto.index_cast(argRows)
+        ccol = pto.index_cast(argCols)
+        clog = pto.index_cast(argLog)  # log2(cols); cols must be a power-of-2 multiple of TILE_LENGTH
+
+        cid      = pto.get_block_idx()
+        sub_bid  = pto.get_subblock_idx()
         sub_bnum = pto.get_subblock_num()
-        vid = cid * sub_bnum + sub_bid
+        vid      = cid * sub_bnum + sub_bid
         num_blocks = pto.get_block_num()
 
-        vid_idx = pto.index_cast(vid)
+        vid_idx   = pto.index_cast(vid)
         num_cores = pto.index_cast(num_blocks)
 
-        total_elements = crow * ccol
-        rows_per_core = pto.ceil_div(crow, num_cores)
+        total_elements  = crow * ccol
+        tiles_per_row   = pto.ceil_div(ccol, ctile)
+        rows_per_core   = pto.ceil_div(crow, num_cores)
         row_offset_this_core = vid_idx * rows_per_core
 
         with pto.vector_section():
@@ -86,46 +101,36 @@ def build_hadamard_kernel(fn_name="hadamard_kernel", dtype=None, cols=32):
 
             with pto.if_context(row_offset_this_core < crow):
                 rows_end_this_core = row_offset_this_core + rows_per_core
-                need_truncate = rows_end_this_core > crow
+                need_truncate  = rows_end_this_core > crow
                 remaining_rows = crow - row_offset_this_core
                 rows_to_process = pto.select(need_truncate, remaining_rows, rows_per_core)
 
                 for i in pto.for_range(c0, rows_to_process, c1):
-                    row_idx = i + row_offset_this_core
-                    offset = row_idx * ccol
+                    row_idx  = i + row_offset_this_core
+                    row_base = row_idx * ccol
 
-                    sv_src_row = pto.slice_view(subtensor_row,  source=tv_src, offsets=[offset],         sizes=[ccol])
-                    sv_src_hi  = pto.slice_view(subtensor_half, source=tv_src, offsets=[offset + chalf], sizes=[chalf])
-                    sv_out_row = pto.slice_view(subtensor_row,  source=tv_out, offsets=[offset],         sizes=[ccol])
-                    sv_out_lo  = pto.slice_view(subtensor_half, source=tv_out, offsets=[offset],         sizes=[chalf])
-                    sv_out_hi  = pto.slice_view(subtensor_half, source=tv_out, offsets=[offset + chalf], sizes=[chalf])
+                    for t in pto.for_range(c0, tiles_per_row, c1):
+                        tile_base = row_base + t * ctile
 
-                    pto.load(sv_src_row, xTile)
-                    # pto.barrier("TLOAD")
-                    pto.load(sv_src_hi, oddTile)
-                    # pto.barrier("TLOAD")
+                        sv_src_tile = pto.slice_view(subtensor_tile, source=tv_src, offsets=[tile_base],         sizes=[ctile])
+                        sv_out_tile = pto.slice_view(subtensor_tile, source=tv_out, offsets=[tile_base],         sizes=[ctile])
+                        sv_out_lo   = pto.slice_view(subtensor_half, source=tv_out, offsets=[tile_base],         sizes=[chalf])
+                        sv_out_hi   = pto.slice_view(subtensor_half, source=tv_out, offsets=[tile_base + chalf], sizes=[chalf])
 
-                    for stage in pto.for_range(c0, clog, c1):
-                        pto.gather(xTile, evenTile, mask_pattern="P0101")
-                        # pto.barrier("TVEC")
-                        pto.gather(xTile, oddTile,  mask_pattern="P1010")
-                        #pto.barrier("TVEC")
-                        pto.add(evenTile, oddTile, sumTile)
-                        # pto.barrier("TVEC")
-                        pto.sub(evenTile, oddTile, diffTile)
-                        # pto.barrier("TVEC")
-                        pto.store(sumTile,  sv_out_lo)
-                        # pto.barrier("TSTORE_VEC")
-                        pto.store(diffTile, sv_out_hi)
-                        # pto.barrier("TSTORE_VEC")
-                        pto.load(sv_out_row, xTile)
-                        # pto.barrier("TLOAD")
-                        pto.load(sv_out_hi, oddTile)
-                        # pto.barrier("TLOAD")
+                        pto.load(sv_src_tile, xTile)
+
+                        for stage in pto.for_range(c0, clog, c1):
+                            pto.gather(xTile, evenTile, mask_pattern="P0101")
+                            pto.gather(xTile, oddTile,  mask_pattern="P1010")
+                            pto.add(evenTile, oddTile, sumTile)
+                            pto.sub(evenTile, oddTile, diffTile)
+                            pto.store(sumTile,  sv_out_lo)
+                            pto.store(diffTile, sv_out_hi)
+                            pto.load(sv_out_tile, xTile)
 
     _kernel.__name__ = fn_name
     return to_ir_module(meta_data=_meta_data)(_kernel)
 
 
 if __name__ == "__main__":
-    print(build_hadamard_kernel(dtype="float32", cols=32))
+    print(build_hadamard_kernel_dynamic(dtype="float32"))

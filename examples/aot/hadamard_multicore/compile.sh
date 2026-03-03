@@ -3,21 +3,18 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-DTYPE=${1:?Usage: compile.sh <dtype> <n>}
-N=${2:?Usage: compile.sh <dtype> <n>}
-
-CASE_ID="${DTYPE}_n${N}"
+DTYPE=${1:?Usage: compile.sh <dtype>}
+KERNEL_ID="${DTYPE}_dynamic"
 
 # TMP=$(mktemp -d)
 # trap "rm -rf $TMP" EXIT
 
-# # Generate IR and compile the hadamard kernel
-# python "$SCRIPT_DIR/gen_ir.py" "$DTYPE" "$N" > "$SCRIPT_DIR/${CASE_ID}.pto"
-# ptoas --enable-insert-sync "$SCRIPT_DIR/${CASE_ID}.pto" -o "$SCRIPT_DIR/${CASE_ID}.cpp"
-# #ptoas "$SCRIPT_DIR/${CASE_ID}.pto" -o "$SCRIPT_DIR/${CASE_ID}.cpp"
+# # Generate IR and compile the kernel
+# python "$SCRIPT_DIR/gen_ir.py" "$DTYPE" > "$SCRIPT_DIR/${KERNEL_ID}.pto"
+# ptoas --enable-insert-sync "$SCRIPT_DIR/${KERNEL_ID}.pto" -o "$SCRIPT_DIR/${KERNEL_ID}.cpp"
 
 # # Generate caller.cpp
-# python "$SCRIPT_DIR/caller.py" "$DTYPE" "$N" > "$SCRIPT_DIR/caller.cpp"
+# python "$SCRIPT_DIR/caller.py" "$DTYPE" > "$SCRIPT_DIR/caller.cpp"
 
 PTO_LIB_PATH=/sources/pto-isa
 bisheng \
@@ -33,7 +30,6 @@ bisheng \
     --npu-arch=dav-2201 -DMEMORY_BASE \
     -std=gnu++17 \
     "$SCRIPT_DIR/caller.cpp" \
-    -o "$SCRIPT_DIR/${CASE_ID}_lib.so"
+    -o "$SCRIPT_DIR/${KERNEL_ID}_lib.so"
 
-
-echo "Built ${CASE_ID}_lib.so successfully."
+echo "Built ${KERNEL_ID}_lib.so successfully. (reusable for any shape)"
