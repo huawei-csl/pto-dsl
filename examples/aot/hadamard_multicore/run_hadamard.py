@@ -39,15 +39,14 @@ def compile_kernel(dtype, n):
 
 
 def fwht_ref(x: torch.Tensor) -> torch.Tensor:
-    """log2(n)-stage loop: single P0101 gather + direct load of second half per stage."""
+    """log2(n)-stage loop: P0101 gather for even elements, P1010 gather for odd elements."""
     x = x.clone()
     n = x.shape[-1]
     log2_n = n.bit_length() - 1
-    log2_n = 1
     flat = x.view(-1, n)
     for _ in range(log2_n):
         even = flat[:, 0::2].clone()    # P0101 gather
-        odd  = flat[:, n // 2:].clone() # direct load of second half
+        odd  = flat[:, 1::2].clone()    # P1010 gather
         flat[:, :n // 2] = even + odd
         flat[:, n // 2:] = even - odd
     return x

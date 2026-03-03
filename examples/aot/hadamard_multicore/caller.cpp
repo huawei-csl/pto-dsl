@@ -1,4 +1,4 @@
-#include "float16_n32.cpp"
+#include "float16_n32_edited_full.cpp"
 
 extern "C" void call_float16_n32(
     void *stream, uint8_t *src, uint8_t *out, int32_t rows)

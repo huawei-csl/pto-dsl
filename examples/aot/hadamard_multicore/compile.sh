@@ -8,16 +8,16 @@ N=${2:?Usage: compile.sh <dtype> <n>}
 
 CASE_ID="${DTYPE}_n${N}"
 
-TMP=$(mktemp -d)
-trap "rm -rf $TMP" EXIT
+# TMP=$(mktemp -d)
+# trap "rm -rf $TMP" EXIT
 
-# Generate IR and compile the hadamard kernel
-python "$SCRIPT_DIR/gen_ir.py" "$DTYPE" "$N" > "$SCRIPT_DIR/${CASE_ID}.pto"
-#ptoas --enable-insert-sync "$SCRIPT_DIR/${CASE_ID}.pto" -o "$SCRIPT_DIR/${CASE_ID}.cpp"
-ptoas "$SCRIPT_DIR/${CASE_ID}.pto" -o "$SCRIPT_DIR/${CASE_ID}.cpp"
+# # Generate IR and compile the hadamard kernel
+# python "$SCRIPT_DIR/gen_ir.py" "$DTYPE" "$N" > "$SCRIPT_DIR/${CASE_ID}.pto"
+# ptoas --enable-insert-sync "$SCRIPT_DIR/${CASE_ID}.pto" -o "$SCRIPT_DIR/${CASE_ID}.cpp"
+# #ptoas "$SCRIPT_DIR/${CASE_ID}.pto" -o "$SCRIPT_DIR/${CASE_ID}.cpp"
 
-# Generate caller.cpp
-python "$SCRIPT_DIR/caller.py" "$DTYPE" "$N" > "$SCRIPT_DIR/caller.cpp"
+# # Generate caller.cpp
+# python "$SCRIPT_DIR/caller.py" "$DTYPE" "$N" > "$SCRIPT_DIR/caller.cpp"
 
 PTO_LIB_PATH=/sources/pto-isa
 bisheng \

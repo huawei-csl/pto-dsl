@@ -101,23 +101,27 @@ def build_hadamard_kernel(fn_name="hadamard_kernel", dtype=None, cols=32):
                     sv_out_hi  = pto.slice_view(subtensor_half, source=tv_out, offsets=[offset + chalf], sizes=[chalf])
 
                     pto.load(sv_src_row, xTile)
+                    # pto.barrier("TLOAD")
                     pto.load(sv_src_hi, oddTile)
-                    pto.barrier("TLOAD")
+                    # pto.barrier("TLOAD")
 
-                    for stage in pto.for_range(c0, c1, c1):
+                    for stage in pto.for_range(c0, clog, c1):
                         pto.gather(xTile, evenTile, mask_pattern="P0101")
-                        pto.barrier("TVEC")
-                        #pto.gather(xTile, oddTile,  mask_pattern="P1010")
+                        # pto.barrier("TVEC")
+                        pto.gather(xTile, oddTile,  mask_pattern="P1010")
+                        #pto.barrier("TVEC")
                         pto.add(evenTile, oddTile, sumTile)
-                        pto.barrier("TVEC")
+                        # pto.barrier("TVEC")
                         pto.sub(evenTile, oddTile, diffTile)
-                        pto.barrier("TVEC")
+                        # pto.barrier("TVEC")
                         pto.store(sumTile,  sv_out_lo)
+                        # pto.barrier("TSTORE_VEC")
                         pto.store(diffTile, sv_out_hi)
-                        pto.barrier("TSTORE_VEC")
+                        # pto.barrier("TSTORE_VEC")
                         pto.load(sv_out_row, xTile)
+                        # pto.barrier("TLOAD")
                         pto.load(sv_out_hi, oddTile)
-                        pto.barrier("TLOAD")
+                        # pto.barrier("TLOAD")
 
     _kernel.__name__ = fn_name
     return to_ir_module(meta_data=_meta_data)(_kernel)
