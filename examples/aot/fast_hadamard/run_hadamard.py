@@ -86,20 +86,22 @@ def test_hadamard(lib_path, block_dim=24):
                 torch.testing.assert_close(x, y_ref)
             except AssertionError as err:
                 is_match = False
-                detail = str(err).splitlines()[0] if str(err) else "assert_close failed"
+                detail = str(err).strip() if str(err) else "assert_close failed"
 
             status = "match" if is_match else "mismatch"
             print(f"[{status}] batch={batch}, n={n}, lib={lib_path}")
             if detail:
-                print(f"  detail: {detail}")
+                print("  detail:")
+                print(detail)
             results.append((batch, n, status, detail))
 
     print(f"detailed summary for {lib_path}:")
     for batch, n, status, detail in results:
         msg = f"  batch={batch}, n={n}, status={status}"
-        if detail:
-            msg += f", detail={detail}"
         print(msg)
+        if detail:
+            print("    detail:")
+            print(detail)
     return results
 
 
