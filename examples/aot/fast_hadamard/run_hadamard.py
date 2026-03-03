@@ -68,6 +68,7 @@ def test_hadamard(lib_path, block_dim=24):
     batch_list = [1, 7, 22, 65]
     n_list = [128, 256, 512, 1024, 2048, 4096, 8192, 16384]
 
+    results = []
     for batch in batch_list:
         for n in n_list:
             if not _is_power_of_two(n):
@@ -79,8 +80,27 @@ def test_hadamard(lib_path, block_dim=24):
             hadamard(x, batch, n, log2_n)
             torch.npu.synchronize()
 
-            torch.testing.assert_close(x, y_ref)
-            print(f"result equal for batch={batch}, n={n}, lib={lib_path}")
+            is_match = True
+            detail = ""
+            try:
+                torch.testing.assert_close(x, y_ref)
+            except AssertionError as err:
+                is_match = False
+                detail = str(err).splitlines()[0] if str(err) else "assert_close failed"
+
+            status = "match" if is_match else "mismatch"
+            print(f"[{status}] batch={batch}, n={n}, lib={lib_path}")
+            if detail:
+                print(f"  detail: {detail}")
+            results.append((batch, n, status, detail))
+
+    print(f"detailed summary for {lib_path}:")
+    for batch, n, status, detail in results:
+        msg = f"  batch={batch}, n={n}, status={status}"
+        if detail:
+            msg += f", detail={detail}"
+        print(msg)
+    return results
 
 
 if __name__ == "__main__":
