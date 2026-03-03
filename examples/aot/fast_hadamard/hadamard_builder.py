@@ -77,12 +77,11 @@ def build_fast_hadamard(fn_name="fast_hadamard_fp16", manual_sync=False):
             with pto.if_context(valid_n):
                 with pto.if_context(within_tile):
                     bid = pto.index_cast(pto.get_block_idx())
-                    sub_bid = pto.index_cast(pto.get_subblock_idx())
-                    sub_bnum = pto.index_cast(pto.get_subblock_num())
                     num_blocks = pto.index_cast(pto.get_block_num())
 
-                    vid = bid * sub_bnum + sub_bid
-                    num_cores = num_blocks * sub_bnum
+                    # Match reference kernel partitioning: block-level split only.
+                    vid = bid
+                    num_cores = num_blocks
 
                     samples_per_core = pto.ceil_div(batch, num_cores)
                     sample_offset = vid * samples_per_core
@@ -145,8 +144,12 @@ def build_fast_hadamard(fn_name="fast_hadamard_fp16", manual_sync=False):
 
                                             pto.gather(tb_row, tb_even, mask_pattern="P0101")
                                             pto.gather(tb_row, tb_odd, mask_pattern="P1010")
+                                            if manual_sync:
+                                                pto.barrier("VEC")
                                             pto.add(tb_even, tb_odd, tb_first)
                                             pto.sub(tb_even, tb_odd, tb_second)
+                                            if manual_sync:
+                                                pto.barrier("VEC")
 
                                             sv_first = pto.slice_view(
                                                 subtensor_half,
@@ -204,8 +207,12 @@ def build_fast_hadamard(fn_name="fast_hadamard_fp16", manual_sync=False):
                                                 pto.gather(
                                                     tb_row, tb_odd, mask_pattern="P1010"
                                                 )
+                                                if manual_sync:
+                                                    pto.barrier("VEC")
                                                 pto.add(tb_even, tb_odd, tb_first)
                                                 pto.sub(tb_even, tb_odd, tb_second)
+                                                if manual_sync:
+                                                    pto.barrier("VEC")
 
                                                 sv_first = pto.slice_view(
                                                     subtensor_half,

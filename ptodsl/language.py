@@ -402,3 +402,7 @@ def record_wait_pair(record_op, wait_op, event_id=0):
     ev = _resolve_event_id(event_id)
     pto.record_event(rec, w, ev)
     pto.wait_event(rec, w, ev)
+
+
+def barrier(sync_op):
+    pto.barrier(_resolve_sync_op(sync_op))
