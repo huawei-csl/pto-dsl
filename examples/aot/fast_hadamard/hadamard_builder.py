@@ -91,11 +91,19 @@ def build_fast_hadamard(fn_name="fast_hadamard_fp16", manual_sync=False):
                         tensor_type, ptr=x_ptr, shape=[total_elements], strides=[c1]
                     )
 
-                    tb_row = pto.alloc_tile(tile_full)
-                    tb_even = pto.alloc_tile(tile_half)
-                    tb_odd = pto.alloc_tile(tile_half)
-                    tb_first = pto.alloc_tile(tile_half)
-                    tb_second = pto.alloc_tile(tile_half)
+                    # Two independent tile sets (ping/pong) so event_id 0/1 map to
+                    # disjoint UB buffers, matching the manual C++ reference.
+                    tb_row_0 = pto.alloc_tile(tile_full)
+                    tb_even_0 = pto.alloc_tile(tile_half)
+                    tb_odd_0 = pto.alloc_tile(tile_half)
+                    tb_first_0 = pto.alloc_tile(tile_half)
+                    tb_second_0 = pto.alloc_tile(tile_half)
+
+                    tb_row_1 = pto.alloc_tile(tile_full)
+                    tb_even_1 = pto.alloc_tile(tile_half)
+                    tb_odd_1 = pto.alloc_tile(tile_half)
+                    tb_first_1 = pto.alloc_tile(tile_half)
+                    tb_second_1 = pto.alloc_tile(tile_half)
 
                     with pto.if_context(sample_offset < batch):
                         samples_end = sample_offset + samples_per_core
@@ -138,16 +146,16 @@ def build_fast_hadamard(fn_name="fast_hadamard_fp16", manual_sync=False):
 
                                             if manual_sync:
                                                 pto.wait_event("STORE_VEC", "VEC", event_id=0)
-                                            pto.load(sv_row, tb_row)
+                                            pto.load(sv_row, tb_row_0)
                                             if manual_sync:
                                                 pto.record_wait_pair("LOAD", "VEC", event_id=0)
 
-                                            pto.gather(tb_row, tb_even, mask_pattern="P0101")
-                                            pto.gather(tb_row, tb_odd, mask_pattern="P1010")
+                                            pto.gather(tb_row_0, tb_even_0, mask_pattern="P0101")
+                                            pto.gather(tb_row_0, tb_odd_0, mask_pattern="P1010")
                                             if manual_sync:
                                                 pto.barrier("VEC")
-                                            pto.add(tb_even, tb_odd, tb_first)
-                                            pto.sub(tb_even, tb_odd, tb_second)
+                                            pto.add(tb_even_0, tb_odd_0, tb_first_0)
+                                            pto.sub(tb_even_0, tb_odd_0, tb_second_0)
                                             if manual_sync:
                                                 pto.barrier("VEC")
 
@@ -168,11 +176,11 @@ def build_fast_hadamard(fn_name="fast_hadamard_fp16", manual_sync=False):
                                                 pto.record_wait_pair(
                                                     "VEC", "STORE_VEC", event_id=0
                                                 )
-                                            pto.store(tb_first, sv_first)
+                                            pto.store(tb_first_0, sv_first)
                                             # `pto.barrier("STORE_VEC")` needs fix https://github.com/huawei-csl/pto-dsl/pull/52
                                             # if manual_sync:
                                             #     pto.barrier("STORE_VEC")
-                                            pto.store(tb_second, sv_second)
+                                            pto.store(tb_second_0, sv_second)
                                             if manual_sync:
                                                 pto.record_event(
                                                     "STORE_VEC", "VEC", event_id=0
@@ -198,22 +206,22 @@ def build_fast_hadamard(fn_name="fast_hadamard_fp16", manual_sync=False):
                                                     pto.wait_event(
                                                         "STORE_VEC", "VEC", event_id=1
                                                     )
-                                                pto.load(sv_row, tb_row)
+                                                pto.load(sv_row, tb_row_1)
                                                 if manual_sync:
                                                     pto.record_wait_pair(
                                                         "LOAD", "VEC", event_id=1
                                                     )
 
                                                 pto.gather(
-                                                    tb_row, tb_even, mask_pattern="P0101"
+                                                    tb_row_1, tb_even_1, mask_pattern="P0101"
                                                 )
                                                 pto.gather(
-                                                    tb_row, tb_odd, mask_pattern="P1010"
+                                                    tb_row_1, tb_odd_1, mask_pattern="P1010"
                                                 )
                                                 if manual_sync:
                                                     pto.barrier("VEC")
-                                                pto.add(tb_even, tb_odd, tb_first)
-                                                pto.sub(tb_even, tb_odd, tb_second)
+                                                pto.add(tb_even_1, tb_odd_1, tb_first_1)
+                                                pto.sub(tb_even_1, tb_odd_1, tb_second_1)
                                                 if manual_sync:
                                                     pto.barrier("VEC")
 
@@ -234,11 +242,11 @@ def build_fast_hadamard(fn_name="fast_hadamard_fp16", manual_sync=False):
                                                     pto.record_wait_pair(
                                                         "VEC", "STORE_VEC", event_id=1
                                                     )
-                                                pto.store(tb_first, sv_first)
+                                                pto.store(tb_first_1, sv_first)
                                                 # `pto.barrier("STORE_VEC")` needs fix https://github.com/huawei-csl/pto-dsl/pull/52
                                                 # if manual_sync:
                                                 #     pto.barrier("STORE_VEC")
-                                                pto.store(tb_second, sv_second)
+                                                pto.store(tb_second_1, sv_second)
                                                 if manual_sync:
                                                     pto.record_event(
                                                         "STORE_VEC", "VEC", event_id=1
