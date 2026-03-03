@@ -19,14 +19,14 @@ def meta_data():
     tile_cfg = pto.TileBufConfig()
     tile_full = pto.TileBufType(
         shape=[1, ELEMENTS_PER_TILE],
-        valid_shape=[1, ELEMENTS_PER_TILE],
+        valid_shape=[1, -1],
         dtype=dtype,
         memory_space="VEC",
         config=tile_cfg,
     )
     tile_half = pto.TileBufType(
         shape=[1, HALF_ELEMENTS_PER_TILE],
-        valid_shape=[1, HALF_ELEMENTS_PER_TILE],
+        valid_shape=[1, -1],
         dtype=dtype,
         memory_space="VEC",
         config=tile_cfg,
@@ -93,17 +93,13 @@ def build_fast_hadamard(fn_name="fast_hadamard_fp16", manual_sync=False):
 
                     # Two independent tile sets (ping/pong) so event_id 0/1 map to
                     # disjoint UB buffers, matching the manual C++ reference.
-                    tb_row_0 = pto.alloc_tile(tile_full)
-                    tb_even_0 = pto.alloc_tile(tile_half)
-                    tb_odd_0 = pto.alloc_tile(tile_half)
-                    tb_first_0 = pto.alloc_tile(tile_half)
-                    tb_second_0 = pto.alloc_tile(tile_half)
+                    tb_row_0 = pto.alloc_tile(tile_full, valid_col=n)
+                    tb_even_0 = pto.alloc_tile(tile_half, valid_col=n // c2)
+                    tb_odd_0 = pto.alloc_tile(tile_half, valid_col=n // c2)
 
-                    tb_row_1 = pto.alloc_tile(tile_full)
-                    tb_even_1 = pto.alloc_tile(tile_half)
-                    tb_odd_1 = pto.alloc_tile(tile_half)
-                    tb_first_1 = pto.alloc_tile(tile_half)
-                    tb_second_1 = pto.alloc_tile(tile_half)
+                    tb_row_1 = pto.alloc_tile(tile_full, valid_col=n)
+                    tb_even_1 = pto.alloc_tile(tile_half, valid_col=n // c2)
+                    tb_odd_1 = pto.alloc_tile(tile_half, valid_col=n // c2)
 
                     with pto.if_context(sample_offset < batch):
                         samples_end = sample_offset + samples_per_core
@@ -132,24 +128,30 @@ def build_fast_hadamard(fn_name="fast_hadamard_fp16", manual_sync=False):
                                 use_ev0 = pto.eq(chunk_i % c2, c0)
 
                                 with pto.if_context(use_ev0, has_else=True) as branch:
-                                    if manual_sync:
-                                        pto.wait_event("VEC", "LOAD", event_id=0)
                                     for s in pto.for_range(c0, cur_samples, c1):
                                         row_offset = gm_offset + s * n
+                                        sv_row = pto.slice_view(
+                                            subtensor_full,
+                                            source=tv_x,
+                                            offsets=[row_offset],
+                                            sizes=[n],
+                                        )
+                                        # Alias row halves inside UB row tile (no GM round-trip
+                                        # per Hadamard iteration).
+                                        tb_first_0 = pto.subset(
+                                            tb_row_0, [c0, c0], [1, HALF_ELEMENTS_PER_TILE]
+                                        )
+                                        tb_second_0 = pto.subset(
+                                            tb_row_0, [c0, n_half], [1, HALF_ELEMENTS_PER_TILE]
+                                        )
+
+                                        if manual_sync:
+                                            pto.wait_event("VEC", "LOAD", event_id=0)
+                                        pto.load(sv_row, tb_row_0)
+                                        if manual_sync:
+                                            pto.record_wait_pair("LOAD", "VEC", event_id=0)
+
                                         for _ in pto.for_range(c0, log2_n, c1):
-                                            sv_row = pto.slice_view(
-                                                subtensor_full,
-                                                source=tv_x,
-                                                offsets=[row_offset],
-                                                sizes=[n],
-                                            )
-
-                                            if manual_sync:
-                                                pto.wait_event("STORE_VEC", "VEC", event_id=0)
-                                            pto.load(sv_row, tb_row_0)
-                                            if manual_sync:
-                                                pto.record_wait_pair("LOAD", "VEC", event_id=0)
-
                                             pto.gather(tb_row_0, tb_even_0, mask_pattern="P0101")
                                             pto.gather(tb_row_0, tb_odd_0, mask_pattern="P1010")
                                             if manual_sync:
@@ -159,65 +161,38 @@ def build_fast_hadamard(fn_name="fast_hadamard_fp16", manual_sync=False):
                                             if manual_sync:
                                                 pto.barrier("VEC")
 
-                                            sv_first = pto.slice_view(
-                                                subtensor_half,
-                                                source=tv_x,
-                                                offsets=[row_offset],
-                                                sizes=[n_half],
-                                            )
-                                            sv_second = pto.slice_view(
-                                                subtensor_half,
-                                                source=tv_x,
-                                                offsets=[row_offset + n_half],
-                                                sizes=[n_half],
-                                            )
-
-                                            if manual_sync:
-                                                pto.record_wait_pair(
-                                                    "VEC", "STORE_VEC", event_id=0
-                                                )
-                                            pto.store(tb_first_0, sv_first)
-                                            if manual_sync:
-                                                # Equivalent to the generated C++ set/wait sync
-                                                # pair between half stores.
-                                                pto.wait_event(
-                                                    "STORE_VEC", "VEC", event_id=0
-                                                )
-                                                pto.wait_event(
-                                                    "VEC", "STORE_VEC", event_id=0
-                                                )
-                                            pto.store(tb_second_0, sv_second)
-                                            if manual_sync:
-                                                pto.record_event(
-                                                    "STORE_VEC", "VEC", event_id=0
-                                                )
-
-                                    if manual_sync:
-                                        pto.record_event("VEC", "LOAD", event_id=0)
+                                        if manual_sync:
+                                            pto.record_wait_pair("VEC", "STORE_VEC", event_id=0)
+                                        pto.store(tb_row_0, sv_row)
+                                        if manual_sync:
+                                            pto.record_event("STORE_VEC", "VEC", event_id=0)
+                                            pto.record_event("VEC", "LOAD", event_id=0)
 
                                     with branch.else_context():
-                                        if manual_sync:
-                                            pto.wait_event("VEC", "LOAD", event_id=1)
                                         for s in pto.for_range(c0, cur_samples, c1):
                                             row_offset = gm_offset + s * n
+                                            sv_row = pto.slice_view(
+                                                subtensor_full,
+                                                source=tv_x,
+                                                offsets=[row_offset],
+                                                sizes=[n],
+                                            )
+                                            # Alias row halves inside UB row tile (no GM round-trip
+                                            # per Hadamard iteration).
+                                            tb_first_1 = pto.subset(
+                                                tb_row_1, [c0, c0], [1, HALF_ELEMENTS_PER_TILE]
+                                            )
+                                            tb_second_1 = pto.subset(
+                                                tb_row_1, [c0, n_half], [1, HALF_ELEMENTS_PER_TILE]
+                                            )
+
+                                            if manual_sync:
+                                                pto.wait_event("VEC", "LOAD", event_id=1)
+                                            pto.load(sv_row, tb_row_1)
+                                            if manual_sync:
+                                                pto.record_wait_pair("LOAD", "VEC", event_id=1)
+
                                             for _ in pto.for_range(c0, log2_n, c1):
-                                                sv_row = pto.slice_view(
-                                                    subtensor_full,
-                                                    source=tv_x,
-                                                    offsets=[row_offset],
-                                                    sizes=[n],
-                                                )
-
-                                                if manual_sync:
-                                                    pto.wait_event(
-                                                        "STORE_VEC", "VEC", event_id=1
-                                                    )
-                                                pto.load(sv_row, tb_row_1)
-                                                if manual_sync:
-                                                    pto.record_wait_pair(
-                                                        "LOAD", "VEC", event_id=1
-                                                    )
-
                                                 pto.gather(
                                                     tb_row_1, tb_even_1, mask_pattern="P0101"
                                                 )
@@ -231,41 +206,14 @@ def build_fast_hadamard(fn_name="fast_hadamard_fp16", manual_sync=False):
                                                 if manual_sync:
                                                     pto.barrier("VEC")
 
-                                                sv_first = pto.slice_view(
-                                                    subtensor_half,
-                                                    source=tv_x,
-                                                    offsets=[row_offset],
-                                                    sizes=[n_half],
+                                            if manual_sync:
+                                                pto.record_wait_pair(
+                                                    "VEC", "STORE_VEC", event_id=1
                                                 )
-                                                sv_second = pto.slice_view(
-                                                    subtensor_half,
-                                                    source=tv_x,
-                                                    offsets=[row_offset + n_half],
-                                                    sizes=[n_half],
-                                                )
-
-                                                if manual_sync:
-                                                    pto.record_wait_pair(
-                                                        "VEC", "STORE_VEC", event_id=1
-                                                    )
-                                                pto.store(tb_first_1, sv_first)
-                                                if manual_sync:
-                                                    # Equivalent to the generated C++ set/wait sync
-                                                    # pair between half stores.
-                                                    pto.wait_event(
-                                                        "STORE_VEC", "VEC", event_id=1
-                                                    )
-                                                    pto.wait_event(
-                                                        "VEC", "STORE_VEC", event_id=1
-                                                    )
-                                                pto.store(tb_second_1, sv_second)
-                                                if manual_sync:
-                                                    pto.record_event(
-                                                        "STORE_VEC", "VEC", event_id=1
-                                                    )
-
-                                        if manual_sync:
-                                            pto.record_event("VEC", "LOAD", event_id=1)
+                                            pto.store(tb_row_1, sv_row)
+                                            if manual_sync:
+                                                pto.record_event("STORE_VEC", "VEC", event_id=1)
+                                                pto.record_event("VEC", "LOAD", event_id=1)
 
                         if manual_sync:
                             pto.wait_event("VEC", "LOAD", event_id=0)

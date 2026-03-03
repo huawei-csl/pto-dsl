@@ -227,6 +227,11 @@ def alloc_tile(tile_type, *, valid_row=None, valid_col=None):
     return pto.AllocTileOp(tile_type, **kwargs).result
 
 
+def subset(source, offsets, sizes):
+    offset_vals = [_unwrap(v) for v in offsets]
+    return pto.subset(source, offset_vals, sizes)
+
+
 def load(source, dest):
     pto.TLoadOp(None, source, dest)
 
