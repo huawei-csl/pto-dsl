@@ -169,6 +169,8 @@ def build_fast_hadamard(fn_name="fast_hadamard_fp16", manual_sync=False):
                                                     "VEC", "STORE_VEC", event_id=0
                                                 )
                                             pto.store(tb_first, sv_first)
+                                            if manual_sync:
+                                                pto.barrier("STORE_VEC")
                                             pto.store(tb_second, sv_second)
                                             if manual_sync:
                                                 pto.record_event(
@@ -232,6 +234,8 @@ def build_fast_hadamard(fn_name="fast_hadamard_fp16", manual_sync=False):
                                                         "VEC", "STORE_VEC", event_id=1
                                                     )
                                                 pto.store(tb_first, sv_first)
+                                                if manual_sync:
+                                                    pto.barrier("STORE_VEC")
                                                 pto.store(tb_second, sv_second)
                                                 if manual_sync:
                                                     pto.record_event(
