@@ -13,7 +13,8 @@ trap "rm -rf $TMP" EXIT
 
 # Generate IR and compile the hadamard kernel
 python "$SCRIPT_DIR/gen_ir.py" "$DTYPE" "$N" > "$SCRIPT_DIR/${CASE_ID}.pto"
-ptoas --enable-insert-sync "$SCRIPT_DIR/${CASE_ID}.pto" -o "$SCRIPT_DIR/${CASE_ID}.cpp"
+#ptoas --enable-insert-sync "$SCRIPT_DIR/${CASE_ID}.pto" -o "$SCRIPT_DIR/${CASE_ID}.cpp"
+ptoas "$SCRIPT_DIR/${CASE_ID}.pto" -o "$SCRIPT_DIR/${CASE_ID}.cpp"
 
 # Generate caller.cpp
 python "$SCRIPT_DIR/caller.py" "$DTYPE" "$N" > "$SCRIPT_DIR/caller.cpp"

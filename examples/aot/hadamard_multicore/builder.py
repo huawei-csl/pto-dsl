@@ -102,19 +102,22 @@ def build_hadamard_kernel(fn_name="hadamard_kernel", dtype=None, cols=32):
 
                     pto.load(sv_src_row, xTile)
                     pto.load(sv_src_hi, oddTile)
-                    #pto.record_wait_pair("LOAD", "STORE_VEC")
+                    pto.barrier("TLOAD")
 
-                    #for stage in pto.for_range(c0, clog, c1):
-                    pto.gather(xTile, evenTile, mask_pattern="P0101")
-                    #pto.gather(xTile, oddTile,  mask_pattern="P1010")
-                    pto.add(evenTile, oddTile, sumTile)
-                    pto.sub(evenTile, oddTile, diffTile)
-                    pto.store(sumTile,  sv_out_lo)
-                    pto.store(diffTile, sv_out_hi)
-                    #pto.record_wait_pair("STORE_VEC", "LOAD")
-                    pto.load(sv_out_row, xTile)
-                    pto.load(sv_out_hi, oddTile)
-                    #pto.record_wait_pair("LOAD", "STORE_VEC")
+                    for stage in pto.for_range(c0, c1, c1):
+                        pto.gather(xTile, evenTile, mask_pattern="P0101")
+                        pto.barrier("TVEC")
+                        #pto.gather(xTile, oddTile,  mask_pattern="P1010")
+                        pto.add(evenTile, oddTile, sumTile)
+                        pto.barrier("TVEC")
+                        pto.sub(evenTile, oddTile, diffTile)
+                        pto.barrier("TVEC")
+                        pto.store(sumTile,  sv_out_lo)
+                        pto.store(diffTile, sv_out_hi)
+                        pto.barrier("TSTORE_VEC")
+                        pto.load(sv_out_row, xTile)
+                        pto.load(sv_out_hi, oddTile)
+                        pto.barrier("TLOAD")
 
     _kernel.__name__ = fn_name
     return to_ir_module(meta_data=_meta_data)(_kernel)
