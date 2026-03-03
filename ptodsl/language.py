@@ -258,9 +258,9 @@ def or_(lhs, rhs, out):
 def gather(src, out, indices=None, *, mask_pattern=None):
     if mask_pattern is not None:
         mp = pto.MaskPatternAttr.get(getattr(pto.MaskPattern, mask_pattern))
-        pto.TGatherOp(src, out, maskPattern=mp)
+        pto.TGatherOp(src = src, dst = out, maskPattern=mp)
     else:
-        pto.TGatherOp(src, out, indices=indices)
+        pto.TGatherOp(src = src, dst = out, indices=indices)
 
 
 def exp(inp, out):
@@ -335,6 +335,7 @@ def select(cond, true_val, false_val):
     return Value(arith.SelectOp(_unwrap(cond), _unwrap(true_val), _unwrap(false_val)).result)
 
 
+
 class _IfElseBranch:
     def __init__(self, if_op):
         self._if_op = if_op
@@ -343,6 +344,7 @@ class _IfElseBranch:
         with InsertionPoint(self._if_op.else_block):
             yield
             scf.YieldOp([])
+
 
 @contextmanager
 def if_context(condition, has_else=False):
