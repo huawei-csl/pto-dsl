@@ -1,7 +1,7 @@
 <div align="center">
 
 # PTO-DSL
-Pythonic interface and JIT compiler for [PTO-ISA](https://gitcode.com/cann/pto-isa)
+Pythonic interface and JIT compiler for [PTO-ISA](https://github.com/PTO-ISA/pto-isa)
 </div>
 
 PTO-DSL provides a programming abstraction similar to [cuTile](https://docs.nvidia.com/cuda/cutile-python/), but native to [NPU](https://www.hiascend.com/).

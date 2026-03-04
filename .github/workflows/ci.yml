@@ -60,7 +60,7 @@ jobs:
 
       - name: Clone pto-isa headers
         run: |
-          git clone https://gitcode.com/cann/pto-isa.git /sources/pto-isa
+          git clone https://github.com/PTO-ISA/pto-isa.git /sources/pto-isa
           cd /sources/pto-isa && git checkout ${PTOISA_COMMIT}
 
       - name: Install ptodsl

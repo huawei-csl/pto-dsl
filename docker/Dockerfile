@@ -55,5 +55,5 @@ RUN ptoas --enable-insert-sync ./abs.pto -o ./abs.cpp
 # header on 2026/02/14
 ARG PTOISA_COMMIT=672ee54cb8905bb9f9abbe80ec26ed2054b7a0cc
 WORKDIR /sources
-RUN git clone https://gitcode.com/cann/pto-isa.git \
+RUN git clone https://github.com/PTO-ISA/pto-isa.git \
     && cd pto-isa && git checkout $PTOISA_COMMIT
