@@ -8,7 +8,7 @@ def build(M=128, K=128, N=128):
     def meta_data():
         dtype = pto.float16
         dtype_acc_tile = pto.float32
-        ptr_dtype = pto.PtrType(dtype)
+        ptr_type = pto.PtrType(dtype)
         i32 = pto.int32
         i1 = IntegerType.get_signless(1)
 
@@ -23,22 +23,8 @@ def build(M=128, K=128, N=128):
         tile_buf_aTile = pto.TileBufType(shape=[M, K], dtype=dtype, memory_space="LEFT")
         tile_buf_bTile = pto.TileBufType(shape=[K, N], dtype=dtype, memory_space="RIGHT")
         tile_buf_cTile = pto.TileBufType(shape=[M, N], dtype=dtype_acc_tile, memory_space="ACC")
-
-        return {
-            "ptr_type": ptr_dtype,
-            "i32": i32,
-            "i1": i1,
-            "tensor_type": tensor_type,
-            "tensor_type3d": tensor_type3d,
-            "tile_view_a": tile_view_a,
-            "tile_view_b": tile_view_b,
-            "tile_view_c": tile_view_c,
-            "tile_buf_aMat": tile_buf_aMat,
-            "tile_buf_bMat": tile_buf_bMat,
-            "tile_buf_aTile": tile_buf_aTile,
-            "tile_buf_bTile": tile_buf_bTile,
-            "tile_buf_cTile": tile_buf_cTile,
-        }
+        # TODO: Get rid of this?
+        return locals()
 
     const = pto.const
 
