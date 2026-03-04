@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+from typing import Sequence
 
 from mlir.dialects import arith, pto, scf
 from mlir.ir import F16Type, F32Type, IndexType, InsertionPoint, IntegerType
@@ -70,9 +71,6 @@ class Value:
     def __ge__(self, other):
         return Value._cmp(self, other, arith.CmpIPredicate.sge)
     
-    def __eq__(self, other):
-        return Value._cmp(self, other, arith.CmpIPredicate.eq)
-
     def __eq__(self, other):
         return Value._cmp(self, other, arith.CmpIPredicate.eq)
 
@@ -394,7 +392,7 @@ def _resolve_event_id(event_id):
     return event_id
 
 
-def record_event(record_op, wait_op, event_id: int|list[int]=0):
+def record_event(record_op, wait_op, event_id: int|Sequence[int]=0):
     if isinstance(event_id, list):
         for eid in event_id:
             pto.record_event(_resolve_sync_op(record_op), _resolve_sync_op(wait_op), _resolve_event_id(eid))
@@ -403,7 +401,7 @@ def record_event(record_op, wait_op, event_id: int|list[int]=0):
 
 
 
-def wait_event(record_op, wait_op, event_id: int|list[int]=0):
+def wait_event(record_op, wait_op, event_id: int|Sequence[int]=0):
     if isinstance(event_id, list):
         for eid in event_id:
             pto.wait_event(_resolve_sync_op(record_op), _resolve_sync_op(wait_op), _resolve_event_id(eid))
@@ -411,7 +409,7 @@ def wait_event(record_op, wait_op, event_id: int|list[int]=0):
         pto.wait_event(_resolve_sync_op(record_op), _resolve_sync_op(wait_op), _resolve_event_id(event_id))
 
 
-def record_wait_pair(record_op, wait_op, event_id=0):
+def record_wait_pair(record_op, wait_op, event_id: int|Sequence[int]=0):
     rec = _resolve_sync_op(record_op)
     w = _resolve_sync_op(wait_op)
     ev = _resolve_event_id(event_id)
