@@ -77,11 +77,9 @@ def build_geglu(fn_name="geglu_fp16"):
 
         with pto.vector_section():
             # Guard: n_cols must be in (0, ELEMENTS_PER_TILE].
-            valid_n = pto.gt(n_cols, c0)
-            within_tile = pto.ge(c_tile, n_cols)
 
-            with pto.if_context(valid_n):
-                with pto.if_context(within_tile):
+            with pto.if_context(n_cols > c0):
+                with pto.if_context(c_tile >= n_cols):
                     bid = pto.index_cast(pto.get_block_idx())
                     num_cores = pto.index_cast(pto.get_block_num())
 
@@ -137,24 +135,24 @@ def build_geglu(fn_name="geglu_fp16"):
 
                             # Derive constants from data (no scalar-tile broadcast needed):
                             #   a - a = 0  =>  exp(0) = 1.0
-                            pto.sub(tb_a, tb_a, tb_tmp2)   # tmp2 = 0.0
-                            pto.exp(tb_tmp2, tb_ones)       # ones = 1.0
+                            pto.sub(tb_a, tb_a, tb_tmp2)  # tmp2 = 0.0
+                            pto.exp(tb_tmp2, tb_ones)  # ones = 1.0
 
                             # tanh(a) = (exp(2a) - 1) / (exp(2a) + 1)
-                            pto.add(tb_a, tb_a, tb_tmp1)          # tmp1 = 2a
-                            pto.exp(tb_tmp1, tb_tmp1)              # tmp1 = exp(2a)
-                            pto.sub(tb_tmp1, tb_ones, tb_tmp2)     # tmp2 = exp(2a) - 1
-                            pto.add(tb_tmp1, tb_ones, tb_tmp1)     # tmp1 = exp(2a) + 1
-                            pto.div(tb_tmp2, tb_tmp1, tb_tmp2)     # tmp2 = tanh(a)
+                            pto.add(tb_a, tb_a, tb_tmp1)  # tmp1 = 2a
+                            pto.exp(tb_tmp1, tb_tmp1)  # tmp1 = exp(2a)
+                            pto.sub(tb_tmp1, tb_ones, tb_tmp2)  # tmp2 = exp(2a) - 1
+                            pto.add(tb_tmp1, tb_ones, tb_tmp1)  # tmp1 = exp(2a) + 1
+                            pto.div(tb_tmp2, tb_tmp1, tb_tmp2)  # tmp2 = tanh(a)
 
                             # gelu_approx(a) = a * (1 + tanh(a)) / 2
-                            pto.add(tb_ones, tb_tmp2, tb_tmp1)     # tmp1 = 1 + tanh(a)
-                            pto.mul(tb_a, tb_tmp1, tb_tmp1)        # tmp1 = a * (1 + tanh(a))
-                            pto.add(tb_ones, tb_ones, tb_tmp2)     # tmp2 = 2.0
-                            pto.div(tb_tmp1, tb_tmp2, tb_tmp1)     # tmp1 = gelu_approx(a)
+                            pto.add(tb_ones, tb_tmp2, tb_tmp1)  # tmp1 = 1 + tanh(a)
+                            pto.mul(tb_a, tb_tmp1, tb_tmp1)  # tmp1 = a * (1 + tanh(a))
+                            pto.add(tb_ones, tb_ones, tb_tmp2)  # tmp2 = 2.0
+                            pto.div(tb_tmp1, tb_tmp2, tb_tmp1)  # tmp1 = gelu_approx(a)
 
                             # GEGLU: c = gelu_approx(a) * b
-                            pto.mul(tb_tmp1, tb_b, tb_tmp1)        # tmp1 = c
+                            pto.mul(tb_tmp1, tb_b, tb_tmp1)  # tmp1 = c
                             pto.store(tb_tmp1, sv_c)
 
     _ = fn_name

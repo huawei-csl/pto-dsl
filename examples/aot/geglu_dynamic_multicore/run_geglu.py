@@ -53,7 +53,7 @@ def geglu_ref(a, b):
     """
     a_f32 = a.float()
     gelu_a = 0.5 * a_f32 * (1.0 + torch.tanh(a_f32))
-    return (gelu_a.to(a.dtype) * b)
+    return gelu_a.to(a.dtype) * b
 
 
 def test_geglu(lib_path, block_dim=24):
