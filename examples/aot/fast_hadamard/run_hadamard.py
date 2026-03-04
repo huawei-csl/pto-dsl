@@ -65,7 +65,7 @@ def test_hadamard(lib_path, block_dim=24):
 
     torch.manual_seed(0)
     dtype = torch.float16
-    batch_list = [1, 7, 22, 65]
+    batch_list = [1, 7, 29, 65]
     n_list = [128, 256, 512, 1024, 2048, 4096, 8192, 16384]
 
     results = []
