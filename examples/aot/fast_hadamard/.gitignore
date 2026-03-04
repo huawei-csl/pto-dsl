@@ -1,7 +1,7 @@
 hadamard_no_sync.pto
 hadamard_manual_sync.pto
 hadamard_auto_sync.cpp
-# hadamard_manual_sync.cpp
+hadamard_manual_sync.cpp
 hadamard_auto_sync.pto
 hadamard_auto_sync_lib.so
 hadamard_manual_sync_lib.so
