@@ -24,10 +24,11 @@ def build(
         module = builtin.ModuleOp()
         module.attributes["pto.device-spec"] = StringAttr.get("Ascend910B1")
 
-        t_out = F32Type.get()
-        t_a = F32Type.get()
-        t_b = F32Type.get()
-        t_bias = F32Type.get()
+        t_out = F16Type.get()
+        t_acc = F32Type.get()
+        t_a = F16Type.get()
+        t_b = F16Type.get()
+        t_bias = F16Type.get()
         i1 = IntegerType.get_signless(1)
         i32 = IntegerType.get_signless(32)
         ptr_out = pto.PtrType.get(t_out)
@@ -90,7 +91,7 @@ def build(
         tile_buf_bMat = pto.TileBufType.get([K, N], t_b, mat, [K, N], cfg_mat)
         tile_buf_aTile = pto.TileBufType.get([M, K], t_a, left, [M, K], cfg_left)
         tile_buf_bTile = pto.TileBufType.get([K, N], t_b, right, [K, N], cfg_right)
-        tile_buf_cTile = pto.TileBufType.get([M, N], t_out, acc, [M,N], cfg_acc)
+        tile_buf_cTile = pto.TileBufType.get([M, N], t_acc, acc, [M,N], cfg_acc)
 
         # ---- function ----
         # (out, A, B, bias, isBias, batchSize)
