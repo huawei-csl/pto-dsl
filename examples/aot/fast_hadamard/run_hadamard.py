@@ -7,6 +7,8 @@ import torch_npu  # noqa: F401
 
 from ptodsl.test_util import get_test_device
 
+ELEMENTS_PER_TILE = 32 * 1024 // 2  # 32KB UB / sizeof(fp16)
+
 
 def torch_to_ctypes(tensor):
     return ctypes.c_void_p(tensor.data_ptr())
@@ -27,6 +29,7 @@ def load_lib(lib_path, block_dim=24):
     def hadamard_func(x, batch, n, log2_n, block_dim=block_dim, stream_ptr=None):
         if stream_ptr is None:
             stream_ptr = torch.npu.current_stream()._as_parameter_
+        assert n <= ELEMENTS_PER_TILE, f"n must be <= {ELEMENTS_PER_TILE}, got {n}"
         lib.call_kernel(
             block_dim,
             stream_ptr,
