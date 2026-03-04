@@ -81,8 +81,8 @@ def build_fast_hadamard(fn_name="fast_hadamard_fp16", manual_sync=False):
             sample_offset = bid * samples_per_core
 
             # Early reject for invalid n.
-            valid_n = pto.gt(n, c0)
-            within_tile = pto.ge(c_tile, n)
+            valid_n = n > c0
+            within_tile = c_tile >= n
             with pto.if_context(valid_n):
                 with pto.if_context(within_tile):
                     with pto.if_context(sample_offset < batch):
@@ -130,7 +130,7 @@ def build_fast_hadamard(fn_name="fast_hadamard_fp16", manual_sync=False):
 
                                 with pto.if_context(cur_samples > c0):
                                     gm_offset = (sample_offset + sample_done) * n
-                                    use_ev0 = pto.eq(chunk_i % c2, c0)
+                                    use_ev0 = (chunk_i % c2) == c0
 
                                     with pto.if_context(use_ev0, has_else=True) as branch:
                                         for s in pto.for_range(c0, cur_samples, c1):
