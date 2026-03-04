@@ -1,0 +1,149 @@
+[match] batch=1, n=128, lib=./hadamard_manual_sync_lib.so
+[match] batch=1, n=256, lib=./hadamard_manual_sync_lib.so
+[match] batch=1, n=512, lib=./hadamard_manual_sync_lib.so
+[match] batch=1, n=1024, lib=./hadamard_manual_sync_lib.so
+[match] batch=1, n=2048, lib=./hadamard_manual_sync_lib.so
+[match] batch=1, n=4096, lib=./hadamard_manual_sync_lib.so
+[match] batch=1, n=8192, lib=./hadamard_manual_sync_lib.so
+[match] batch=1, n=16384, lib=./hadamard_manual_sync_lib.so
+[match] batch=7, n=128, lib=./hadamard_manual_sync_lib.so
+[match] batch=7, n=256, lib=./hadamard_manual_sync_lib.so
+[match] batch=7, n=512, lib=./hadamard_manual_sync_lib.so
+[match] batch=7, n=1024, lib=./hadamard_manual_sync_lib.so
+[match] batch=7, n=2048, lib=./hadamard_manual_sync_lib.so
+[match] batch=7, n=4096, lib=./hadamard_manual_sync_lib.so
+[match] batch=7, n=8192, lib=./hadamard_manual_sync_lib.so
+[match] batch=7, n=16384, lib=./hadamard_manual_sync_lib.so
+[match] batch=22, n=128, lib=./hadamard_manual_sync_lib.so
+[match] batch=22, n=256, lib=./hadamard_manual_sync_lib.so
+[match] batch=22, n=512, lib=./hadamard_manual_sync_lib.so
+[match] batch=22, n=1024, lib=./hadamard_manual_sync_lib.so
+[match] batch=22, n=2048, lib=./hadamard_manual_sync_lib.so
+[match] batch=22, n=4096, lib=./hadamard_manual_sync_lib.so
+[match] batch=22, n=8192, lib=./hadamard_manual_sync_lib.so
+[match] batch=22, n=16384, lib=./hadamard_manual_sync_lib.so
+[mismatch] batch=65, n=128, lib=./hadamard_manual_sync_lib.so
+  detail:
+Tensor-likes are not close!
+
+Mismatched elements: 1792 / 8320 (21.5%)
+Greatest absolute difference: 41.03125 at index (19, 116) (up to 1e-05 allowed)
+Greatest relative difference: 113.0625 at index (57, 93) (up to 0.001 allowed)
+[mismatch] batch=65, n=256, lib=./hadamard_manual_sync_lib.so
+  detail:
+Tensor-likes are not close!
+
+Mismatched elements: 7680 / 16640 (46.2%)
+Greatest absolute difference: 70.3125 at index (34, 156) (up to 1e-05 allowed)
+Greatest relative difference: inf at index (0, 67) (up to 0.001 allowed)
+[mismatch] batch=65, n=512, lib=./hadamard_manual_sync_lib.so
+  detail:
+Tensor-likes are not close!
+
+Mismatched elements: 14591 / 33280 (43.8%)
+Greatest absolute difference: 88.875 at index (10, 58) (up to 1e-05 allowed)
+Greatest relative difference: inf at index (22, 218) (up to 0.001 allowed)
+[mismatch] batch=65, n=1024, lib=./hadamard_manual_sync_lib.so
+  detail:
+Tensor-likes are not close!
+
+Mismatched elements: 24576 / 66560 (36.9%)
+Greatest absolute difference: 127.75 at index (3, 403) (up to 1e-05 allowed)
+Greatest relative difference: inf at index (4, 1001) (up to 0.001 allowed)
+[mismatch] batch=65, n=2048, lib=./hadamard_manual_sync_lib.so
+  detail:
+Tensor-likes are not close!
+
+Mismatched elements: 62464 / 133120 (46.9%)
+Greatest absolute difference: 193.25 at index (52, 214) (up to 1e-05 allowed)
+Greatest relative difference: inf at index (0, 1983) (up to 0.001 allowed)
+[mismatch] batch=65, n=4096, lib=./hadamard_manual_sync_lib.so
+  detail:
+Tensor-likes are not close!
+
+Mismatched elements: 94464 / 266240 (35.5%)
+Greatest absolute difference: 283.25 at index (18, 1588) (up to 1e-05 allowed)
+Greatest relative difference: inf at index (18, 1700) (up to 0.001 allowed)
+[mismatch] batch=65, n=8192, lib=./hadamard_manual_sync_lib.so
+  detail:
+Tensor-likes are not close!
+
+Mismatched elements: 104959 / 532480 (19.7%)
+Greatest absolute difference: 400.5 at index (60, 2799) (up to 1e-05 allowed)
+Greatest relative difference: inf at index (3, 8170) (up to 0.001 allowed)
+[match] batch=65, n=16384, lib=./hadamard_manual_sync_lib.so
+detailed summary for ./hadamard_manual_sync_lib.so:
+  batch=1, n=128, status=match
+  batch=1, n=256, status=match
+  batch=1, n=512, status=match
+  batch=1, n=1024, status=match
+  batch=1, n=2048, status=match
+  batch=1, n=4096, status=match
+  batch=1, n=8192, status=match
+  batch=1, n=16384, status=match
+  batch=7, n=128, status=match
+  batch=7, n=256, status=match
+  batch=7, n=512, status=match
+  batch=7, n=1024, status=match
+  batch=7, n=2048, status=match
+  batch=7, n=4096, status=match
+  batch=7, n=8192, status=match
+  batch=7, n=16384, status=match
+  batch=22, n=128, status=match
+  batch=22, n=256, status=match
+  batch=22, n=512, status=match
+  batch=22, n=1024, status=match
+  batch=22, n=2048, status=match
+  batch=22, n=4096, status=match
+  batch=22, n=8192, status=match
+  batch=22, n=16384, status=match
+  batch=65, n=128, status=mismatch
+    detail:
+Tensor-likes are not close!
+
+Mismatched elements: 1792 / 8320 (21.5%)
+Greatest absolute difference: 41.03125 at index (19, 116) (up to 1e-05 allowed)
+Greatest relative difference: 113.0625 at index (57, 93) (up to 0.001 allowed)
+  batch=65, n=256, status=mismatch
+    detail:
+Tensor-likes are not close!
+
+Mismatched elements: 7680 / 16640 (46.2%)
+Greatest absolute difference: 70.3125 at index (34, 156) (up to 1e-05 allowed)
+Greatest relative difference: inf at index (0, 67) (up to 0.001 allowed)
+  batch=65, n=512, status=mismatch
+    detail:
+Tensor-likes are not close!
+
+Mismatched elements: 14591 / 33280 (43.8%)
+Greatest absolute difference: 88.875 at index (10, 58) (up to 1e-05 allowed)
+Greatest relative difference: inf at index (22, 218) (up to 0.001 allowed)
+  batch=65, n=1024, status=mismatch
+    detail:
+Tensor-likes are not close!
+
+Mismatched elements: 24576 / 66560 (36.9%)
+Greatest absolute difference: 127.75 at index (3, 403) (up to 1e-05 allowed)
+Greatest relative difference: inf at index (4, 1001) (up to 0.001 allowed)
+  batch=65, n=2048, status=mismatch
+    detail:
+Tensor-likes are not close!
+
+Mismatched elements: 62464 / 133120 (46.9%)
+Greatest absolute difference: 193.25 at index (52, 214) (up to 1e-05 allowed)
+Greatest relative difference: inf at index (0, 1983) (up to 0.001 allowed)
+  batch=65, n=4096, status=mismatch
+    detail:
+Tensor-likes are not close!
+
+Mismatched elements: 94464 / 266240 (35.5%)
+Greatest absolute difference: 283.25 at index (18, 1588) (up to 1e-05 allowed)
+Greatest relative difference: inf at index (18, 1700) (up to 0.001 allowed)
+  batch=65, n=8192, status=mismatch
+    detail:
+Tensor-likes are not close!
+
+Mismatched elements: 104959 / 532480 (19.7%)
+Greatest absolute difference: 400.5 at index (60, 2799) (up to 1e-05 allowed)
+Greatest relative difference: inf at index (3, 8170) (up to 0.001 allowed)
+  batch=65, n=16384, status=match
