@@ -4,7 +4,7 @@
 #include KERNEL_CPP
 
 #ifndef KERNEL_FN
-#define KERNEL_FN _kernel
+#define KERNEL_FN fast_hadamard_autosync
 #endif
 
 #ifndef NUM_CORES

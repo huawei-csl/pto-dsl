@@ -27,7 +27,6 @@ bisheng \
     --cce-soc-core-type=VecCore \
     -DMEMORY_BASE \
     -std=gnu++17 \
-    -DKERNEL_CPP="\"hadamard_auto_sync.cpp\"" \
     ./caller.cpp \
     -o ./hadamard_auto_sync_lib.so
 
@@ -49,5 +48,6 @@ bisheng \
     -DMEMORY_BASE \
     -std=gnu++17 \
     -DKERNEL_CPP="\"hadamard_manual_sync.cpp\"" \
+    -DKERNEL_FN=fast_hadamard_manualsync \
     ./caller.cpp \
     -o ./hadamard_manual_sync_lib.so
