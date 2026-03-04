@@ -118,15 +118,5 @@ if __name__ == "__main__":
         default=24,
         help="Kernel blockDim (default: 24).",
     )
-    parser.add_argument(
-        "--test-both",
-        action="store_true",
-        help="Test both auto-sync and manual-sync libraries.",
-    )
     args = parser.parse_args()
-
-    if args.test_both:
-        test_hadamard("./hadamard_auto_sync_lib.so", block_dim=args.block_dim)
-        test_hadamard("./hadamard_manual_sync_lib.so", block_dim=args.block_dim)
-    else:
-        test_hadamard(args.lib, block_dim=args.block_dim)
+    test_hadamard(args.lib, block_dim=args.block_dim)
