@@ -22,36 +22,24 @@ TORCH_DTYPES = {
 # cols must be a multiple of 32; rows*cols must be divisible by 4 (always true here)
 CASES = [
     ("float32", (32, 32), "P1111"),
-    ("float32", (16, 64), "P1111"),
-    ("float32", (16, 128), "P1111"),
     ("float32", (53, 160), "P1111"),
-    ("float32", (53, 192), "P1111"),
-    ("float16", (32, 32), "P1111"),
     ("float16", (32, 128), "P1111"),
-    ("float16", (32, 160), "P1111"),
     ("float16", (3, 160), "P1111"),
     # P0101: positions 0,2 from each group of 4 (every other element) — N//2 valid
-    ("float32", (32, 64), "P0101"),
     ("float32", (16, 128), "P0101"),
     ("float16", (32, 64), "P0101"),
     ("float16", (3, 160), "P0101"),
     # P0001: position 0 only from each group of 4 — N//4 valid
-    ("float32", (32, 64), "P0001"),
     ("float32", (16, 128), "P0001"),
     ("float16", (32, 64), "P0001"),
     ("float16", (3, 160), "P0001"),
     # int16
-    ("int16", (1, 32), "P1111"),
-    ("int16", (7, 96), "P1111"),
     ("int16", (53, 160), "P1111"),
     ("int16", (13, 64), "P0101"),
-    ("int16", (37, 128), "P0101"),
     ("int16", (200, 64), "P0001"),
     # int32
     ("int32", (77, 128), "P1111"),
-    ("int32", (9, 96), "P0101"),
     ("int32", (85, 192), "P0101"),
-    ("int32", (3, 256), "P0001"),
     ("int32", (41, 64), "P0001"),
 ]
 

@@ -11,6 +11,7 @@ def _unwrap(value):
 
 
 class Value:
+    # TODO: generalize to more comprehensive wrappers like https://github.com/makslevental/mlir-python-extras/blob/0.0.8.2/mlir/extras/dialects/ext/arith.py
     def __init__(self, raw):
         self.raw = raw
 
@@ -33,10 +34,22 @@ class Value:
         return Value(arith.SubIOp(_unwrap(other), _unwrap(self)).result)
 
     def __floordiv__(self, other):
-        return Value(arith.DivUIOp(_unwrap(self), _unwrap(other)).result)
+        return Value(arith.DivSIOp(_unwrap(self), _unwrap(other)).result)
 
     def __rfloordiv__(self, other):
-        return Value(arith.DivUIOp(_unwrap(other), _unwrap(self)).result)
+        return Value(arith.DivSIOp(_unwrap(other), _unwrap(self)).result)
+
+    def __truediv__(self, other):
+        return Value(arith.DivFOp(_unwrap(self), _unwrap(other)).result)
+
+    def __rtruediv__(self, other):
+        return Value(arith.DivFOp(_unwrap(other), _unwrap(self)).result)
+
+    def __mod__(self, other):
+        return Value(arith.RemSIOp(_unwrap(self), _unwrap(other)).result)
+
+    def __rmod__(self, other):
+        return Value(arith.RemSIOp(_unwrap(other), _unwrap(self)).result)
 
     @staticmethod
     def _cmp(lhs, rhs, predicate):
@@ -54,6 +67,12 @@ class Value:
     def __ge__(self, other):
         return Value._cmp(self, other, arith.CmpIPredicate.sge)
 
+    def __eq__(self, other):
+        return Value._cmp(self, other, arith.CmpIPredicate.eq)
+
+    def __ne__(self, other):
+        return Value._cmp(self, other, arith.CmpIPredicate.ne)
+
     def __getattr__(self, item):
         return getattr(self.raw, item)
 
@@ -67,6 +86,8 @@ def wrap_value(value):
 def __getattr__(name):
     # TODO: add more builtin dtype aliases (for example float16/bfloat16/int8/int64)
     # when they are validated against PTO type support.
+    if name == "bool":
+        return IntegerType.get_signless(1)
     if name == "float32":
         return F32Type.get()
     if name == "float16":
@@ -282,6 +303,14 @@ def ceil_div(a, b):
     return Value(arith.CeilDivSIOp(_unwrap(a), _unwrap(b)).result)
 
 
+def div_s(a, b):
+    return Value(arith.DivSIOp(_unwrap(a), _unwrap(b)).result)
+
+
+def rem_s(a, b):
+    return Value(arith.RemSIOp(_unwrap(a), _unwrap(b)).result)
+
+
 def min_u(a, b):
     return Value(arith.MinUIOp(_unwrap(a), _unwrap(b)).result)
 
@@ -306,11 +335,26 @@ def select(cond, true_val, false_val):
     return Value(arith.SelectOp(_unwrap(cond), _unwrap(true_val), _unwrap(false_val)).result)
 
 
+class _IfElseBranch:
+    def __init__(self, if_op):
+        self._if_op = if_op
+    @contextmanager
+    def else_context(self):
+        with InsertionPoint(self._if_op.else_block):
+            yield
+            scf.YieldOp([])
+
 @contextmanager
-def if_context(condition):
-    op = scf.IfOp(_unwrap(condition))
+def if_context(condition, has_else=False):
+    if has_else:
+        op = scf.IfOp(_unwrap(condition), [], hasElse=True)
+        branch = _IfElseBranch(op)
+    else:
+        op = scf.IfOp(_unwrap(condition))
+        branch = None
+
     with InsertionPoint(op.then_block):
-        yield
+        yield branch
         scf.YieldOp([])
 
 

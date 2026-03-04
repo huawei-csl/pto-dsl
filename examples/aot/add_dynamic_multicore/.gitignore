@@ -1,2 +1,6 @@
 add.cpp
 add.pto
+add_lib.so
+add_double.cpp
+add_double.pto
+add_double_lib.so

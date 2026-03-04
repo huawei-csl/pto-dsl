@@ -1,108 +1,91 @@
-from mlir.ir import Context, Location, Module, InsertionPoint
-from mlir.dialects import func, arith, pto, scf
-from mlir.ir import F32Type, IndexType, IntegerType
+from ptodsl import to_ir_module
+import ptodsl.language as pto
+
 
 def build():
-    with Context() as ctx:
-        pto.register_dialect(ctx, load=True)
+    tile_w = 32
 
-        with Location.unknown(ctx):
-            m = Module.create()
+    def meta_data():
+        dtype = pto.float32
+        index_dtype = pto.int32
+        ptr_type = pto.PtrType(dtype)
+        tensor_type = pto.TensorType(rank=1, dtype=dtype)
+        subtensor_type = pto.SubTensorType(shape=[tile_w], dtype=dtype)
+        tile_cfg = pto.TileBufConfig()
+        # Dynamic valid shape so we can mask partial tiles via valid_row/valid_col.
+        tile_type = pto.TileBufType(
+            shape=[1, tile_w],
+            valid_shape=[-1, -1],
+            dtype=dtype,
+            memory_space="VEC",
+            config=tile_cfg,
+        )
+        return {
+            "ptr_type": ptr_type,
+            "index_dtype": index_dtype,
+            "tensor_type": tensor_type,
+            "subtensor_type": subtensor_type,
+            "tile_type": tile_type,
+            "tile_w": tile_w,
+        }
 
-            # The "tiles" are [1, tile_w]
-            tile_w = 32
+    const = pto.const
 
-            f32 = F32Type.get(ctx)
-            u32 = IntegerType.get_signless(32, ctx)
-            idx = IndexType.get(ctx)
+    @to_ir_module(meta_data=meta_data)
+    def sync_kernel_dyn(arg0: "ptr_type", arg1: "ptr_type", argN: "index_dtype") -> None:
+        with pto.vector_section():
+            c0 = const(0)
+            c1 = const(1)
+            c_tile_w = const(tile_w)
+            total_elements = pto.index_cast(argN)
 
-            ptr_f32 = pto.PtrType.get(f32, ctx)
-            tv1_f32 = pto.TensorViewType.get(1, f32, ctx)
-            tile_view = pto.PartitionTensorViewType.get([tile_w], f32, ctx)
-            vec = pto.AddressSpaceAttr.get(pto.AddressSpace.VEC, ctx)
-            bl = pto.BLayoutAttr.get(pto.BLayout.RowMajor, ctx)
-            sl = pto.SLayoutAttr.get(pto.SLayout.NoneBox, ctx)
-            pd = pto.PadValueAttr.get(pto.PadValue.Null, ctx)
+            num_blocks = pto.index_cast(pto.get_block_num())
+            num_el_per_core = pto.ceil_div(total_elements, num_blocks)
 
-            cfg = pto.TileBufConfigAttr.get(bl, sl, 512, pd, ctx)
-            # Dynamic valid shape so we can mask partial tiles via valid_row/valid_col.
-            tile_buf = pto.TileBufType.get([1, tile_w], f32, vec, [-1, -1], cfg, ctx)
+            # Per-core range: [core_start, core_end)
+            bid = pto.index_cast(pto.get_block_idx())
+            core_start = bid * num_el_per_core
+            core_end_unclamped = core_start + num_el_per_core
+            core_end = pto.min_u(core_end_unclamped, total_elements)
+            core_len = core_end - core_start
 
-            # function signature: (float*, float*, uint32 N)
-            fn_ty = func.FunctionType.get([ptr_f32, ptr_f32, u32], [])
+            # Per-core number of tiles: ceil(core_len / tile_w).
+            num_tiles = pto.ceil_div(core_len, c_tile_w)
 
-            with InsertionPoint(m.body):
-                fn = func.FuncOp("sync_kernel_dyn", fn_ty)
-                entry = fn.add_entry_block()
+            # GM tensors shape N with stride 1.
+            tv0 = pto.as_tensor(tensor_type, ptr=arg0, shape=[total_elements], strides=[c1])
+            tv1 = pto.as_tensor(tensor_type, ptr=arg1, shape=[total_elements], strides=[c1])
 
-            with InsertionPoint(entry):
-                vec_section = pto.SectionVectorOp()
-                vec_block = vec_section.body.blocks.append()
-                
-                with InsertionPoint(vec_block):
-                    arg0, arg1, argN = entry.arguments
-                    c0 = arith.ConstantOp(idx, 0).result
-                    c1 = arith.ConstantOp(idx, 1).result
-                    c_tile_w = arith.ConstantOp(idx, tile_w).result
-                    total_elements = arith.IndexCastOp(idx, argN).result
+            for i in pto.for_range(c0, num_tiles, c1):
+                offset_tile = i * c_tile_w
+                offset_total = core_start + offset_tile
 
-                    num_blocks = arith.IndexCastOp(idx, pto.GetBlockNumOp()).result
-                    num_el_per_core = arith.CeilDivSIOp(total_elements, num_blocks).result
+                remaining_core = core_end - offset_total
+                valid_len = pto.min_u(remaining_core, c_tile_w)
 
-                    # Per-core range: [core_start, core_end)
-                    bid_raw = pto.GetBlockIdxOp().result
-                    bid = arith.IndexCastOp(idx, bid_raw).result
-                    core_start = arith.MulIOp(bid, num_el_per_core).result
-                    core_end_unclamped = arith.AddIOp(core_start, num_el_per_core).result
-                    core_end = arith.MinUIOp(core_end_unclamped, total_elements).result
-                    core_len = arith.SubIOp(core_end, core_start).result
+                # Keep per-iteration tile alloc to match original behavior.
+                tb0 = pto.alloc_tile(tile_type, valid_row=c1, valid_col=valid_len)
+                tb1 = pto.alloc_tile(tile_type, valid_row=c1, valid_col=valid_len)
 
-                    # Per-core number of tiles: ceil(core_len / tile_w).
-                    num_tiles = arith.CeilDivSIOp(core_len, c_tile_w).result
+                # each core c takes a tile at offset c*num_el_per_core + i*tile_w
+                sv0 = pto.slice_view(
+                    subtensor_type,
+                    source=tv0,
+                    offsets=[offset_total],
+                    sizes=[c_tile_w],
+                )
+                sv1 = pto.slice_view(
+                    subtensor_type,
+                    source=tv1,
+                    offsets=[offset_total],
+                    sizes=[c_tile_w],
+                )
 
-                    # GM tensors shape N with stride 1
-                    tv0 = pto.MakeTensorViewOp(tv1_f32, arg0, [total_elements], [c1]).result
-                    tv1 = pto.MakeTensorViewOp(tv1_f32, arg1, [total_elements], [c1]).result
+                pto.load(sv0, tb0)
+                pto.relu(tb0, tb1)
+                pto.store(tb1, sv1)
 
-                    # for loop: for i in range(num_tiles)
-                    loop = scf.ForOp(c0, num_tiles, c1)
-                    with InsertionPoint(loop.body):
-                        i = loop.induction_variable
-                        offset_tile = arith.MulIOp(i, c_tile_w).result
-                        offset_total = arith.AddIOp(core_start, offset_tile).result
-
-                        remaining_core = arith.SubIOp(core_end, offset_total).result
-                        valid_len = arith.MinUIOp(remaining_core, c_tile_w).result
-
-                        # TODO: shouldnt allocate a new tile in UB for every iteration?
-                        # https://github.com/zhangstevenunity/PTOAS/issues/111
-                        tb0 = pto.AllocTileOp(tile_buf, valid_row=c1, valid_col=valid_len).result
-                        tb1 = pto.AllocTileOp(tile_buf, valid_row=c1, valid_col=valid_len).result
-
-                        # each core c takes a tile at offset c*nun_el_per_core+i*tile_w  
-                        sv0 = pto.PartitionViewOp(
-                            tile_view,
-                            tv0,
-                            offsets=[offset_total],
-                            sizes=[c_tile_w]
-                        ).result
-                        sv1 = pto.PartitionViewOp(
-                            tile_view,
-                            tv1,
-                            offsets=[offset_total],
-                            sizes=[c_tile_w]
-                        ).result
-
-                        pto.TLoadOp(None, sv0, tb0)
-                        pto.TReluOp(tb0, tb1)
-                        pto.TStoreOp(None, tb1, sv1)
-
-                        scf.YieldOp([])
-
-                func.ReturnOp([])
-
-            m.operation.verify()
-            return m
+    return sync_kernel_dyn
 
 if __name__ == "__main__":
     print(build())
