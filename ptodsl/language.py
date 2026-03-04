@@ -393,7 +393,7 @@ def _resolve_event_id(event_id):
 
 
 def record_event(record_op, wait_op, event_id: int|Sequence[int]=0):
-    if isinstance(event_id, list):
+    if not isinstance(event_id, int):
         for eid in event_id:
             pto.record_event(_resolve_sync_op(record_op), _resolve_sync_op(wait_op), _resolve_event_id(eid))
     else:
@@ -402,7 +402,7 @@ def record_event(record_op, wait_op, event_id: int|Sequence[int]=0):
 
 
 def wait_event(record_op, wait_op, event_id: int|Sequence[int]=0):
-    if isinstance(event_id, list):
+    if not isinstance(event_id, int):
         for eid in event_id:
             pto.wait_event(_resolve_sync_op(record_op), _resolve_sync_op(wait_op), _resolve_event_id(eid))
     else:
