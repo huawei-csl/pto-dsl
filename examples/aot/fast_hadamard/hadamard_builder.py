@@ -228,7 +228,9 @@ def build_fast_hadamard_manual_sync(fn_name="fast_hadamard_fp16"):
                             ):
                                 for s in pto.for_range(c0, cur_samples, c1):
                                     row_offset = gm_offset + s * n
-                                    sv_row = pto.slice_view(subtensor_full, source=tv_x, offsets=[row_offset], sizes=[n]
+                                    sv_row = pto.slice_view(
+                                        subtensor_full, source=tv_x, offsets=[row_offset], sizes=[n]
+                                    )
                                     # Alias row halves inside UB row tile (no GM round-trip
                                     # per Hadamard iteration).
                                     tb_first = pto.subset(
