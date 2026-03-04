@@ -1,11 +1,7 @@
 from contextlib import contextmanager
-from contextvars import ContextVar
-
 
 from mlir.dialects import arith, pto, scf
 from mlir.ir import F16Type, F32Type, IndexType, InsertionPoint, IntegerType
-
-_MANUAL_SYNC = ContextVar("MANUAL_SYNC", default=True)
 
 
 def _unwrap(value):
@@ -399,8 +395,6 @@ def _resolve_event_id(event_id):
 
 
 def record_event(record_op, wait_op, event_id: int|list[int]=0):
-    if not _MANUAL_SYNC.get():
-        return
     if isinstance(event_id, list):
         for eid in event_id:
             pto.record_event(_resolve_sync_op(record_op), _resolve_sync_op(wait_op), _resolve_event_id(eid))
@@ -410,8 +404,6 @@ def record_event(record_op, wait_op, event_id: int|list[int]=0):
 
 
 def wait_event(record_op, wait_op, event_id: int|list[int]=0):
-    if not _MANUAL_SYNC.get():
-        return
     if isinstance(event_id, list):
         for eid in event_id:
             pto.wait_event(_resolve_sync_op(record_op), _resolve_sync_op(wait_op), _resolve_event_id(eid))

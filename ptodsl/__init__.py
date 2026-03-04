@@ -8,7 +8,7 @@ from functools import update_wrapper
 from mlir.dialects import func, pto
 from mlir.ir import Context, InsertionPoint, Location, Module
 
-from .language import wrap_value, _MANUAL_SYNC
+from .language import wrap_value
 from .bench import do_bench
 
 
@@ -76,7 +76,7 @@ def _restore_globals(fn, old, injected_names):
             fn.__globals__[name] = old[name]
 
 
-def to_ir_module(*, meta_data, manual_sync=True):
+def to_ir_module(*, meta_data):
     def decorator(fn):
         sig = inspect.signature(fn)
 
@@ -96,12 +96,10 @@ def to_ir_module(*, meta_data, manual_sync=True):
                 wrapped_args = [wrap_value(arg) for arg in entry.arguments]
                 injected = set(meta_map.keys())
                 old_globals = _inject_globals(fn, meta_map)
-                token = _MANUAL_SYNC.set(manual_sync)
                 try:
                     fn(*wrapped_args)
                 finally:
                     _restore_globals(fn, old_globals, injected)
-                    _MANUAL_SYNC.reset(token)
 
                 if not ret_types and not _has_func_return(entry):
                     func.ReturnOp([])
