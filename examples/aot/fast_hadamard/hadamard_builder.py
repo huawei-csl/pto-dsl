@@ -144,10 +144,10 @@ def build_fast_hadamard(fn_name="fast_hadamard_fp16", manual_sync=False):
                                             # Alias row halves inside UB row tile (no GM round-trip
                                             # per Hadamard iteration).
                                             tb_first_0 = pto.subset(
-                                                tb_row_0, [c0, c0], [1, n_half]
+                                                tb_row_0, [c0, c0], [1, HALF_ELEMENTS_PER_TILE]
                                             )
                                             tb_second_0 = pto.subset(
-                                                tb_row_0, [c0, n_half], [1, n_half]
+                                                tb_row_0, [c0, n_half], [1, HALF_ELEMENTS_PER_TILE]
                                             )
 
                                             if manual_sync:
@@ -194,10 +194,10 @@ def build_fast_hadamard(fn_name="fast_hadamard_fp16", manual_sync=False):
                                                 # Alias row halves inside UB row tile (no GM
                                                 # round-trip per Hadamard iteration).
                                                 tb_first_1 = pto.subset(
-                                                    tb_row_1, [c0, c0], [1, n_half]
+                                                    tb_row_1, [c0, c0], [1, HALF_ELEMENTS_PER_TILE]
                                                 )
                                                 tb_second_1 = pto.subset(
-                                                    tb_row_1, [c0, n_half], [1, n_half]
+                                                    tb_row_1, [c0, n_half], [1, HALF_ELEMENTS_PER_TILE]
                                                 )
 
                                                 if manual_sync:
