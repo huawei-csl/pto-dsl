@@ -1,7 +1,7 @@
 from contextlib import contextmanager
 
 from mlir.dialects import arith, pto, scf
-from mlir.ir import F16Type, F32Type, IndexType, InsertionPoint, IntegerType
+from mlir.ir import F16Type, F32Type, FloatAttr, IndexType, InsertionPoint, IntegerType
 
 
 def _unwrap(value):
@@ -402,3 +402,33 @@ def record_wait_pair(record_op, wait_op, event_id=0):
     ev = _resolve_event_id(event_id)
     pto.record_event(rec, w, ev)
     pto.wait_event(rec, w, ev)
+
+
+def index_to_float(idx, float_dtype):
+    """Convert an index SSA value to a float scalar."""
+    i32 = IntegerType.get_signless(32)
+    i32_val = arith.IndexCastOp(i32, _unwrap(idx)).result
+    return Value(arith.SIToFPOp(float_dtype, i32_val).result)
+
+
+def row_sum(src, tmp, dst):
+    pto.TRowSumOp(src, tmp, dst)
+
+
+def rsqrt(inp, out):
+    pto.TRsqrtOp(inp, out)
+
+
+def mul_s(src, scalar, dst):
+    """Element-wise tile * scalar."""
+    pto.TMulSOp(src, _unwrap(scalar), dst)
+
+
+def div_s(src, scalar, dst):
+    """Element-wise tile / scalar."""
+    pto.TDivSOp(src, _unwrap(scalar), dst)
+
+
+def add_s(src, scalar, dst):
+    """Element-wise tile + scalar."""
+    pto.TAddSOp(src, _unwrap(scalar), dst)
