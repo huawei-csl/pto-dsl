@@ -61,7 +61,6 @@ def build_fast_hadamard(fn_name="fast_hadamard_fp16"):
         c0 = const(0)
         c1 = const(1)
         c2 = const(2)
-        c_tile = const(ELEMENTS_PER_TILE)
 
         batch = pto.index_cast(batch_i32)
         n = pto.index_cast(n_i32)
@@ -74,78 +73,76 @@ def build_fast_hadamard(fn_name="fast_hadamard_fp16"):
             samples_per_core = pto.ceil_div(batch, num_cores)
             sample_offset = bid * samples_per_core
 
-            with pto.if_context(n > c0):  # valid_n
-                with pto.if_context(n <= c_tile):  # within_tile
-                    with pto.if_context(sample_offset < batch):
-                        samples_end = sample_offset + samples_per_core
-                        samples_to_process = pto.select(
-                            samples_end > batch,
-                            batch - sample_offset,
-                            samples_per_core,
+            with pto.if_context(sample_offset < batch):
+                samples_end = sample_offset + samples_per_core
+                samples_to_process = pto.select(
+                    samples_end > batch,
+                    batch - sample_offset,
+                    samples_per_core,
+                )
+
+                with pto.if_context(samples_to_process > c0):
+                    total_elements = batch * n
+                    tv_x = pto.as_tensor(
+                        tensor_type, ptr=x_ptr, shape=[total_elements], strides=[c1]
+                    )
+
+                    # Two independent tile sets (ping/pong) so event_id 0/1 map to
+                    # disjoint UB buffers, matching the manual C++ reference.
+                    tb_row_0 = pto.alloc_tile(tile_full, valid_col=n)
+                    tb_even_0 = pto.alloc_tile(tile_half, valid_col=n // c2)
+                    tb_odd_0 = pto.alloc_tile(tile_half, valid_col=n // c2)
+
+                    tb_row_1 = pto.alloc_tile(tile_full, valid_col=n)
+                    tb_even_1 = pto.alloc_tile(tile_half, valid_col=n // c2)
+                    tb_odd_1 = pto.alloc_tile(tile_half, valid_col=n // c2)
+
+                    n_half = n // c2
+
+                    # Keep one sample per chunk. Multi-sample chunks interact
+                    # poorly with static tile subset sizing in current PTO Python
+                    # bindings and can corrupt rows for larger batches.
+                    samples_per_load = c1
+                    num_chunks = pto.ceil_div(samples_to_process, samples_per_load)
+
+                    def process_rows(tb_row, tb_even, tb_odd, gm_offset, cur_samples):
+                        for s in pto.for_range(c0, cur_samples, c1):
+                            row_offset = gm_offset + s * n
+                            sv_row = pto.slice_view(
+                                subtensor_full, source=tv_x, offsets=[row_offset], sizes=[n]
+                            )
+                            # Alias row halves inside UB row tile (no GM round-trip
+                            # per Hadamard iteration).
+                            tb_first = pto.subset(tb_row, [c0, c0], [1, HALF_ELEMENTS_PER_TILE])
+                            tb_second = pto.subset(tb_row, [c0, n_half], [1, HALF_ELEMENTS_PER_TILE])
+
+                            pto.load(sv_row, tb_row)
+                            for _ in pto.for_range(c0, log2_n, c1):
+                                pto.gather(tb_row, tb_even, mask_pattern="P0101")
+                                pto.gather(tb_row, tb_odd, mask_pattern="P1010")
+                                pto.add(tb_even, tb_odd, tb_first)
+                                pto.sub(tb_even, tb_odd, tb_second)
+                            pto.store(tb_row, sv_row)
+
+                    for chunk_i in pto.for_range(c0, num_chunks, c1):
+                        sample_done = chunk_i * samples_per_load
+                        chunk_left = samples_to_process - sample_done
+                        cur_samples = pto.select(
+                            chunk_left < samples_per_load, chunk_left, samples_per_load
                         )
 
-                        with pto.if_context(samples_to_process > c0):
-                            total_elements = batch * n
-                            tv_x = pto.as_tensor(
-                                tensor_type, ptr=x_ptr, shape=[total_elements], strides=[c1]
-                            )
+                        with pto.if_context(cur_samples > c0):
+                            gm_offset = (sample_offset + sample_done) * n
+                            use_ev0 = (chunk_i % c2) == c0
 
-                            # Two independent tile sets (ping/pong) so event_id 0/1 map to
-                            # disjoint UB buffers, matching the manual C++ reference.
-                            tb_row_0 = pto.alloc_tile(tile_full, valid_col=n)
-                            tb_even_0 = pto.alloc_tile(tile_half, valid_col=n // c2)
-                            tb_odd_0 = pto.alloc_tile(tile_half, valid_col=n // c2)
-
-                            tb_row_1 = pto.alloc_tile(tile_full, valid_col=n)
-                            tb_even_1 = pto.alloc_tile(tile_half, valid_col=n // c2)
-                            tb_odd_1 = pto.alloc_tile(tile_half, valid_col=n // c2)
-
-                            n_half = n // c2
-
-                            # Keep one sample per chunk. Multi-sample chunks interact
-                            # poorly with static tile subset sizing in current PTO Python
-                            # bindings and can corrupt rows for larger batches.
-                            samples_per_load = c1
-                            num_chunks = pto.ceil_div(samples_to_process, samples_per_load)
-
-                            def process_rows(tb_row, tb_even, tb_odd, gm_offset, cur_samples):
-                                for s in pto.for_range(c0, cur_samples, c1):
-                                    row_offset = gm_offset + s * n
-                                    sv_row = pto.slice_view(
-                                        subtensor_full, source=tv_x, offsets=[row_offset], sizes=[n]
-                                    )
-                                    # Alias row halves inside UB row tile (no GM round-trip
-                                    # per Hadamard iteration).
-                                    tb_first = pto.subset(tb_row, [c0, c0], [1, HALF_ELEMENTS_PER_TILE])
-                                    tb_second = pto.subset(tb_row, [c0, n_half], [1, HALF_ELEMENTS_PER_TILE])
-
-                                    pto.load(sv_row, tb_row)
-                                    for _ in pto.for_range(c0, log2_n, c1):
-                                        pto.gather(tb_row, tb_even, mask_pattern="P0101")
-                                        pto.gather(tb_row, tb_odd, mask_pattern="P1010")
-                                        pto.add(tb_even, tb_odd, tb_first)
-                                        pto.sub(tb_even, tb_odd, tb_second)
-                                    pto.store(tb_row, sv_row)
-
-                            for chunk_i in pto.for_range(c0, num_chunks, c1):
-                                sample_done = chunk_i * samples_per_load
-                                chunk_left = samples_to_process - sample_done
-                                cur_samples = pto.select(
-                                    chunk_left < samples_per_load, chunk_left, samples_per_load
+                            with pto.if_context(use_ev0, has_else=True) as branch:
+                                process_rows(
+                                    tb_row_0, tb_even_0, tb_odd_0, gm_offset, cur_samples
                                 )
-
-                                with pto.if_context(cur_samples > c0):
-                                    gm_offset = (sample_offset + sample_done) * n
-                                    use_ev0 = (chunk_i % c2) == c0
-
-                                    with pto.if_context(use_ev0, has_else=True) as branch:
-                                        process_rows(
-                                            tb_row_0, tb_even_0, tb_odd_0, gm_offset, cur_samples
-                                        )
-                                    with branch.else_context():
-                                        process_rows(
-                                            tb_row_1, tb_even_1, tb_odd_1, gm_offset, cur_samples
-                                        )
+                            with branch.else_context():
+                                process_rows(
+                                    tb_row_1, tb_even_1, tb_odd_1, gm_offset, cur_samples
+                                )
 
     # Function name is controlled by the Python function symbol used with
     # to_ir_module; keep fn_name arg for compatibility with caller scripts.
@@ -170,7 +167,6 @@ def build_fast_hadamard_manual_sync(fn_name="fast_hadamard_fp16"):
         c0 = const(0)
         c1 = const(1)
         c2 = const(2)
-        c_tile = const(ELEMENTS_PER_TILE)
 
         batch = pto.index_cast(batch_i32)
         n = pto.index_cast(n_i32)
@@ -183,100 +179,98 @@ def build_fast_hadamard_manual_sync(fn_name="fast_hadamard_fp16"):
             samples_per_core = pto.ceil_div(batch, num_cores)
             sample_offset = bid * samples_per_core
 
-            with pto.if_context(n > c0):  # valid_n
-                with pto.if_context(n <= c_tile):  # within_tile
-                    with pto.if_context(sample_offset < batch):
-                        samples_end = sample_offset + samples_per_core
-                        samples_to_process = pto.select(
-                            samples_end > batch,
-                            batch - sample_offset,
-                            samples_per_core,
-                        )
+            with pto.if_context(sample_offset < batch):
+                samples_end = sample_offset + samples_per_core
+                samples_to_process = pto.select(
+                    samples_end > batch,
+                    batch - sample_offset,
+                    samples_per_core,
+                )
 
-                        with pto.if_context(samples_to_process > c0):
-                            total_elements = batch * n
-                            tv_x = pto.as_tensor(
-                                tensor_type, ptr=x_ptr, shape=[total_elements], strides=[c1]
+                with pto.if_context(samples_to_process > c0):
+                    total_elements = batch * n
+                    tv_x = pto.as_tensor(
+                        tensor_type, ptr=x_ptr, shape=[total_elements], strides=[c1]
+                    )
+
+                    # Two independent tile sets (ping/pong) so event_id 0/1 map to
+                    # disjoint UB buffers, matching the manual C++ reference.
+                    tb_row_0 = pto.alloc_tile(tile_full, valid_col=n)
+                    tb_even_0 = pto.alloc_tile(tile_half, valid_col=n // c2)
+                    tb_odd_0 = pto.alloc_tile(tile_half, valid_col=n // c2)
+
+                    tb_row_1 = pto.alloc_tile(tile_full, valid_col=n)
+                    tb_even_1 = pto.alloc_tile(tile_half, valid_col=n // c2)
+                    tb_odd_1 = pto.alloc_tile(tile_half, valid_col=n // c2)
+
+                    n_half = n // c2
+
+                    # Keep one sample per chunk. Multi-sample chunks interact
+                    # poorly with static tile subset sizing in current PTO Python
+                    # bindings and can corrupt rows for larger batches.
+                    samples_per_load = c1
+                    num_chunks = pto.ceil_div(samples_to_process, samples_per_load)
+
+                    def process_rows(
+                        tb_row, tb_even, tb_odd, event_id, gm_offset, cur_samples
+                    ):
+                        for s in pto.for_range(c0, cur_samples, c1):
+                            row_offset = gm_offset + s * n
+                            sv_row = pto.slice_view(
+                                subtensor_full, source=tv_x, offsets=[row_offset], sizes=[n]
+                            )
+                            # Alias row halves inside UB row tile (no GM round-trip
+                            # per Hadamard iteration).
+                            tb_first = pto.subset(
+                                tb_row, [c0, c0], [1, HALF_ELEMENTS_PER_TILE]
+                            )
+                            tb_second = pto.subset(
+                                tb_row, [c0, n_half], [1, HALF_ELEMENTS_PER_TILE]
                             )
 
-                            # Two independent tile sets (ping/pong) so event_id 0/1 map to
-                            # disjoint UB buffers, matching the manual C++ reference.
-                            tb_row_0 = pto.alloc_tile(tile_full, valid_col=n)
-                            tb_even_0 = pto.alloc_tile(tile_half, valid_col=n // c2)
-                            tb_odd_0 = pto.alloc_tile(tile_half, valid_col=n // c2)
+                            pto.wait_event("VEC", "LOAD", event_id=event_id)
+                            pto.wait_event("STORE_VEC", "VEC", event_id=event_id)
+                            pto.load(sv_row, tb_row)
+                            pto.record_wait_pair("LOAD", "VEC", event_id=event_id)
 
-                            tb_row_1 = pto.alloc_tile(tile_full, valid_col=n)
-                            tb_even_1 = pto.alloc_tile(tile_half, valid_col=n // c2)
-                            tb_odd_1 = pto.alloc_tile(tile_half, valid_col=n // c2)
+                            for _ in pto.for_range(c0, log2_n, c1):
+                                pto.gather(tb_row, tb_even, mask_pattern="P0101")
+                                pto.gather(tb_row, tb_odd, mask_pattern="P1010")
+                                pto.barrier("VEC")
+                                pto.add(tb_even, tb_odd, tb_first)
+                                pto.sub(tb_even, tb_odd, tb_second)
+                                pto.barrier("VEC")
 
-                            n_half = n // c2
+                            pto.record_wait_pair(
+                                "VEC", "STORE_VEC", event_id=event_id
+                            )
+                            pto.store(tb_row, sv_row)
+                            pto.record_event("STORE_VEC", "VEC", event_id=event_id)
+                            pto.record_event("VEC", "LOAD", event_id=event_id)
 
-                            # Keep one sample per chunk. Multi-sample chunks interact
-                            # poorly with static tile subset sizing in current PTO Python
-                            # bindings and can corrupt rows for larger batches.
-                            samples_per_load = c1
-                            num_chunks = pto.ceil_div(samples_to_process, samples_per_load)
+                    for event_id in (0, 1):
+                        pto.record_event("VEC", "LOAD", event_id=event_id)
+                        pto.record_event("STORE_VEC", "VEC", event_id=event_id)
 
-                            def process_rows(
-                                tb_row, tb_even, tb_odd, event_id, gm_offset, cur_samples
-                            ):
-                                for s in pto.for_range(c0, cur_samples, c1):
-                                    row_offset = gm_offset + s * n
-                                    sv_row = pto.slice_view(
-                                        subtensor_full, source=tv_x, offsets=[row_offset], sizes=[n]
-                                    )
-                                    # Alias row halves inside UB row tile (no GM round-trip
-                                    # per Hadamard iteration).
-                                    tb_first = pto.subset(
-                                        tb_row, [c0, c0], [1, HALF_ELEMENTS_PER_TILE]
-                                    )
-                                    tb_second = pto.subset(
-                                        tb_row, [c0, n_half], [1, HALF_ELEMENTS_PER_TILE]
-                                    )
+                    for chunk_i in pto.for_range(c0, num_chunks, c1):
+                        sample_done = chunk_i * samples_per_load
+                        chunk_left = samples_to_process - sample_done
+                        cur_samples = pto.select(
+                            chunk_left < samples_per_load, chunk_left, samples_per_load
+                        )
 
-                                    pto.wait_event("VEC", "LOAD", event_id=event_id)
-                                    pto.wait_event("STORE_VEC", "VEC", event_id=event_id)
-                                    pto.load(sv_row, tb_row)
-                                    pto.record_wait_pair("LOAD", "VEC", event_id=event_id)
+                        with pto.if_context(cur_samples > c0):
+                            gm_offset = (sample_offset + sample_done) * n
+                            use_ev0 = (chunk_i % c2) == c0
 
-                                    for _ in pto.for_range(c0, log2_n, c1):
-                                        pto.gather(tb_row, tb_even, mask_pattern="P0101")
-                                        pto.gather(tb_row, tb_odd, mask_pattern="P1010")
-                                        pto.barrier("VEC")
-                                        pto.add(tb_even, tb_odd, tb_first)
-                                        pto.sub(tb_even, tb_odd, tb_second)
-                                        pto.barrier("VEC")
+                            with pto.if_context(use_ev0, has_else=True) as branch:
+                                process_rows(tb_row_0, tb_even_0, tb_odd_0, 0, gm_offset, cur_samples)
+                            with branch.else_context():
+                                process_rows(tb_row_1, tb_even_1, tb_odd_1, 1, gm_offset, cur_samples)
 
-                                    pto.record_wait_pair(
-                                        "VEC", "STORE_VEC", event_id=event_id
-                                    )
-                                    pto.store(tb_row, sv_row)
-                                    pto.record_event("STORE_VEC", "VEC", event_id=event_id)
-                                    pto.record_event("VEC", "LOAD", event_id=event_id)
-
-                            for event_id in (0, 1):
-                                pto.record_event("VEC", "LOAD", event_id=event_id)
-                                pto.record_event("STORE_VEC", "VEC", event_id=event_id)
-
-                            for chunk_i in pto.for_range(c0, num_chunks, c1):
-                                sample_done = chunk_i * samples_per_load
-                                chunk_left = samples_to_process - sample_done
-                                cur_samples = pto.select(
-                                    chunk_left < samples_per_load, chunk_left, samples_per_load
-                                )
-
-                                with pto.if_context(cur_samples > c0):
-                                    gm_offset = (sample_offset + sample_done) * n
-                                    use_ev0 = (chunk_i % c2) == c0
-
-                                    with pto.if_context(use_ev0, has_else=True) as branch:
-                                        process_rows(tb_row_0, tb_even_0, tb_odd_0, 0, gm_offset, cur_samples)
-                                    with branch.else_context():
-                                        process_rows(tb_row_1, tb_even_1, tb_odd_1, 1, gm_offset, cur_samples)
-
-                            for event_id in (0, 1):
-                                pto.wait_event("VEC", "LOAD", event_id=event_id)
-                                pto.wait_event("STORE_VEC", "VEC", event_id=event_id)
+                    for event_id in (0, 1):
+                        pto.wait_event("VEC", "LOAD", event_id=event_id)
+                        pto.wait_event("STORE_VEC", "VEC", event_id=event_id)
 
     # Function name is controlled by the Python function symbol used with
     # to_ir_module; keep fn_name arg for compatibility with caller scripts.
