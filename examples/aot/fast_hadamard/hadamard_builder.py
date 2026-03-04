@@ -70,10 +70,7 @@ def build_fast_hadamard(fn_name="fast_hadamard_fp16"):
         with pto.vector_section():
             # Match reference early scalar setup/return order.
             bid = pto.index_cast(pto.get_block_idx())
-            num_blocks = pto.index_cast(pto.get_block_num())
-
-            # Match reference kernel partitioning: block-level split only.
-            num_cores = num_blocks
+            num_cores = pto.index_cast(pto.get_block_num())
             samples_per_core = pto.ceil_div(batch, num_cores)
             sample_offset = bid * samples_per_core
 
@@ -182,10 +179,7 @@ def build_fast_hadamard_manual_sync(fn_name="fast_hadamard_fp16"):
         with pto.vector_section():
             # Match reference early scalar setup/return order.
             bid = pto.index_cast(pto.get_block_idx())
-            num_blocks = pto.index_cast(pto.get_block_num())
-
-            # Match reference kernel partitioning: block-level split only.
-            num_cores = num_blocks
+            num_cores = pto.index_cast(pto.get_block_num())
             samples_per_core = pto.ceil_div(batch, num_cores)
             sample_offset = bid * samples_per_core
 
