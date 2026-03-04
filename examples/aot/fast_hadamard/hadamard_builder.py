@@ -111,8 +111,10 @@ def build_fast_hadamard(fn_name="fast_hadamard_fp16", manual_sync=False):
 
                             n_half = n // c2
 
-                            # Keep samples/chunk identical to the C++ idea.
-                            samples_per_load = pto.select(n < c_tile, c_tile // n, c1)
+                            # Keep one sample per chunk. Multi-sample chunks interact
+                            # poorly with static tile subset sizing in current PTO Python
+                            # bindings and can corrupt rows for larger batches.
+                            samples_per_load = c1
                             num_chunks = pto.ceil_div(samples_to_process, samples_per_load)
 
                             if manual_sync:
