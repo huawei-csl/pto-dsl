@@ -8,7 +8,9 @@ bisheng \
     -mllvm -cce-aicore-record-overflow=true \
     -mllvm -cce-aicore-addr-transform \
     -mllvm -cce-aicore-dcci-insert-for-scalar=false \
-    --npu-arch=dav-2201 -DMEMORY_BASE \
+    --cce-soc-version=Ascend910B2 \
+    --cce-soc-core-type=VecCore \
+    -DMEMORY_BASE \
     -std=gnu++17 \
     ./fast_hadamard_ref.cpp \
     -o ./fast_hadamard_ref_lib.so
