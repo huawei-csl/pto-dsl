@@ -58,12 +58,17 @@ def fast_hadamard_autosync(
     n = pto.index_cast(n_i32)
     log2_n = pto.index_cast(log2_n_i32)
 
+    cid = pto.get_block_idx()
+    sub_bid = pto.get_subblock_idx()
+    sub_bnum = pto.get_subblock_num()
+    num_blocks = pto.get_block_num()
+
+    vid = pto.index_cast(cid * sub_bnum + sub_bid)  # vector core index
+    num_cores = pto.index_cast(num_blocks * sub_bnum)  # number of vector cores
+
     with pto.vector_section():
-        # Match reference early scalar setup/return order.
-        bid = pto.index_cast(pto.get_block_idx())
-        num_cores = pto.index_cast(pto.get_block_num())
         samples_per_core = pto.ceil_div(batch, num_cores)
-        sample_offset = bid * samples_per_core
+        sample_offset = vid * samples_per_core
 
         with pto.if_context(sample_offset < batch):
             samples_end = sample_offset + samples_per_core
@@ -152,12 +157,17 @@ def fast_hadamard_manualsync(
     n = pto.index_cast(n_i32)
     log2_n = pto.index_cast(log2_n_i32)
 
+    cid = pto.get_block_idx()
+    sub_bid = pto.get_subblock_idx()
+    sub_bnum = pto.get_subblock_num()
+    num_blocks = pto.get_block_num()
+
+    vid = pto.index_cast(cid * sub_bnum + sub_bid)  # vector core index
+    num_cores = pto.index_cast(num_blocks * sub_bnum)  # number of vector cores
+
     with pto.vector_section():
-        # Match reference early scalar setup/return order.
-        bid = pto.index_cast(pto.get_block_idx())
-        num_cores = pto.index_cast(pto.get_block_num())
         samples_per_core = pto.ceil_div(batch, num_cores)
-        sample_offset = bid * samples_per_core
+        sample_offset = vid * samples_per_core
 
         with pto.if_context(sample_offset < batch):
             samples_end = sample_offset + samples_per_core
