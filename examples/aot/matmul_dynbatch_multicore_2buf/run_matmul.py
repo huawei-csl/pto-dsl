@@ -74,7 +74,7 @@ def load_lib(lib_path):
     return matmul_func
 
 
-def plot_benchmark(is_benching: bool):
+def plot_benchmark():
     device = get_test_device()
     torch.set_default_device(device)
     torch.npu.set_device(device)
@@ -95,21 +95,16 @@ def plot_benchmark(is_benching: bool):
 
 
         # correctness check
-        torch.npu.synchronize()
-        matmul_func(c, a, b, batch_size=bs, block_dim=blk[0])
+        matmul_func(c, a, b, batch_size=bs, block_dim=24)
         torch.npu.synchronize()
         c_ref = torch.matmul(a, b)
-        torch.npu.synchronize()
         diff = (c - c_ref).abs().max()
-        torch.npu.synchronize()
         #assert  diff <= 1e-5, diff
         if diff < 1e-5:
             print('.', end='')
         else:
             print(f'failed at shape: {a.shape} with {diff}')
         
-        if not is_benching:
-            continue
         flops = matmul_flops(bs, m, k, n)
         io_bytes = matmul_io_bytes(a, b, c)
 
@@ -128,9 +123,6 @@ def plot_benchmark(is_benching: bool):
         pto2_results.append(pto2)
         pto3_results.append(pto3)
         torch_results.append(torch_b)
-
-    if not is_benching:
-        return
     print()
     rel_diff = [our/their for our, their in zip(pto_results, torch_results)]
 
@@ -164,6 +156,36 @@ def plot_benchmark(is_benching: bool):
     plt.savefig('dsl.png')
 
 
+def correctness_verify():
+    device = get_test_device()
+    torch.set_default_device(device)
+    torch.npu.set_device(device)
+    dtype = torch.float16
+    torch.manual_seed(0)
+
+    matmul_func = load_lib("./matmul_kernel.so")
+
+    m, k, n = 128, 128, 128
+    for blk in [1, 24]:
+        for bs in range(1000, 1100): #range(48, 1000):
+            a = torch.rand((bs, m, k), device=device, dtype=dtype)
+            b = torch.rand((k, n), device=device, dtype=dtype)
+            c = torch.zeros((bs, m, n), device=device, dtype=dtype)
+
+            matmul_func(c, a, b, batch_size=bs, block_dim=blk)
+            torch.npu.synchronize()
+            c_ref = torch.matmul(a, b)
+
+
+            diff = (c - c_ref).abs().max()
+            #assert  diff <= 1e-5, diff
+            if diff < 1e-5:
+                print('.', end='', flush=True)
+            else:
+                print(f'#cores={blk} failed at shape: {list(a.shape)} with error:{diff}')
+        print()
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -174,5 +196,6 @@ if __name__ == "__main__":
     )
     parser.set_defaults(benchmark=True)
     args = parser.parse_args()
-
-    plot_benchmark(args.benchmark)
+    correctness_verify()
+    if args.benchmark:
+        plot_benchmark()

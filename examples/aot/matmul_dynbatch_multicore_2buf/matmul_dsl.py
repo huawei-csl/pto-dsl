@@ -72,7 +72,7 @@ def build(M=128, K=128, N=128):
             b_end_unclamped = b_start + batches_per_core
             b_end = pto.min_u(b_end_unclamped, batch)
 
-            # TODO: if no batched assigned to this core, do nothing...
+            # TODO: if no batched assigned to this core, early return
 
             tvA = pto.as_tensor(tensor_type3d, ptr=a_ptr, shape=[batch, cM, cK], strides=[cK*cM, cK, c1])
             tvC = pto.as_tensor(tensor_type3d, ptr=out_ptr, shape=[batch, cM, cN], strides=[cM*cN, cN, c1])
@@ -104,7 +104,8 @@ def build(M=128, K=128, N=128):
                 lambda: pto.load(svA, aMatTiles[1]),
             )
             record_event("LOAD", "MOV_M2L", event_id=curr)
-
+            
+            # TODO: fix wait events if batch size is 1/2
             # signal to LOAD that L1 can be overwritten
             pto.record_event("MOV_M2L", "LOAD", event_id=[0, 1])
             # signal to MOV that L0 can be overwritten
@@ -163,6 +164,8 @@ def build(M=128, K=128, N=128):
                 )
                 with pto.if_context(b_idx + c2 < b_end):
                     record_event("STORE_ACC", "MATMUL", event_id=curr)
+                
+                pto.barrier('LOAD')
 
 
     return RunTMATMULSplitK
