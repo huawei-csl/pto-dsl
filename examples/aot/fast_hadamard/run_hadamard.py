@@ -60,12 +60,7 @@ def _is_power_of_two(v):
     return v > 0 and (v & (v - 1)) == 0
 
 
-def test_hadamard(lib_path, block_dim=24):
-    device = get_test_device()
-    torch.npu.set_device(device)
-
-    hadamard = load_lib(lib_path=lib_path, block_dim=block_dim)
-
+def test_hadamard(hadamard_func, block_dim=24):
     torch.manual_seed(0)
     dtype = torch.float16
     batch_list = [1, 7, 29, 65]
@@ -80,7 +75,7 @@ def test_hadamard(lib_path, block_dim=24):
             x = torch.randn(batch, n, device=device, dtype=dtype)
             y_ref = hadamard_ref_inplace(x)
 
-            hadamard(x, batch, n, log2_n)
+            hadamard_func(x, batch, n, log2_n)
             torch.npu.synchronize()
 
             is_match = True
@@ -108,6 +103,9 @@ def test_hadamard(lib_path, block_dim=24):
     return results
 
 
+
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -122,9 +120,15 @@ if __name__ == "__main__":
         help="Kernel blockDim (default: 24).",
     )
     args = parser.parse_args()
+
     lib_path = (
         "./hadamard_manual_sync_lib.so"
         if args.manual_sync
         else "./hadamard_auto_sync_lib.so"
     )
-    test_hadamard(lib_path, block_dim=args.block_dim)
+
+    device = get_test_device()
+    torch.npu.set_device(device)
+    hadamard_func = load_lib(lib_path=lib_path, block_dim=args.block_dim)
+
+    test_hadamard(hadamard_func, block_dim=args.block_dim)
