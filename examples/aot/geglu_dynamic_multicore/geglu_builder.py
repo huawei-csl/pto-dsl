@@ -80,12 +80,17 @@ def build_geglu(fn_name="geglu_fp16"):
 
             with pto.if_context(n_cols > c0):
                 with pto.if_context(c_tile >= n_cols):
-                    bid = pto.index_cast(pto.get_block_idx())
-                    num_cores = pto.index_cast(pto.get_block_num())
+                    cid = pto.get_block_idx()
+                    sub_bid = pto.get_subblock_idx()
+                    sub_bnum = pto.get_subblock_num()
+                    num_blocks = pto.get_block_num()
+
+                    vid = pto.index_cast(cid * sub_bnum + sub_bid)  # vector core index
+                    num_cores = pto.index_cast(num_blocks * sub_bnum)  # number of vector cores
 
                     # Distribute rows across cores (row-level parallelism).
                     rows_per_core = pto.ceil_div(batch, num_cores)
-                    row_start = bid * rows_per_core
+                    row_start = vid * rows_per_core
                     row_end = pto.min_u(row_start + rows_per_core, batch)
                     num_rows = row_end - row_start
 
