@@ -44,18 +44,16 @@ def vec_add_1d_dynamic(
     cid = pto.get_block_idx()
     sub_bid = pto.get_subblock_idx()
     sub_bnum = pto.get_subblock_num()
-    cidmul = cid * sub_bnum
-    vid = cidmul + sub_bid
     num_blocks = pto.get_block_num()
 
     # Convert i64/i32 values to index for arithmetic ops.
-    vid_idx = pto.index_cast(vid)
-    num_cores = pto.index_cast(num_blocks)
+    vid = pto.index_cast(cid * sub_bnum + sub_bid)  # vector core index
+    num_cores = pto.index_cast(num_blocks * sub_bnum)  # number of vector cores
     total_elements = pto.index_cast(argN)
 
     num_tiles_global = pto.ceil_div(total_elements, c_tile)
     num_tiles_per_core = pto.ceil_div(num_tiles_global, num_cores)
-    tile_offset_this_core = vid_idx * num_tiles_per_core
+    tile_offset_this_core = vid * num_tiles_per_core
 
     with pto.vector_section():
         tv0 = pto.as_tensor(tensor_type, ptr=arg0, shape=[total_elements], strides=[c1])
