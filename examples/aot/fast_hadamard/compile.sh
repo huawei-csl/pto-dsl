@@ -23,15 +23,10 @@ bisheng \
     -mllvm -cce-aicore-record-overflow=true \
     -mllvm -cce-aicore-addr-transform \
     -mllvm -cce-aicore-dcci-insert-for-scalar=false \
-    --cce-soc-version=Ascend910B2 \
-    --cce-soc-core-type=VecCore \
-    -DMEMORY_BASE \
+    --npu-arch=dav-2201 -DMEMORY_BASE \
     -std=gnu++17 \
     ./caller.cpp \
     -o ./hadamard_auto_sync_lib.so
-
-# TODO: use `--npu-arch=dav-2201` instead of legacy `--cce-soc-version=Ascend910B2 --cce-soc-core-type=VecCore`
-# need to change kernel vid calculation accordingly
 
 bisheng \
     -I${ASCEND_TOOLKIT_HOME}/include \
@@ -43,9 +38,7 @@ bisheng \
     -mllvm -cce-aicore-record-overflow=true \
     -mllvm -cce-aicore-addr-transform \
     -mllvm -cce-aicore-dcci-insert-for-scalar=false \
-    --cce-soc-version=Ascend910B2 \
-    --cce-soc-core-type=VecCore \
-    -DMEMORY_BASE \
+    --npu-arch=dav-2201 -DMEMORY_BASE \
     -std=gnu++17 \
     -DKERNEL_CPP="\"hadamard_manual_sync.cpp\"" \
     -DKERNEL_FN=fast_hadamard_manualsync \
