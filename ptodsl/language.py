@@ -411,3 +411,7 @@ def record_wait_pair(record_op, wait_op, event_id=0):
 
 def barrier(sync_op):
     pto.barrier(_resolve_sync_op(sync_op))
+
+
+def row_sum(src, tmp, dst):
+    pto.TRowSumOp(src = src, tmp = tmp, dst = dst)
