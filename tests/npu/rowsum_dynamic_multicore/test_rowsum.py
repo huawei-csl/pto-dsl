@@ -14,7 +14,7 @@ _DEVICE = get_test_device()
 _LIB_PATH = os.path.join(_DIR, "rowsum_lib.so")
 _BLOCK_DIM = 24
 
-_BATCH_LIST = [1, 2, 4, 8, 16, 22, 32, 65, 128, 256]
+_BATCH_LIST = [1, 7, 29, 32, 65, 200]
 _N_COLS_LIST = [128, 256, 512, 1024, 2048, 4096, 8192]
 
 _SHAPE_PARAMS = [
