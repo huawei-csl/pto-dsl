@@ -289,6 +289,14 @@ def sqrt(inp, out):
     pto.TSqrtOp(inp, out)
 
 
+def rsqrt(inp, out):
+    pto.TRsqrtOp(inp, out)
+
+
+def reciprocal(inp, out):
+    pto.TRecipOp(inp, out)
+
+
 def store(source, dest):
     pto.TStoreOp(None, source, dest)
 
