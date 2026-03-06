@@ -48,39 +48,43 @@ def rms_norm_ref(x, w):
 
     """
     x_f32 = x.float()
-    mean_sq = (x_f32 * x_f32).mean(dim=-1, keepdim=True)
+    mean_sq = (x_f32 * x_f32).mean(dim=-1)
     rstd = torch.rsqrt(mean_sq)
-    return (x_f32 * rstd * w.float()).to(x.dtype)
+    # return (x_f32 * rstd * w.float()).to(x.dtype)
+    return rstd.to(x.dtype)
 
 
-def test_rms_norm(lib_path, block_dim=24):
+def test_rms_norm(lib_path, block_dim=24, dtype=torch.float16):
     device = get_test_device()
     torch.npu.set_device(device)
 
     rms_norm = load_lib(lib_path=lib_path, block_dim=block_dim)
 
     torch.manual_seed(0)
-    dtype = torch.float16
     batch_list = [1, 4, 22, 65]
     n_cols_list = [128, 256, 512, 1024, 2048, 4096, 8192]
 
     results = []
     for batch in batch_list:
         for n_cols in n_cols_list:
-            x = torch.randn(batch, n_cols, device=device, dtype=dtype)
-            w = torch.randn(n_cols, device=device, dtype=dtype)
-            y = torch.empty(batch, n_cols, device=device, dtype=dtype)
+            x = torch.randn(batch, n_cols, device=device, dtype=dtype) + 1.0
+            w = torch.randn(n_cols, device=device, dtype=dtype) + 1.0
+            y = torch.empty(batch, device=device, dtype=dtype)
 
             y_ref = rms_norm_ref(x, w)
+            torch.npu.synchronize()
             rms_norm(x, w, y, batch, n_cols)
             torch.npu.synchronize()
 
             is_match = True
             detail = ""
             try:
-                torch.testing.assert_close(y, y_ref, rtol=1e-2, atol=1e-2)
+                torch.testing.assert_close(y, y_ref, rtol=2e-3, atol=1e-3)
             except AssertionError as err:
                 is_match = False
+                print(y)
+                print(y_ref)
+                input()
                 detail = str(err).strip() if str(err) else "assert_close failed"
 
             status = "match" if is_match else "mismatch"
@@ -113,5 +117,12 @@ if __name__ == "__main__":
         default=24,
         help="Kernel blockDim (default: 24).",
     )
+    parser.add_argument(
+        "--dtype",
+        choices=["fp16", "fp32"],
+        default="fp16",
+        help="Data type (default: fp16).",
+    )
     args = parser.parse_args()
-    test_rms_norm(args.lib, block_dim=args.block_dim)
+    torch_dtype = torch.float32 if args.dtype == "fp32" else torch.float16
+    test_rms_norm(args.lib, block_dim=args.block_dim, dtype=torch_dtype)

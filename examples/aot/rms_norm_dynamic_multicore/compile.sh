@@ -1,8 +1,16 @@
 set -e
 
+DTYPE=${1:-fp16}
+
+if [ "$DTYPE" = "fp32" ]; then
+    DTYPE_T=float
+else
+    DTYPE_T=half
+fi
+
 rm -f rms_norm.pto rms_norm.cpp rms_norm_lib.so
 
-python ./rms_norm_builder.py > ./rms_norm.pto
+python ./rms_norm_builder.py --dtype "$DTYPE" > ./rms_norm.pto
 ptoas --enable-insert-sync ./rms_norm.pto -o ./rms_norm.cpp
 
 bisheng \
@@ -18,5 +26,6 @@ bisheng \
     --npu-arch=dav-2201 -DMEMORY_BASE \
     -std=gnu++17 \
     -DKERNEL_CPP="\"rms_norm.cpp\"" \
+    -DDTYPE_T="$DTYPE_T" \
     ./caller.cpp \
     -o ./rms_norm_lib.so

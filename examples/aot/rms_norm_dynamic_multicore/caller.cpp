@@ -7,6 +7,10 @@
 #define NUM_CORES 24
 #endif
 
+#ifndef DTYPE_T
+#define DTYPE_T half
+#endif
+
 extern "C" void call_kernel(
     uint32_t blockDim,
     void *stream,
@@ -18,9 +22,9 @@ extern "C" void call_kernel(
 {
     uint32_t launch_blocks = blockDim > 0 ? blockDim : NUM_CORES;
     _kernel<<<launch_blocks, nullptr, stream>>>(
-        reinterpret_cast<half *>(x),
-        reinterpret_cast<half *>(w),
-        reinterpret_cast<half *>(y),
+        reinterpret_cast<DTYPE_T *>(x),
+        reinterpret_cast<DTYPE_T *>(w),
+        reinterpret_cast<DTYPE_T *>(y),
         static_cast<int32_t>(batch),
         static_cast<int32_t>(n_cols));
 }
