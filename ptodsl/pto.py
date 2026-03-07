@@ -5,8 +5,8 @@ from mlir.dialects import pto as _pto
 from mlir.ir import InsertionPoint
 
 from .control_flow import cond, for_range, if_context
-from .core import Value, _unwrap, wrap_value
 from . import scalar
+from .scalar import Value, _unwrap, wrap_value
 
 
 def __getattr__(name):

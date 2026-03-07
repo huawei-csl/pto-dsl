@@ -3,7 +3,7 @@ import inspect
 from mlir.dialects import func, pto as _pto
 from mlir.ir import Context, InsertionPoint, Location, Module
 
-from .core import wrap_value
+from .scalar import wrap_value
 
 
 def _resolve_meta(meta_fn):

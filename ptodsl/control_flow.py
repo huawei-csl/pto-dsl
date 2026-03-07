@@ -3,7 +3,7 @@ from contextlib import contextmanager
 from mlir.dialects import scf
 from mlir.ir import InsertionPoint
 
-from .core import Value, _unwrap
+from .scalar import Value, _unwrap
 
 
 def for_range(start, stop, step):
