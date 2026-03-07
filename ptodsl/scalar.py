@@ -1,2 +1,6 @@
-from .api.scalar import *  # noqa: F401,F403
-from .api.scalar import __all__, __getattr__
+from .api import scalar as _scalar
+from .api.scalar import __all__
+
+
+def __getattr__(name):
+    return getattr(_scalar, name)

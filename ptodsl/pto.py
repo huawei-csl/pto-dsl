@@ -1,2 +1,6 @@
-from .api.pto import *  # noqa: F401,F403
-from .api.pto import __all__, __getattr__
+from .api import pto as _pto
+from .api.pto import __all__
+
+
+def __getattr__(name):
+    return getattr(_pto, name)
