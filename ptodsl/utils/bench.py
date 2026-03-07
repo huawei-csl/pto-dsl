@@ -24,6 +24,7 @@ def do_bench(
     """
     import torch
     import torch_npu
+
     start_events = [torch.npu.Event(enable_timing=True) for _ in range(benchmark_iters)]
     end_events = [torch.npu.Event(enable_timing=True) for _ in range(benchmark_iters)]
 
@@ -46,8 +47,8 @@ def do_bench(
         end_events[i].record()
 
     torch_npu.npu.synchronize()
-    f = {"s": 1e-3, "ms": 1e0, "us": 1e3, "ns": 1e6}[unit]
-    times = [f * s.elapsed_time(e) for s, e in zip(start_events, end_events)]
+    factor = {"s": 1e-3, "ms": 1e0, "us": 1e3, "ns": 1e6}[unit]
+    times = [factor * start.elapsed_time(end) for start, end in zip(start_events, end_events)]
     if aggregation == "mean":
         return sum(times) / len(times)
     return times
