@@ -9,11 +9,10 @@ from .core import Value, _unwrap, wrap_value
 from . import scalar
 
 
-float16 = scalar.float16
-float32 = scalar.float32
-int16 = scalar.int16
-int32 = scalar.int32
-bool = scalar.bool
+def __getattr__(name):
+    if name in {"bool", "float16", "float32", "int16", "int32"}:
+        return getattr(scalar, name)
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 
 def PtrType(dtype):
