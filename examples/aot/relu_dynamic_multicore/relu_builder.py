@@ -56,7 +56,7 @@ def build():
             tv0 = pto.as_tensor(tensor_type, ptr=arg0, shape=[total_elements], strides=[c1])
             tv1 = pto.as_tensor(tensor_type, ptr=arg1, shape=[total_elements], strides=[c1])
 
-            for i in pto.for_range(c0, num_tiles, c1):
+            for i in pto.range(c0, num_tiles, c1):
                 offset_tile = i * c_tile_w
                 offset_total = core_start + offset_tile
 

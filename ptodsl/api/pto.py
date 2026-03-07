@@ -1,4 +1,4 @@
-from .control_flow import cond, for_range, if_context
+from .control_flow import cond, range, if_context
 from .scalar import Value, wrap_value
 from .pto_general import (
     alloc_tile,
@@ -45,7 +45,7 @@ __all__ = [
     "slice_view",
     "vector_section",
     "cube_section",
-    "for_range",
+    "range",
     "if_context",
     "cond",
     "alloc_tile",

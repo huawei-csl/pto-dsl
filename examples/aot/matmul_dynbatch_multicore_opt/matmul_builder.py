@@ -105,7 +105,7 @@ def build(
             pto.record_wait_pair("LOAD", "MOV_M2L", event_id=0)
             tile.mov(bMatTile, bTile)
 
-            for b_idx in pto.for_range(b_start, b_end, c1):
+            for b_idx in pto.range(b_start, b_end, c1):
                 svA = pto.slice_view(
                     tile_view_a,
                     source=tvA,

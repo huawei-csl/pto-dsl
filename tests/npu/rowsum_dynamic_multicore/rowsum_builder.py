@@ -91,7 +91,7 @@ def build_rowsum(fn_name="rowsum_fp32", dtype="fp32"):
                     tile_type, valid_col=n_cols
                 )  # scratch
 
-                for r in pto.for_range(c0, num_rows, c1):
+                for r in pto.range(c0, num_rows, c1):
                     gm_offset = (row_start + r) * n_cols
 
                     sv_x = pto.slice_view(

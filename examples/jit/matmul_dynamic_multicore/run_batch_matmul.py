@@ -104,10 +104,10 @@ def build_kernel(
             cTile = pto.alloc_tile(tile_buf_cTile)
             biasTile = pto.alloc_tile(tile_buf_biasTile)
 
-            for b_idx in pto.for_range(b_start, b_end, c1):
+            for b_idx in pto.range(b_start, b_end, c1):
                 row_off = b_idx * cM
 
-                for i in pto.for_range(c0, cIter, c1):
+                for i in pto.range(c0, cIter, c1):
                     kOff = i * cBASEK
                     svA = pto.slice_view(
                         tile_view_a,

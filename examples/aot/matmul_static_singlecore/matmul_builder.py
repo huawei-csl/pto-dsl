@@ -89,7 +89,7 @@ def build(
             cTile = pto.alloc_tile(tile_buf_cTile)
             biasTile = pto.alloc_tile(tile_buf_biasTile)
 
-            for i in pto.for_range(c0, cIter, c1):
+            for i in pto.range(c0, cIter, c1):
                 kOff = i * cBASEK
                 svA = pto.slice_view(
                     tile_view_a,

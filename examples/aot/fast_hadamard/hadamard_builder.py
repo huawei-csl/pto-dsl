@@ -103,7 +103,7 @@ def fast_hadamard_autosync(
                 num_chunks = s.ceil_div(samples_to_process, samples_per_load)
 
                 def process_rows(tb_row, tb_even, tb_odd, gm_offset, cur_samples):
-                    for s in pto.for_range(c0, cur_samples, c1):
+                    for s in pto.range(c0, cur_samples, c1):
                         row_offset = gm_offset + s * n
                         sv_row = pto.slice_view(
                             subtensor_full, source=tv_x, offsets=[row_offset], sizes=[n]
@@ -114,14 +114,14 @@ def fast_hadamard_autosync(
                         tb_second = tile.subset(tb_row, [c0, n_half], [1, HALF_ELEMENTS_PER_TILE])
 
                         pto.load(sv_row, tb_row)
-                        for _ in pto.for_range(c0, log2_n, c1):
+                        for _ in pto.range(c0, log2_n, c1):
                             tile.gather(tb_row, tb_even, mask_pattern="P0101")
                             tile.gather(tb_row, tb_odd, mask_pattern="P1010")
                             tile.add(tb_even, tb_odd, tb_first)
                             tile.sub(tb_even, tb_odd, tb_second)
                         pto.store(tb_row, sv_row)
 
-                for chunk_i in pto.for_range(c0, num_chunks, c1):
+                for chunk_i in pto.range(c0, num_chunks, c1):
                     sample_done = chunk_i * samples_per_load
                     chunk_left = samples_to_process - sample_done
                     cur_samples = s.select(
@@ -204,7 +204,7 @@ def fast_hadamard_manualsync(
                 def process_rows(
                     tb_row, tb_even, tb_odd, event_id, gm_offset, cur_samples
                 ):
-                    for s in pto.for_range(c0, cur_samples, c1):
+                    for s in pto.range(c0, cur_samples, c1):
                         row_offset = gm_offset + s * n
                         sv_row = pto.slice_view(
                             subtensor_full, source=tv_x, offsets=[row_offset], sizes=[n]
@@ -223,7 +223,7 @@ def fast_hadamard_manualsync(
                         pto.load(sv_row, tb_row)
                         pto.record_wait_pair("LOAD", "VEC", event_id=event_id)
 
-                        for _ in pto.for_range(c0, log2_n, c1):
+                        for _ in pto.range(c0, log2_n, c1):
                             tile.gather(tb_row, tb_even, mask_pattern="P0101")
                             tile.gather(tb_row, tb_odd, mask_pattern="P1010")
                             pto.barrier("VEC")
@@ -242,7 +242,7 @@ def fast_hadamard_manualsync(
                     pto.record_event("VEC", "LOAD", event_id=event_id)
                     pto.record_event("STORE_VEC", "VEC", event_id=event_id)
 
-                for chunk_i in pto.for_range(c0, num_chunks, c1):
+                for chunk_i in pto.range(c0, num_chunks, c1):
                     sample_done = chunk_i * samples_per_load
                     chunk_left = samples_to_process - sample_done
                     cur_samples = s.select(

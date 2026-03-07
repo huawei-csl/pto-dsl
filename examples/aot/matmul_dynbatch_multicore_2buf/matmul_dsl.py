@@ -113,7 +113,7 @@ def build(M=128, K=128, N=128):
             # signal to MATMUL that it can overwrite L0C
             pto.record_event("STORE_ACC", "MATMUL", event_id=[0, 1])
 
-            for b_idx in pto.for_range(b_start, b_end, c1):
+            for b_idx in pto.range(b_start, b_end, c1):
                 curr = b_idx % c2
                 svA = pto.slice_view(tile_view_a, source=tvA, offsets=[b_idx+c1, c0, c0], sizes=[c1, cM, cK])
                 svC = pto.slice_view(tile_view_c, source=tvC, offsets=[b_idx, c0, c0], sizes=[c1, cM, cN])

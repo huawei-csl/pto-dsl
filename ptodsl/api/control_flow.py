@@ -6,7 +6,7 @@ from mlir.ir import InsertionPoint
 from .scalar import Value, _unwrap
 
 
-def for_range(start, stop, step):
+def range(start, stop, step):
     loop = scf.ForOp(_unwrap(start), _unwrap(stop), _unwrap(step))
     with InsertionPoint(loop.body):
         yield Value(loop.induction_variable)
@@ -49,4 +49,4 @@ def cond(condition, then_builder, else_builder):
     return op
 
 
-__all__ = ["cond", "for_range", "if_context"]
+__all__ = ["cond", "range", "if_context"]

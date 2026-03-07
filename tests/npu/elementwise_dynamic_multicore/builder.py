@@ -96,7 +96,7 @@ def build_binary_kernels(op_name, op_fn, dtype=None, tile_length=1024):
                 elements_to_process = tiles_to_process * c_tile
 
                 with pto.if_context(elements_to_process > c0):
-                    for i in pto.for_range(c0, tiles_to_process, c1):
+                    for i in pto.range(c0, tiles_to_process, c1):
                         tile_offset_global = i + tile_offset_this_core
                         offset_global = tile_offset_global * c_tile
 
@@ -178,10 +178,10 @@ def build_binary_kernels(op_name, op_fn, dtype=None, tile_length=1024):
                     need_truncate, remaining_rows, rows_per_core
                 )
 
-                for r in pto.for_range(c0, rows_to_process, c1):
+                for r in pto.range(c0, rows_to_process, c1):
                     row_idx = r + row_start
                     row_flat_offset = row_idx * cols
-                    for c in pto.for_range(c0, tiles_per_row, c1):
+                    for c in pto.range(c0, tiles_per_row, c1):
                         col_offset = c * c_tile
                         flat_offset = row_flat_offset + col_offset
 

@@ -92,7 +92,7 @@ def build_unary_kernel(op_name, op_fn, dtype="float32"):
                 tb_x = pto.alloc_tile(tile_type, valid_col=n_cols)
                 tb_y = pto.alloc_tile(tile_type, valid_col=n_cols)
 
-                for row_i in pto.for_range(c0, num_rows, c1):
+                for row_i in pto.range(c0, num_rows, c1):
                     gm_offset = (row_start + row_i) * n_cols
 
                     sv_x = pto.slice_view(

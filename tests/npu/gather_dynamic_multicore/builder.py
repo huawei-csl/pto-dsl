@@ -129,7 +129,7 @@ def build_gather_kernel(
 
                 elements_to_process = tiles_to_process * c_tile
                 with pto.if_context(elements_to_process > c0):
-                    for i in pto.for_range(c0, tiles_to_process, c1):
+                    for i in pto.range(c0, tiles_to_process, c1):
                         tile_offset_global = i + tile_offset_this_core
                         offset_global = tile_offset_global * c_tile
 

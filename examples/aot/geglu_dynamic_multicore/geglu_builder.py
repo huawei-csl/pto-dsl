@@ -113,7 +113,7 @@ def build_geglu(fn_name="geglu_fp16"):
                         tb_tmp1 = pto.alloc_tile(tile_type, valid_col=n_cols)
                         tb_tmp2 = pto.alloc_tile(tile_type, valid_col=n_cols)
 
-                        for row_i in pto.for_range(c0, num_rows, c1):
+                        for row_i in pto.range(c0, num_rows, c1):
                             gm_offset = (row_start + row_i) * n_cols
 
                             sv_a = pto.slice_view(
