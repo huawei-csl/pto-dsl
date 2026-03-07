@@ -1,435 +1,115 @@
-from contextlib import contextmanager
-from typing import Sequence
-
-from mlir.dialects import arith, pto, scf
-from mlir.ir import F16Type, F32Type, IndexType, InsertionPoint, IntegerType
-
-
-def _unwrap(value):
-    if isinstance(value, Value):
-        return value.raw
-    return value
-
-
-class Value:
-    # TODO: generalize to more comprehensive wrappers like https://github.com/makslevental/mlir-python-extras/blob/0.0.8.2/mlir/extras/dialects/ext/arith.py
-    def __init__(self, raw):
-        self.raw = raw
-
-    def __mul__(self, other):
-        return Value(arith.MulIOp(_unwrap(self), _unwrap(other)).result)
-
-    def __rmul__(self, other):
-        return Value(arith.MulIOp(_unwrap(other), _unwrap(self)).result)
-
-    def __add__(self, other):
-        return Value(arith.AddIOp(_unwrap(self), _unwrap(other)).result)
-
-    def __radd__(self, other):
-        return Value(arith.AddIOp(_unwrap(other), _unwrap(self)).result)
-
-    def __sub__(self, other):
-        return Value(arith.SubIOp(_unwrap(self), _unwrap(other)).result)
-
-    def __rsub__(self, other):
-        return Value(arith.SubIOp(_unwrap(other), _unwrap(self)).result)
-
-    def __floordiv__(self, other):
-        return Value(arith.DivSIOp(_unwrap(self), _unwrap(other)).result)
-
-    def __rfloordiv__(self, other):
-        return Value(arith.DivSIOp(_unwrap(other), _unwrap(self)).result)
-
-    def __truediv__(self, other):
-        return Value(arith.DivFOp(_unwrap(self), _unwrap(other)).result)
-
-    def __rtruediv__(self, other):
-        return Value(arith.DivFOp(_unwrap(other), _unwrap(self)).result)
-
-    def __mod__(self, other):
-        return Value(arith.RemSIOp(_unwrap(self), _unwrap(other)).result)
-
-    def __rmod__(self, other):
-        return Value(arith.RemSIOp(_unwrap(other), _unwrap(self)).result)
-
-    @staticmethod
-    def _cmp(lhs, rhs, predicate):
-        return Value(arith.CmpIOp(predicate, _unwrap(lhs), _unwrap(rhs)).result)
-
-    def __lt__(self, other):
-        return Value._cmp(self, other, arith.CmpIPredicate.slt)
-
-    def __gt__(self, other):
-        return Value._cmp(self, other, arith.CmpIPredicate.sgt)
-
-    def __le__(self, other):
-        return Value._cmp(self, other, arith.CmpIPredicate.sle)
-
-    def __ge__(self, other):
-        return Value._cmp(self, other, arith.CmpIPredicate.sge)
-    
-    def __eq__(self, other):
-        return Value._cmp(self, other, arith.CmpIPredicate.eq)
-
-    def __ne__(self, other):
-        return Value._cmp(self, other, arith.CmpIPredicate.ne)
-
-    def __getattr__(self, item):
-        return getattr(self.raw, item)
-
-
-def wrap_value(value):
-    if isinstance(value, Value):
-        return value
-    return Value(value)
-
-
-def __getattr__(name):
-    # TODO: add more builtin dtype aliases (for example float16/bfloat16/int8/int64)
-    # when they are validated against PTO type support.
-    if name == "bool":
-        return IntegerType.get_signless(1)
-    if name == "float32":
-        return F32Type.get()
-    if name == "float16":
-        return F16Type.get()
-    if name == "int32":
-        return IntegerType.get_signless(32)
-    if name == "int16":
-        return IntegerType.get_signless(16)
-    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
-
-
-def PtrType(dtype):
-    return pto.PtrType.get(dtype)
-
-
-def TensorType(*, rank, dtype):
-    return pto.TensorViewType.get(rank, dtype)
-
-
-def SubTensorType(*, shape, dtype):
-    return pto.PartitionTensorViewType.get(shape, dtype)
-
-
-class TileBufConfig:
-    def __init__(self, blayout="RowMajor", slayout="NoneBox", s_fractal_size=512, pad="Null"):
-        # TODO: expose and validate a broader set of tile buffer knobs if PTO adds
-        # more layout/padding/fractal settings that should be configurable here.
-        self._bl = pto.BLayoutAttr.get(getattr(pto.BLayout, blayout))
-        self._sl = pto.SLayoutAttr.get(getattr(pto.SLayout, slayout))
-        self._pd = pto.PadValueAttr.get(getattr(pto.PadValue, pad))
-        self._s_fractal_size = s_fractal_size
-
-    @property
-    def attr(self):
-        return pto.TileBufConfigAttr.get(self._bl, self._sl, self._s_fractal_size, self._pd)
-
-
-def _default_tile_config(memory_space, shape):
-    space = memory_space.upper()
-    # Defaults mirror the explicit configs used by the verbose matmul builder.
-    if space == "MAT":
-        if len(shape) >= 1 and shape[0] == 1:
-            return TileBufConfig(blayout="RowMajor", slayout="NoneBox", s_fractal_size=pto.TileConfig.fractalABSize)
-        return TileBufConfig(blayout="ColMajor", slayout="RowMajor", s_fractal_size=pto.TileConfig.fractalABSize)
-    if space == "LEFT":
-        return TileBufConfig(blayout="RowMajor", slayout="RowMajor", s_fractal_size=pto.TileConfig.fractalABSize)
-    if space == "RIGHT":
-        return TileBufConfig(blayout="RowMajor", slayout="ColMajor", s_fractal_size=pto.TileConfig.fractalABSize)
-    if space == "ACC":
-        return TileBufConfig(blayout="ColMajor", slayout="RowMajor", s_fractal_size=pto.TileConfig.fractalCSize)
-    if space == "BIAS":
-        return TileBufConfig(blayout="RowMajor", slayout="NoneBox", s_fractal_size=pto.TileConfig.fractalABSize)
-    if space == "VEC":
-        return TileBufConfig()
-    raise ValueError(f"Unsupported memory_space '{memory_space}' for default tile config.")
-
-
-def TileBufType(*, shape, dtype, memory_space, valid_shape=None, config=None):
-    space = pto.AddressSpaceAttr.get(getattr(pto.AddressSpace, memory_space))
-    if valid_shape is None:
-        valid_shape = shape
-    if config is None:
-        config = _default_tile_config(memory_space, shape)
-    cfg = config.attr if isinstance(config, TileBufConfig) else config
-    return pto.TileBufType.get(shape, dtype, space, valid_shape, cfg)
-
-
-def const(value):
-    return Value(arith.ConstantOp(IndexType.get(), value).result)
-
-
-def get_block_idx():
-    return Value(pto.GetBlockIdxOp().result)
-
-
-def get_subblock_idx():
-    return Value(pto.GetSubBlockIdxOp().result)
-
-
-def get_subblock_num():
-    return Value(pto.GetSubBlockNumOp().result)
-
-
-def get_block_num():
-    return Value(pto.GetBlockNumOp().result)
-
-
-def index_cast(value, index_type=IndexType):
-    if hasattr(index_type, "get"):
-        dst = index_type.get()
-    else:
-        dst = index_type
-    return Value(arith.IndexCastOp(dst, _unwrap(value)).result)
-
-
-def as_tensor(tensor_type, *, ptr, shape, strides):
-    shape_vals = [_unwrap(v) for v in shape]
-    stride_vals = [_unwrap(v) for v in strides]
-    return pto.MakeTensorViewOp(tensor_type, _unwrap(ptr), shape_vals, stride_vals).result
-
-
-def slice_view(subtensor_type, *, source, offsets, sizes):
-    offset_vals = [_unwrap(v) for v in offsets]
-    size_vals = [_unwrap(v) for v in sizes]
-    return pto.PartitionViewOp(subtensor_type, source, offsets=offset_vals, sizes=size_vals).result
-
-
-@contextmanager
-def vector_section():
-    section = pto.SectionVectorOp()
-    block = section.body.blocks.append()
-    with InsertionPoint(block):
-        yield
-
-
-@contextmanager
-def cube_section():
-    section = pto.SectionCubeOp()
-    block = section.body.blocks.append()
-    with InsertionPoint(block):
-        yield
-
-
-def for_range(start, stop, step):
-    loop = scf.ForOp(_unwrap(start), _unwrap(stop), _unwrap(step))
-    with InsertionPoint(loop.body):
-        yield Value(loop.induction_variable)
-        scf.YieldOp([])
-
-
-def alloc_tile(tile_type, *, valid_row=None, valid_col=None):
-    kwargs = {}
-    if valid_row is not None:
-        kwargs["valid_row"] = _unwrap(valid_row)
-    if valid_col is not None:
-        kwargs["valid_col"] = _unwrap(valid_col)
-    return pto.AllocTileOp(tile_type, **kwargs).result
-
-
-def subset(source, offsets, sizes):
-    offset_vals = [_unwrap(v) for v in offsets]
-    return pto.subset(source, offset_vals, sizes)
-
-
-def load(source, dest):
-    pto.TLoadOp(None, source, dest)
-
-
-def mov(source, dest):
-    pto.TMovOp(None, source, dest)
-
-
-def add(lhs, rhs, out):
-    pto.TAddOp(lhs, rhs, out)
-
-
-def sub(lhs, rhs, out):
-    pto.TSubOp(lhs, rhs, out)
-
-
-def div(lhs, rhs, out):
-    pto.TDivOp(lhs, rhs, out)
-
-
-def mul(lhs, rhs, out):
-    pto.TMulOp(lhs, rhs, out)
-
-
-def or_(lhs, rhs, out):
-    pto.TOrOp(lhs, rhs, out)
-
-
-def gather(src, out, indices=None, *, mask_pattern=None):
-    if mask_pattern is not None:
-        mp = pto.MaskPatternAttr.get(getattr(pto.MaskPattern, mask_pattern))
-        pto.TGatherOp(src, out, maskPattern=mp)
-    else:
-        pto.TGatherOp(src, out, indices=indices)
-
-
-def exp(inp, out):
-    pto.TExpOp(inp, out)
-
-
-def log(inp, out):
-    pto.TLogOp(inp, out)
-
-
-def relu(inp, out):
-    pto.TReluOp(inp, out)
-
-
-def abs(inp, out):
-    pto.TAbsOp(inp, out)
-
-
-def sqrt(inp, out):
-    pto.TSqrtOp(inp, out)
-
-
-def rsqrt(inp, out):
-    pto.TRsqrtOp(inp, out)
-
-
-def reciprocal(inp, out):
-    pto.TRecipOp(inp, out)
-
-
-def store(source, dest):
-    pto.TStoreOp(None, source, dest)
-
-
-def matmul(lhs, rhs, out):
-    pto.TMatmulOp(None, lhs, rhs, out)
-
-
-def matmul_bias(lhs, rhs, bias, out):
-    pto.TMatmulBiasOp(None, lhs, rhs, bias, out)
-
-
-def matmul_acc(acc, lhs, rhs, out):
-    pto.TMatmulAccOp(None, acc, lhs, rhs, out)
-
-
-def ceil_div(a, b):
-    return Value(arith.CeilDivSIOp(_unwrap(a), _unwrap(b)).result)
-
-
-def div_s(a, b):
-    return Value(arith.DivSIOp(_unwrap(a), _unwrap(b)).result)
-
-
-def rem_s(a, b):
-    return Value(arith.RemSIOp(_unwrap(a), _unwrap(b)).result)
-
-
-def min_u(a, b):
-    return Value(arith.MinUIOp(_unwrap(a), _unwrap(b)).result)
-
-
-def eq(a, b):
-    return Value(arith.CmpIOp(arith.CmpIPredicate.eq, _unwrap(a), _unwrap(b)).result)
-
-
-def lt(a, b):
-    return Value(arith.CmpIOp(arith.CmpIPredicate.slt, _unwrap(a), _unwrap(b)).result)
-
-
-def gt(a, b):
-    return Value(arith.CmpIOp(arith.CmpIPredicate.sgt, _unwrap(a), _unwrap(b)).result)
-
-
-def ge(a, b):
-    return Value(arith.CmpIOp(arith.CmpIPredicate.sge, _unwrap(a), _unwrap(b)).result)
-
-
-def select(cond, true_val, false_val):
-    return Value(arith.SelectOp(_unwrap(cond), _unwrap(true_val), _unwrap(false_val)).result)
-
-
-class _IfElseBranch:
-    def __init__(self, if_op):
-        self._if_op = if_op
-    @contextmanager
-    def else_context(self):
-        with InsertionPoint(self._if_op.else_block):
-            yield
-            scf.YieldOp([])
-
-@contextmanager
-def if_context(condition, has_else=False):
-    if has_else:
-        op = scf.IfOp(_unwrap(condition), [], hasElse=True)
-        branch = _IfElseBranch(op)
-    else:
-        op = scf.IfOp(_unwrap(condition))
-        branch = None
-
-    with InsertionPoint(op.then_block):
-        yield branch
-        scf.YieldOp([])
-
-
-def cond(condition, then_builder, else_builder):
-    op = scf.IfOp(_unwrap(condition), [], hasElse=True)
-    with InsertionPoint(op.then_block):
-        then_builder()
-        scf.YieldOp([])
-    with InsertionPoint(op.else_block):
-        else_builder()
-        scf.YieldOp([])
-    return op
-
-def _resolve_sync_op(sync_op):
-    if isinstance(sync_op, str):
-        normalized = sync_op.strip().upper()
-        if not normalized.startswith("T"):
-            normalized = f"T{normalized}"
-        try:
-            return getattr(pto, normalized)
-        except AttributeError as exc:
-            raise ValueError(f"Unsupported sync op type '{sync_op}'.") from exc
-    return sync_op
-
-
-def _resolve_event_id(event_id):
-    if isinstance(event_id, int):
-        if event_id < 0 or event_id > 7:
-            raise ValueError(f"event_id must be in range [0, 7], got {event_id}.")
-        return getattr(pto, f"EVENT_ID{event_id}")
-    return event_id
-
-
-def record_event(record_op, wait_op, event_id: int|Sequence[int]=0):
-    if not isinstance(event_id, int):
-        for eid in event_id:
-            pto.record_event(_resolve_sync_op(record_op), _resolve_sync_op(wait_op), _resolve_event_id(eid))
-    else:
-        pto.record_event(_resolve_sync_op(record_op), _resolve_sync_op(wait_op), _resolve_event_id(event_id))
-
-
-
-def wait_event(record_op, wait_op, event_id: int|Sequence[int]=0):
-    if not isinstance(event_id, int):
-        for eid in event_id:
-            pto.wait_event(_resolve_sync_op(record_op), _resolve_sync_op(wait_op), _resolve_event_id(eid))
-    else:
-        pto.wait_event(_resolve_sync_op(record_op), _resolve_sync_op(wait_op), _resolve_event_id(event_id))
-
-
-def record_wait_pair(record_op, wait_op, event_id: int|Sequence[int]=0):
-    rec = _resolve_sync_op(record_op)
-    w = _resolve_sync_op(wait_op)
-    ev = _resolve_event_id(event_id)
-    pto.record_event(rec, w, ev)
-    pto.wait_event(rec, w, ev)
-
-
-def barrier(sync_op):
-    pto.barrier(_resolve_sync_op(sync_op))
-
-
-def row_sum(src, tmp, dst):
-    pto.TRowSumOp(src = src, tmp = tmp, dst = dst)
+from .core import Value, _unwrap, wrap_value
+from .control_flow import cond, for_range, if_context
+from .pto import (
+    PtrType,
+    SubTensorType,
+    TensorType,
+    TileBufConfig,
+    TileBufType,
+    as_tensor,
+    barrier,
+    bool,
+    cube_section,
+    float16,
+    float32,
+    get_block_idx,
+    get_block_num,
+    get_subblock_idx,
+    get_subblock_num,
+    int16,
+    int32,
+    load,
+    record_event,
+    record_wait_pair,
+    slice_view,
+    store,
+    subset,
+    vector_section,
+    wait_event,
+    alloc_tile,
+)
+from .scalar import ceil_div, const, div_s, eq, ge, gt, index_cast, lt, min_u, rem_s, select
+from .tile import (
+    abs,
+    add,
+    div,
+    exp,
+    gather,
+    log,
+    matmul,
+    matmul_acc,
+    matmul_bias,
+    mov,
+    mul,
+    or_,
+    reciprocal,
+    relu,
+    row_sum,
+    rsqrt,
+    sqrt,
+    sub,
+)
+
+__all__ = [
+    "Value",
+    "_unwrap",
+    "wrap_value",
+    "bool",
+    "float16",
+    "float32",
+    "int16",
+    "int32",
+    "PtrType",
+    "TensorType",
+    "SubTensorType",
+    "TileBufConfig",
+    "TileBufType",
+    "const",
+    "get_block_idx",
+    "get_subblock_idx",
+    "get_subblock_num",
+    "get_block_num",
+    "index_cast",
+    "as_tensor",
+    "slice_view",
+    "vector_section",
+    "cube_section",
+    "for_range",
+    "if_context",
+    "cond",
+    "alloc_tile",
+    "subset",
+    "load",
+    "mov",
+    "add",
+    "sub",
+    "div",
+    "mul",
+    "or_",
+    "gather",
+    "exp",
+    "log",
+    "relu",
+    "abs",
+    "sqrt",
+    "rsqrt",
+    "reciprocal",
+    "store",
+    "matmul",
+    "matmul_bias",
+    "matmul_acc",
+    "ceil_div",
+    "div_s",
+    "rem_s",
+    "min_u",
+    "eq",
+    "lt",
+    "gt",
+    "ge",
+    "select",
+    "record_event",
+    "wait_event",
+    "record_wait_pair",
+    "barrier",
+    "row_sum",
+]

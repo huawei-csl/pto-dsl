@@ -1,9 +1,10 @@
 from mlir.ir import Context, Location, Module, InsertionPoint, IntegerType
 from mlir.ir import F32Type, IndexType
 from ptodsl import to_ir_module
-import ptodsl.language as pto
+from ptodsl import pto, tile
+from ptodsl import scalar as s
 
-const = pto.const
+const = s.const
 
 
 def meta_data():
@@ -43,14 +44,14 @@ def vec_add_2d_static(
     cidmul = cid * sub_bnum
     vid = cidmul + sub_bid
 
-    v_row_idx = pto.index_cast(arg_vrow_i32)
-    v_col_idx = pto.index_cast(arg_vcol_i32)
+    v_row_idx = s.index_cast(arg_vrow_i32)
+    v_col_idx = s.index_cast(arg_vcol_i32)
 
     tv0 = pto.as_tensor(tensor_type, ptr=arg0, shape=[c1280, c32], strides=[c32, c1])
     tv1 = pto.as_tensor(tensor_type, ptr=arg1, shape=[c1280, c32], strides=[c32, c1])
     tv2 = pto.as_tensor(tensor_type, ptr=arg2, shape=[c1280, c32], strides=[c32, c1])
 
-    vid_idx = pto.index_cast(vid)
+    vid_idx = s.index_cast(vid)
     offset_row = vid_idx * c32
     sv0 = pto.slice_view(subtensor_type, source=tv0, offsets=[offset_row, c0], sizes=[c32, c32])
     sv1 = pto.slice_view(subtensor_type, source=tv1, offsets=[offset_row, c0], sizes=[c32, c32])
@@ -63,32 +64,32 @@ def vec_add_2d_static(
 
         pto.load(sv0, tb0)
         pto.load(sv1, tb1)
-        pto.add(tb0, tb1, tb2)
+        tile.add(tb0, tb1, tb2)
         pto.store(tb2, sv2)
 
 
 def build():
-    from mlir.dialects import func, arith, pto
+    from mlir.dialects import arith, func, pto as _pto
 
     with Context() as ctx, Location.unknown():
-        pto.register_dialect(ctx, load=True)
+        _pto.register_dialect(ctx, load=True)
 
         m = Module.create()
 
         f32 = F32Type.get()
         i32 = IntegerType.get_signless(32)
-        ptr_f32 = pto.PtrType.get(f32)
+        ptr_f32 = _pto.PtrType.get(f32)
 
-        tv2_f32 = pto.TensorViewType.get(2, f32)
-        tile_view_32 = pto.PartitionTensorViewType.get([32, 32], f32)
-        vec = pto.AddressSpaceAttr.get(pto.AddressSpace.VEC)
-        bl = pto.BLayoutAttr.get(pto.BLayout.RowMajor)
-        sl = pto.SLayoutAttr.get(pto.SLayout.NoneBox)
-        pd = pto.PadValueAttr.get(pto.PadValue.Null)
+        tv2_f32 = _pto.TensorViewType.get(2, f32)
+        tile_view_32 = _pto.PartitionTensorViewType.get([32, 32], f32)
+        vec = _pto.AddressSpaceAttr.get(_pto.AddressSpace.VEC)
+        bl = _pto.BLayoutAttr.get(_pto.BLayout.RowMajor)
+        sl = _pto.SLayoutAttr.get(_pto.SLayout.NoneBox)
+        pd = _pto.PadValueAttr.get(_pto.PadValue.Null)
 
-        cfg = pto.TileBufConfigAttr.get(bl, sl, 512, pd)
+        cfg = _pto.TileBufConfigAttr.get(bl, sl, 512, pd)
 
-        tile_buf_dynamic = pto.TileBufType.get([32, 32], f32, vec, [-1, -1], cfg)
+        tile_buf_dynamic = _pto.TileBufType.get([32, 32], f32, vec, [-1, -1], cfg)
         fn_ty = func.FunctionType.get([ptr_f32, ptr_f32, ptr_f32, i32, i32], [])
 
         with InsertionPoint(m.body):
@@ -103,42 +104,42 @@ def build():
 
             arg0, arg1, arg2, arg_vrow_i32, arg_vcol_i32 = entry.arguments
 
-            cid = pto.GetBlockIdxOp().result
-            sub_bid = pto.GetSubBlockIdxOp().result
-            sub_bnum = pto.GetSubBlockNumOp().result
+            cid = _pto.GetBlockIdxOp().result
+            sub_bid = _pto.GetSubBlockIdxOp().result
+            sub_bnum = _pto.GetSubBlockNumOp().result
             cidmul = arith.MulIOp(cid, sub_bnum).result
             vid = arith.AddIOp(cidmul, sub_bid).result
 
             v_row_idx = arith.IndexCastOp(IndexType.get(), arg_vrow_i32).result
             v_col_idx = arith.IndexCastOp(IndexType.get(), arg_vcol_i32).result
 
-            tv0 = pto.MakeTensorViewOp(tv2_f32, arg0, [c1280, c32], [c32, c1]).result
-            tv1 = pto.MakeTensorViewOp(tv2_f32, arg1, [c1280, c32], [c32, c1]).result
-            tv2 = pto.MakeTensorViewOp(tv2_f32, arg2, [c1280, c32], [c32, c1]).result
+            tv0 = _pto.MakeTensorViewOp(tv2_f32, arg0, [c1280, c32], [c32, c1]).result
+            tv1 = _pto.MakeTensorViewOp(tv2_f32, arg1, [c1280, c32], [c32, c1]).result
+            tv2 = _pto.MakeTensorViewOp(tv2_f32, arg2, [c1280, c32], [c32, c1]).result
 
             vid_idx = arith.IndexCastOp(IndexType.get(), vid).result
             offset_row = arith.MulIOp(vid_idx, c32).result
-            sv0 = pto.PartitionViewOp(
+            sv0 = _pto.PartitionViewOp(
                 tile_view_32, tv0, offsets=[offset_row, c0], sizes=[c32, c32]
             ).result
-            sv1 = pto.PartitionViewOp(
+            sv1 = _pto.PartitionViewOp(
                 tile_view_32, tv1, offsets=[offset_row, c0], sizes=[c32, c32]
             ).result
-            sv2 = pto.PartitionViewOp(
+            sv2 = _pto.PartitionViewOp(
                 tile_view_32, tv2, offsets=[offset_row, c0], sizes=[c32, c32]
             ).result
 
-            vec_section = pto.SectionVectorOp()
+            vec_section = _pto.SectionVectorOp()
             vec_block = vec_section.body.blocks.append()
             with InsertionPoint(vec_block):
-                tb0 = pto.AllocTileOp(tile_buf_dynamic, valid_row=v_row_idx, valid_col=v_col_idx).result
-                tb1 = pto.AllocTileOp(tile_buf_dynamic, valid_row=v_row_idx, valid_col=v_col_idx).result
-                tb2 = pto.AllocTileOp(tile_buf_dynamic, valid_row=v_row_idx, valid_col=v_col_idx).result
+                tb0 = _pto.AllocTileOp(tile_buf_dynamic, valid_row=v_row_idx, valid_col=v_col_idx).result
+                tb1 = _pto.AllocTileOp(tile_buf_dynamic, valid_row=v_row_idx, valid_col=v_col_idx).result
+                tb2 = _pto.AllocTileOp(tile_buf_dynamic, valid_row=v_row_idx, valid_col=v_col_idx).result
 
-                pto.TLoadOp(None, sv0, tb0)
-                pto.TLoadOp(None, sv1, tb1)
-                pto.TAddOp(tb0, tb1, tb2)
-                pto.TStoreOp(None, tb2, sv2)
+                _pto.TLoadOp(None, sv0, tb0)
+                _pto.TLoadOp(None, sv1, tb1)
+                _pto.TAddOp(tb0, tb1, tb2)
+                _pto.TStoreOp(None, tb2, sv2)
 
             func.ReturnOp([])
 

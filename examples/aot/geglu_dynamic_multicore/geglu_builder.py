@@ -1,7 +1,7 @@
-from ptodsl import to_ir_module
-import ptodsl.language as pto
+from ptodsl import pto, tile, to_ir_module
+from ptodsl import scalar as s
 
-const = pto.const
+const = s.const
 
 # 32 KB of UB / sizeof(fp16) = 16384 elements per tile
 ELEMENTS_PER_TILE = 32 * 1024 // 2
@@ -72,8 +72,8 @@ def build_geglu(fn_name="geglu_fp16"):
         c1 = const(1)
         c_tile = const(ELEMENTS_PER_TILE)
 
-        batch = pto.index_cast(batch_i32)
-        n_cols = pto.index_cast(n_cols_i32)
+        batch = s.index_cast(batch_i32)
+        n_cols = s.index_cast(n_cols_i32)
 
         with pto.vector_section():
             # Guard: n_cols must be in (0, ELEMENTS_PER_TILE].
@@ -85,13 +85,13 @@ def build_geglu(fn_name="geglu_fp16"):
                     sub_bnum = pto.get_subblock_num()
                     num_blocks = pto.get_block_num()
 
-                    vid = pto.index_cast(cid * sub_bnum + sub_bid)  # vector core index
-                    num_cores = pto.index_cast(num_blocks * sub_bnum)  # number of vector cores
+                    vid = s.index_cast(cid * sub_bnum + sub_bid)  # vector core index
+                    num_cores = s.index_cast(num_blocks * sub_bnum)  # number of vector cores
 
                     # Distribute rows across cores (row-level parallelism).
-                    rows_per_core = pto.ceil_div(batch, num_cores)
+                    rows_per_core = s.ceil_div(batch, num_cores)
                     row_start = vid * rows_per_core
-                    row_end = pto.min_u(row_start + rows_per_core, batch)
+                    row_end = s.min_u(row_start + rows_per_core, batch)
                     num_rows = row_end - row_start
 
                     total_elems = batch * n_cols
@@ -140,24 +140,24 @@ def build_geglu(fn_name="geglu_fp16"):
 
                             # Derive constants from data (no scalar-tile broadcast needed):
                             #   a - a = 0  =>  exp(0) = 1.0
-                            pto.sub(tb_a, tb_a, tb_tmp2)  # tmp2 = 0.0
-                            pto.exp(tb_tmp2, tb_ones)  # ones = 1.0
+                            tile.sub(tb_a, tb_a, tb_tmp2)  # tmp2 = 0.0
+                            tile.exp(tb_tmp2, tb_ones)  # ones = 1.0
 
                             # tanh(a) = (exp(2a) - 1) / (exp(2a) + 1)
-                            pto.add(tb_a, tb_a, tb_tmp1)  # tmp1 = 2a
-                            pto.exp(tb_tmp1, tb_tmp1)  # tmp1 = exp(2a)
-                            pto.sub(tb_tmp1, tb_ones, tb_tmp2)  # tmp2 = exp(2a) - 1
-                            pto.add(tb_tmp1, tb_ones, tb_tmp1)  # tmp1 = exp(2a) + 1
-                            pto.div(tb_tmp2, tb_tmp1, tb_tmp2)  # tmp2 = tanh(a)
+                            tile.add(tb_a, tb_a, tb_tmp1)  # tmp1 = 2a
+                            tile.exp(tb_tmp1, tb_tmp1)  # tmp1 = exp(2a)
+                            tile.sub(tb_tmp1, tb_ones, tb_tmp2)  # tmp2 = exp(2a) - 1
+                            tile.add(tb_tmp1, tb_ones, tb_tmp1)  # tmp1 = exp(2a) + 1
+                            tile.div(tb_tmp2, tb_tmp1, tb_tmp2)  # tmp2 = tanh(a)
 
                             # gelu_approx(a) = a * (1 + tanh(a)) / 2
-                            pto.add(tb_ones, tb_tmp2, tb_tmp1)  # tmp1 = 1 + tanh(a)
-                            pto.mul(tb_a, tb_tmp1, tb_tmp1)  # tmp1 = a * (1 + tanh(a))
-                            pto.add(tb_ones, tb_ones, tb_tmp2)  # tmp2 = 2.0
-                            pto.div(tb_tmp1, tb_tmp2, tb_tmp1)  # tmp1 = gelu_approx(a)
+                            tile.add(tb_ones, tb_tmp2, tb_tmp1)  # tmp1 = 1 + tanh(a)
+                            tile.mul(tb_a, tb_tmp1, tb_tmp1)  # tmp1 = a * (1 + tanh(a))
+                            tile.add(tb_ones, tb_ones, tb_tmp2)  # tmp2 = 2.0
+                            tile.div(tb_tmp1, tb_tmp2, tb_tmp1)  # tmp1 = gelu_approx(a)
 
                             # GEGLU: c = gelu_approx(a) * b
-                            pto.mul(tb_tmp1, tb_b, tb_tmp1)  # tmp1 = c
+                            tile.mul(tb_tmp1, tb_b, tb_tmp1)  # tmp1 = c
                             pto.store(tb_tmp1, sv_c)
 
     _ = fn_name

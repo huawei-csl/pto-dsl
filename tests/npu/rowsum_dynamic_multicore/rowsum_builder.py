@@ -1,7 +1,7 @@
-from ptodsl import to_ir_module
-import ptodsl.language as pto
+from ptodsl import pto, tile, to_ir_module
+from ptodsl import scalar as s
 
-const = pto.const
+const = s.const
 
 # 32 KB of UB
 _TILE_SIZE_BYTES = 32 * 1024
@@ -39,7 +39,7 @@ def meta_data(dtype="fp32"):
 
 def build_rowsum(fn_name="rowsum_fp32", dtype="fp32"):
     """
-    Computes per-row sum across columns using PTO TROWSUM (pto.row_sum wrapper).
+    Computes per-row sum across columns using PTO TROWSUM (`tile.row_sum` wrapper).
 
     Args:
         x_ptr : dtype[batch * n_cols]    input matrix flattened row-major
@@ -62,16 +62,16 @@ def build_rowsum(fn_name="rowsum_fp32", dtype="fp32"):
         c0 = const(0)
         c1 = const(1)
 
-        batch = pto.index_cast(batch_i32)
-        n_cols = pto.index_cast(n_cols_i32)
+        batch = s.index_cast(batch_i32)
+        n_cols = s.index_cast(n_cols_i32)
 
         with pto.vector_section():
-            bid = pto.index_cast(pto.get_block_idx())
-            num_cores = pto.index_cast(pto.get_block_num())
+            bid = s.index_cast(pto.get_block_idx())
+            num_cores = s.index_cast(pto.get_block_num())
 
-            rows_per_core = pto.ceil_div(batch, num_cores)
+            rows_per_core = s.ceil_div(batch, num_cores)
             row_start = bid * rows_per_core
-            row_end = pto.min_u(row_start + rows_per_core, batch)
+            row_end = s.min_u(row_start + rows_per_core, batch)
             num_rows = row_end - row_start
 
             total_elems = batch * n_cols
@@ -110,7 +110,7 @@ def build_rowsum(fn_name="rowsum_fp32", dtype="fp32"):
                     )
 
                     pto.load(sv_x, tb_x)
-                    pto.row_sum(tb_x, tb_tmp, tb_sum)
+                    tile.row_sum(tb_x, tb_tmp, tb_sum)
 
                     # Store the 1-element tile to y[row]
                     pto.store(tb_sum, sv_y)

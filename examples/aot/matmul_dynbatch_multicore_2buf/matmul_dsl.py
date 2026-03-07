@@ -1,7 +1,7 @@
 from mlir.ir import IntegerType
 
-from ptodsl import to_ir_module
-import ptodsl.language as pto
+from ptodsl import pto, tile, to_ir_module
+from ptodsl import scalar as s
 
 
 def build(M=128, K=128, N=128):
@@ -26,7 +26,7 @@ def build(M=128, K=128, N=128):
         # TODO: Get rid of this?
         return locals()
 
-    const = pto.const
+    const = s.const
 
 
     # Until we have set_dyn_flag with event_id as SSA values
@@ -62,15 +62,15 @@ def build(M=128, K=128, N=128):
             cM = const(M)
             cK = const(K)
             cN = const(N)
-            batch = pto.index_cast(batch_i32)
+            batch = s.index_cast(batch_i32)
 
-            num_blocks = pto.index_cast(pto.get_block_num())
+            num_blocks = s.index_cast(pto.get_block_num())
             # TODO round robin
-            batches_per_core = pto.ceil_div(batch, num_blocks)
-            bid = pto.index_cast(pto.get_block_idx())
+            batches_per_core = s.ceil_div(batch, num_blocks)
+            bid = s.index_cast(pto.get_block_idx())
             b_start = bid * batches_per_core
             b_end_unclamped = b_start + batches_per_core
-            b_end = pto.min_u(b_end_unclamped, batch)
+            b_end = s.min_u(b_end_unclamped, batch)
 
             # TODO: if no batched assigned to this core, early return
 
@@ -91,7 +91,7 @@ def build(M=128, K=128, N=128):
             svB = pto.slice_view(tile_view_b, source=tvB, offsets=[c0, c0], sizes=[cK, cN])
             pto.load(svB, bMatTile)
             pto.record_wait_pair("LOAD", "MOV_M2L", event_id=0)
-            pto.mov(bMatTile, bTile)
+            tile.mov(bMatTile, bTile)
             # TODO: wait here so we can use full l1 memory later for A.
 
 
@@ -134,8 +134,8 @@ def build(M=128, K=128, N=128):
                 wait_event("MATMUL", "MOV_M2L", event_id=curr)
                 pto.cond(
                     curr == c0,
-                    lambda: pto.mov(aMatTiles[0], aTiles[0]),
-                    lambda: pto.mov(aMatTiles[1], aTiles[1])
+                    lambda: tile.mov(aMatTiles[0], aTiles[0]),
+                    lambda: tile.mov(aMatTiles[1], aTiles[1])
                 )
                 with pto.if_context(b_idx + c2 < b_end):
                     record_event("MOV_M2L", "LOAD", event_id=curr)
@@ -147,8 +147,8 @@ def build(M=128, K=128, N=128):
                 wait_event("STORE_ACC", "MATMUL", event_id=curr)
                 pto.cond(
                     curr == c0,
-                    lambda: pto.matmul(aTiles[0], bTile, cTiles[0]),
-                    lambda: pto.matmul(aTiles[1], bTile, cTiles[1]),
+                    lambda: tile.matmul(aTiles[0], bTile, cTiles[0]),
+                    lambda: tile.matmul(aTiles[1], bTile, cTiles[1]),
                 )
                 record_event("MATMUL", "STORE_ACC", event_id=curr)
                 with pto.if_context(b_idx + c2 < b_end):

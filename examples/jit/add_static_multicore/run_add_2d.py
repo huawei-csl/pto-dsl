@@ -1,10 +1,10 @@
-from ptodsl import jit
-import ptodsl.language as pto
+from ptodsl import jit, pto, tile
+from ptodsl import scalar as s
 import torch
 import torch_npu
 from ptodsl.test_util import get_test_device
 
-const = pto.const
+const = s.const
 
 
 def meta_data():
@@ -46,14 +46,14 @@ def vec_add_kernel(
     cidmul = cid * sub_bnum
     vid = cidmul + sub_bid
 
-    v_row_idx = pto.index_cast(vrow)
-    v_col_idx = pto.index_cast(vcol)
+    v_row_idx = s.index_cast(vrow)
+    v_col_idx = s.index_cast(vcol)
 
     tv0 = pto.as_tensor(tensor_type, ptr=arg0, shape=[c1280, c32], strides=[c32, c1])
     tv1 = pto.as_tensor(tensor_type, ptr=arg1, shape=[c1280, c32], strides=[c32, c1])
     tv2 = pto.as_tensor(tensor_type, ptr=arg2, shape=[c1280, c32], strides=[c32, c1])
 
-    vid_idx = pto.index_cast(vid)
+    vid_idx = s.index_cast(vid)
     offset_row = vid_idx * c32  # every core loads 32 rows of data
     sv0 = pto.slice_view(subtensor_type, source=tv0, offsets=[offset_row, c0], sizes=[c32, c32])
     sv1 = pto.slice_view(subtensor_type, source=tv1, offsets=[offset_row, c0], sizes=[c32, c32])
@@ -66,7 +66,7 @@ def vec_add_kernel(
 
         pto.load(sv0, tb0)
         pto.load(sv1, tb1)
-        pto.add(tb0, tb1, tb2)
+        tile.add(tb0, tb1, tb2)
         pto.store(tb2, sv2)
 
 

@@ -1,7 +1,7 @@
-from ptodsl import to_ir_module
-import ptodsl.language as pto
+from ptodsl import pto, to_ir_module
+from ptodsl import scalar as s
 
-const = pto.const
+const = s.const
 
 # 32 KB of UB
 _TILE_SIZE_BYTES = 32 * 1024
@@ -63,8 +63,8 @@ def build_unary_kernel(op_name, op_fn, dtype="float32"):
         c1 = const(1)
         c_tile = const(elements_per_tile)
 
-        batch = pto.index_cast(batch_i32)
-        n_cols = pto.index_cast(n_cols_i32)
+        batch = s.index_cast(batch_i32)
+        n_cols = s.index_cast(n_cols_i32)
 
         with pto.vector_section():
             cid = pto.get_block_idx()
@@ -72,12 +72,12 @@ def build_unary_kernel(op_name, op_fn, dtype="float32"):
             sub_bnum = pto.get_subblock_num()
             num_blocks = pto.get_block_num()
 
-            vid = pto.index_cast(cid * sub_bnum + sub_bid)
-            num_cores = pto.index_cast(num_blocks * sub_bnum)
+            vid = s.index_cast(cid * sub_bnum + sub_bid)
+            num_cores = s.index_cast(num_blocks * sub_bnum)
 
-            rows_per_core = pto.ceil_div(batch, num_cores)
+            rows_per_core = s.ceil_div(batch, num_cores)
             row_start = vid * rows_per_core
-            row_end = pto.min_u(row_start + rows_per_core, batch)
+            row_end = s.min_u(row_start + rows_per_core, batch)
             num_rows = row_end - row_start
 
             total_elems = batch * n_cols

@@ -1,7 +1,7 @@
-from ptodsl import to_ir_module
-import ptodsl.language as pto
+from ptodsl import pto, tile, to_ir_module
+from ptodsl import scalar as s
 
-const = pto.const
+const = s.const
 
 
 DTYPES = {
@@ -63,12 +63,12 @@ def build_binary_kernels(op_name, op_fn, dtype=None, tile_length=1024):
         vid = cidmul + sub_bid
         num_blocks = pto.get_block_num()
 
-        vid_idx = pto.index_cast(vid)
-        num_cores = pto.index_cast(num_blocks)
-        total_elements = pto.index_cast(argN)
+        vid_idx = s.index_cast(vid)
+        num_cores = s.index_cast(num_blocks)
+        total_elements = s.index_cast(argN)
 
-        num_tiles_global = pto.ceil_div(total_elements, c_tile)
-        num_tiles_per_core = pto.ceil_div(num_tiles_global, num_cores)
+        num_tiles_global = s.ceil_div(total_elements, c_tile)
+        num_tiles_per_core = s.ceil_div(num_tiles_global, num_cores)
         tile_offset_this_core = vid_idx * num_tiles_per_core
 
         with pto.vector_section():
@@ -90,7 +90,7 @@ def build_binary_kernels(op_name, op_fn, dtype=None, tile_length=1024):
                 tiles_end_this_core = tile_offset_this_core + num_tiles_per_core
                 need_truncate = tiles_end_this_core > num_tiles_global
                 remaining_tiles = num_tiles_global - tile_offset_this_core
-                tiles_to_process = pto.select(
+                tiles_to_process = s.select(
                     need_truncate, remaining_tiles, num_tiles_per_core
                 )
                 elements_to_process = tiles_to_process * c_tile
@@ -145,15 +145,15 @@ def build_binary_kernels(op_name, op_fn, dtype=None, tile_length=1024):
         vid = cidmul + sub_bid
         num_blocks = pto.get_block_num()
 
-        vid_idx = pto.index_cast(vid)
-        num_cores = pto.index_cast(num_blocks)
-        rows = pto.index_cast(argM)
-        cols = pto.index_cast(argN)
+        vid_idx = s.index_cast(vid)
+        num_cores = s.index_cast(num_blocks)
+        rows = s.index_cast(argM)
+        cols = s.index_cast(argN)
 
         total_elements = rows * cols
-        rows_per_core = pto.ceil_div(rows, num_cores)
+        rows_per_core = s.ceil_div(rows, num_cores)
         row_start = vid_idx * rows_per_core
-        tiles_per_row = pto.ceil_div(cols, c_tile)
+        tiles_per_row = s.ceil_div(cols, c_tile)
 
         with pto.vector_section():
             tv0 = pto.as_tensor(
@@ -174,7 +174,7 @@ def build_binary_kernels(op_name, op_fn, dtype=None, tile_length=1024):
                 rows_end = row_start + rows_per_core
                 need_truncate = rows_end > rows
                 remaining_rows = rows - row_start
-                rows_to_process = pto.select(
+                rows_to_process = s.select(
                     need_truncate, remaining_rows, rows_per_core
                 )
 
