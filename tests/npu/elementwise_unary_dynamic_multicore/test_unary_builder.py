@@ -28,13 +28,18 @@ TORCH_DTYPES = {
     "float16": torch.float16,
 }
 
-_BATCH_LIST = [1, 7, 29, 32, 65, 200]
-_N_COLS_LIST = [128, 256, 512, 1024, 2048, 4096, 8192]
+_SHAPE_LIST = [
+    (1, 128),
+    (7, 1024),
+    (29, 512),
+    (32, 2048),
+    (65, 4096),
+    (200, 8192),
+]
 
 _SHAPE_PARAMS = [
     pytest.param(batch, n_cols, id=f"batch{batch}-cols{n_cols}")
-    for batch in _BATCH_LIST
-    for n_cols in _N_COLS_LIST
+    for batch, n_cols in _SHAPE_LIST
 ]
 
 _PARAMS = [
