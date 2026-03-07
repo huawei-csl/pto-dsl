@@ -152,11 +152,6 @@ def alloc_tile(tile_type, *, valid_row=None, valid_col=None):
     return _pto.AllocTileOp(tile_type, **kwargs).result
 
 
-def subset(source, offsets, sizes):
-    offset_vals = [_unwrap(v) for v in offsets]
-    return _pto.subset(source, offset_vals, sizes)
-
-
 def load(source, dest):
     _pto.TLoadOp(None, source, dest)
 
@@ -254,7 +249,6 @@ __all__ = [
     "if_context",
     "cond",
     "alloc_tile",
-    "subset",
     "load",
     "store",
     "record_event",

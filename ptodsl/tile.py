@@ -1,5 +1,7 @@
 from mlir.dialects import pto as _pto
 
+from .scalar import _unwrap
+
 
 def mov(source, dest):
     _pto.TMovOp(None, source, dest)
@@ -77,6 +79,11 @@ def row_sum(src, tmp, dst):
     _pto.TRowSumOp(src=src, tmp=tmp, dst=dst)
 
 
+def subset(source, offsets, sizes):
+    offset_vals = [_unwrap(v) for v in offsets]
+    return _pto.subset(source, offset_vals, sizes)
+
+
 __all__ = [
     "mov",
     "add",
@@ -96,4 +103,5 @@ __all__ = [
     "matmul_bias",
     "matmul_acc",
     "row_sum",
+    "subset",
 ]

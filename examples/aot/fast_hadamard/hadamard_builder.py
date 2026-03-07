@@ -110,8 +110,8 @@ def fast_hadamard_autosync(
                         )
                         # Alias row halves inside UB row tile (no GM round-trip
                         # per Hadamard iteration).
-                        tb_first = pto.subset(tb_row, [c0, c0], [1, HALF_ELEMENTS_PER_TILE])
-                        tb_second = pto.subset(tb_row, [c0, n_half], [1, HALF_ELEMENTS_PER_TILE])
+                        tb_first = tile.subset(tb_row, [c0, c0], [1, HALF_ELEMENTS_PER_TILE])
+                        tb_second = tile.subset(tb_row, [c0, n_half], [1, HALF_ELEMENTS_PER_TILE])
 
                         pto.load(sv_row, tb_row)
                         for _ in pto.for_range(c0, log2_n, c1):
@@ -211,10 +211,10 @@ def fast_hadamard_manualsync(
                         )
                         # Alias row halves inside UB row tile (no GM round-trip
                         # per Hadamard iteration).
-                        tb_first = pto.subset(
+                        tb_first = tile.subset(
                             tb_row, [c0, c0], [1, HALF_ELEMENTS_PER_TILE]
                         )
-                        tb_second = pto.subset(
+                        tb_second = tile.subset(
                             tb_row, [c0, n_half], [1, HALF_ELEMENTS_PER_TILE]
                         )
 
