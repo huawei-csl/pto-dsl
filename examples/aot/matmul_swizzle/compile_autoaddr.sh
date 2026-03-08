@@ -4,7 +4,7 @@ set -euo pipefail
 rm -f matmul_autoaddr.pto matmul_autoaddr.cpp matmul_kernel.so
 
 python ./matmul_builder_autoaddr.py > matmul_autoaddr.pto
-ptoas --pto-level=level3 matmul_autoaddr.pto -o matmul_autoaddr.cpp
+ptoas matmul_autoaddr.pto -o matmul_autoaddr.cpp
 
 bisheng -fPIC -shared -xcce -O2 -std=c++17 \
     --npu-arch=dav-2201 -DMEMORY_BASE \
