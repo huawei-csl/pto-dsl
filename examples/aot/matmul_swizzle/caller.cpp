@@ -1,4 +1,8 @@
-#include "matmul.cpp"
+#ifndef KERNEL_CPP
+#define KERNEL_CPP "matmul.cpp"
+#endif
+
+#include KERNEL_CPP
 
 extern "C" void call_kernel(
     uint32_t blockDim,
