@@ -1,3 +1,6 @@
+from mlir.dialects import arith
+from mlir.ir import IntegerType
+
 from ptodsl import pto, tile, to_ir_module
 from ptodsl import scalar as s
 
@@ -21,6 +24,8 @@ def build():
         acc_dtype = pto.float32
         ptr_type = pto.PtrType(dtype)
         i32 = pto.int32
+        i64 = IntegerType.get_signless(64)
+
         tv_a = pto.TensorType(rank=2, dtype=dtype)
         tv_b = pto.TensorType(rank=2, dtype=dtype)
         tv_c = pto.TensorType(rank=2, dtype=dtype)
@@ -59,6 +64,7 @@ def build():
         return {
             "ptr_type": ptr_type,
             "i32": i32,
+            "i64": i64,
             "tv_a": tv_a,
             "tv_b": tv_b,
             "tv_c": tv_c,
@@ -88,6 +94,9 @@ def build():
         n_i32: "i32",
         k_i32: "i32",
     ) -> None:
+        def i64_const(value: int):
+            return arith.ConstantOp(i64, value).result
+
         def emit_compute_variant(
             n_tile: int,
             b_view_type,
@@ -97,6 +106,8 @@ def build():
             c_type,
             m_offset,
             n_offset,
+            k_total,
+            n_total,
             k_dtile_num,
             li,
             bid,
@@ -108,27 +119,31 @@ def build():
             c0 = const(0)
             c1 = const(1)
             c2 = const(2)
+            c4 = const(4)
+            cKQ = const(K_QTILE)
             cKT = const(K_TILE)
             cKD = const(K_DTILE)
             cNT = const(n_tile)
 
             a_l1 = [
-                pto.alloc_tile(tile_buf_a_l1),
-                pto.alloc_tile(tile_buf_a_l1),
+                pto.alloc_tile(tile_buf_a_l1, addr=i64_const(0)),
+                pto.alloc_tile(tile_buf_a_l1, addr=i64_const(A_FULL_BYTES)),
             ]
+            b_half_bytes = n_tile * K_TILE * 2
+            b_sub_bytes = n_tile * K_QTILE * 2
             b_l1 = [
-                pto.alloc_tile(b_l1_type),
-                pto.alloc_tile(b_l1_type),
+                pto.alloc_tile(b_l1_type, addr=i64_const(B_L1_START)),
+                pto.alloc_tile(b_l1_type, addr=i64_const(B_L1_START + b_half_bytes)),
             ]
             a_l0 = [
-                pto.alloc_tile(tile_buf_a_l0),
-                pto.alloc_tile(tile_buf_a_l0),
+                pto.alloc_tile(tile_buf_a_l0, addr=i64_const(0)),
+                pto.alloc_tile(tile_buf_a_l0, addr=i64_const(A_SUB_BYTES)),
             ]
             b_l0 = [
-                pto.alloc_tile(b_l0_type),
-                pto.alloc_tile(b_l0_type),
+                pto.alloc_tile(b_l0_type, addr=i64_const(0)),
+                pto.alloc_tile(b_l0_type, addr=i64_const(b_sub_bytes)),
             ]
-            c_l0 = pto.alloc_tile(c_type)
+            c_l0 = pto.alloc_tile(c_type, addr=i64_const(0))
 
             not_first_tile = li != bid
             with pto.if_context(not_first_tile):
@@ -232,6 +247,7 @@ def build():
             c0 = const(0)
             c1 = const(1)
             c2 = const(2)
+            c3 = const(3)
             c128 = const(M_TILE)
             c256 = const(N_FULL)
             c128n = const(N_HALF)
@@ -293,6 +309,8 @@ def build():
                         tile_buf_c_256,
                         m_offset,
                         n_offset,
+                        k_total,
+                        n_total,
                         k_dtile_num,
                         li,
                         bid,
@@ -311,6 +329,8 @@ def build():
                             tile_buf_c_128,
                             m_offset,
                             n_offset,
+                            k_total,
+                            n_total,
                             k_dtile_num,
                             li,
                             bid,
