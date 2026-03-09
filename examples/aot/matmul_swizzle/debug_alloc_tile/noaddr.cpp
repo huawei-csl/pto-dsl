@@ -11,14 +11,12 @@ __global__ AICORE void kernel(__gm__ half* v1) {
   using T = float;
 
   #if defined(__DAV_CUBE__)
-  Tile<TileType::Mat, half, 128, 128, BLayout::RowMajor, 128, 128> v9;
+  Tile<TileType::Mat, half, 128, 128, BLayout::ColMajor, 128, 128, SLayout::RowMajor, 512, PadValue::Null> v9;
   TASSIGN(v9, v8);
-  Tile<TileType::Mat, half, 128, 128, BLayout::ColMajor, 128, 128, SLayout::RowMajor, 512, PadValue::Null> v10;
-  TRESHAPE(v10, v9);
-  pto::Shape<1, 1, 1, 128, 128> v11 = pto::Shape<1, 1, 1, 128, 128>();
-  pto::Stride<16384, 16384, 16384, 128, 1> v12 = pto::Stride<16384, 16384, 16384, 128, 1>();
-  GlobalTensor<half, pto::Shape<1, 1, 1, 128, 128>, pto::Stride<16384, 16384, 16384, 128, 1>, pto::Layout::ND> v13 = GlobalTensor<half, pto::Shape<1, 1, 1, 128, 128>, pto::Stride<16384, 16384, 16384, 128, 1>, pto::Layout::ND>(v1 + (v5 + v5 * (unsigned) v7 + v5 * (unsigned) v6), v11, v12);
-  TLOAD(v10, v13);
+  pto::Shape<1, 1, 1, 128, 128> v10 = pto::Shape<1, 1, 1, 128, 128>();
+  pto::Stride<16384, 16384, 16384, 128, 1> v11 = pto::Stride<16384, 16384, 16384, 128, 1>();
+  GlobalTensor<half, pto::Shape<1, 1, 1, 128, 128>, pto::Stride<16384, 16384, 16384, 128, 1>, pto::Layout::ND> v12 = GlobalTensor<half, pto::Shape<1, 1, 1, 128, 128>, pto::Stride<16384, 16384, 16384, 128, 1>, pto::Layout::ND>(v1 + (v5 + v5 * (unsigned) v7 + v5 * (unsigned) v6), v10, v11);
+  TLOAD(v9, v12);
   #endif // __DAV_CUBE__
 
   return;
