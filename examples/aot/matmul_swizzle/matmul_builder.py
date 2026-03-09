@@ -58,6 +58,36 @@ def build():
             "tile_buf_c_128": tile_buf_c_128,
         }
 
+    def swizzle_zn(li, m_loop, n_loop, cSwizzle, cSwizzleM1, c1, c2):
+        tile_block_loop = (m_loop + cSwizzleM1) // cSwizzle
+        tile_block_span = cSwizzle * n_loop
+        tile_block_idx = li // tile_block_span
+        in_tile_block_idx = li % tile_block_span
+        is_last_block = tile_block_idx == (tile_block_loop - c1)
+        n_row_tail = m_loop - cSwizzle * tile_block_idx
+        n_row = s.select(is_last_block, n_row_tail, cSwizzle)
+        m_idx = tile_block_idx * cSwizzle + (in_tile_block_idx % n_row)
+        n_idx = in_tile_block_idx // n_row
+        odd_block = (tile_block_idx % c2) == c1
+        flipped_n_idx = n_loop - n_idx - c1
+        n_idx = s.select(odd_block, flipped_n_idx, n_idx)
+        return m_idx, n_idx
+
+    def swizzle_nz(li, m_loop, n_loop, cSwizzle, cSwizzleM1, c1, c2):
+        tile_block_loop = (n_loop + cSwizzleM1) // cSwizzle
+        tile_block_span = cSwizzle * m_loop
+        tile_block_idx = li // tile_block_span
+        in_tile_block_idx = li % tile_block_span
+        is_last_block = tile_block_idx == (tile_block_loop - c1)
+        n_col_tail = n_loop - cSwizzle * tile_block_idx
+        n_col = s.select(is_last_block, n_col_tail, cSwizzle)
+        m_idx = in_tile_block_idx // n_col
+        n_idx = tile_block_idx * cSwizzle + (in_tile_block_idx % n_col)
+        odd_block = (tile_block_idx % c2) == c1
+        flipped_m_idx = m_loop - m_idx - c1
+        m_idx = s.select(odd_block, flipped_m_idx, m_idx)
+        return m_idx, n_idx
+
     def level1_loop_mn_dynamic_tilesize(
         n_tile: int,
         b_view_type,
@@ -272,36 +302,12 @@ def build():
 
             for li in pto.range(bid, core_loop, num_blocks):
                 with pto.if_context(swizzle_direction == c0, has_else=True) as c0_branch:
-                    # Zn swizzle path (swizzle_direction == 0).
-                    tile_block_loop = (m_loop + cSwizzleM1) // cSwizzle
-                    tile_block_span = cSwizzle * n_loop
-                    tile_block_idx = li // tile_block_span
-                    in_tile_block_idx = li % tile_block_span
-                    is_last_block = tile_block_idx == (tile_block_loop - c1)
-                    n_row_tail = m_loop - cSwizzle * tile_block_idx
-                    n_row = s.select(is_last_block, n_row_tail, cSwizzle)
-                    m_idx = tile_block_idx * cSwizzle + (in_tile_block_idx % n_row)
-                    n_idx = in_tile_block_idx // n_row
-                    odd_block = (tile_block_idx % c2) == c1
-                    flipped_n_idx = n_loop - n_idx - c1
-                    n_idx = s.select(odd_block, flipped_n_idx, n_idx)
+                    m_idx, n_idx = swizzle_zn(li, m_loop, n_loop, cSwizzle, cSwizzleM1, c1, c2)
                     level1_loop_mn(m_idx * c128, n_idx * c256, li)
 
                 with c0_branch.else_context():
                     with pto.if_context(swizzle_direction == c1, has_else=True) as c1_branch:
-                        # Nz swizzle path (swizzle_direction == 1).
-                        tile_block_loop = (n_loop + cSwizzleM1) // cSwizzle
-                        tile_block_span = cSwizzle * m_loop
-                        tile_block_idx = li // tile_block_span
-                        in_tile_block_idx = li % tile_block_span
-                        is_last_block = tile_block_idx == (tile_block_loop - c1)
-                        n_col_tail = n_loop - cSwizzle * tile_block_idx
-                        n_col = s.select(is_last_block, n_col_tail, cSwizzle)
-                        m_idx = in_tile_block_idx // n_col
-                        n_idx = tile_block_idx * cSwizzle + (in_tile_block_idx % n_col)
-                        odd_block = (tile_block_idx % c2) == c1
-                        flipped_m_idx = m_loop - m_idx - c1
-                        m_idx = s.select(odd_block, flipped_m_idx, m_idx)
+                        m_idx, n_idx = swizzle_nz(li, m_loop, n_loop, cSwizzle, cSwizzleM1, c1, c2)
                         level1_loop_mn(m_idx * c128, n_idx * c256, li)
 
                     with c1_branch.else_context():
