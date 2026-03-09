@@ -261,44 +261,13 @@ def build():
 
             def level1_loop_mn(m_offset, n_offset, li):
                 n_tile_size = s.select(n_offset + c256 > n_total, c128n, c256)
+                shared_args = [m_offset, n_offset, k_dtile_num, li, core_loop, bid, num_blocks, tvA, tvB, tvC]
                 with pto.if_context(n_tile_size == c256, has_else=True) as branch:
                     level1_loop_mn_dynamic_tilesize(
-                        N_FULL,
-                        tile_view_b_256,
-                        tile_view_c_256,
-                        tile_buf_b_l1_256,
-                        tile_buf_b_l0_256,
-                        tile_buf_c_256,
-                        m_offset,
-                        n_offset,
-                        k_dtile_num,
-                        li,
-                        core_loop,
-                        bid,
-                        num_blocks,
-                        tvA,
-                        tvB,
-                        tvC,
-                    )
+                        N_FULL, tile_view_b_256, tile_view_c_256, tile_buf_b_l1_256, tile_buf_b_l0_256, tile_buf_c_256, *shared_args)
                 with branch.else_context():
                     level1_loop_mn_dynamic_tilesize(
-                        N_HALF,
-                        tile_view_b_128,
-                        tile_view_c_128,
-                        tile_buf_b_l1_128,
-                        tile_buf_b_l0_128,
-                        tile_buf_c_128,
-                        m_offset,
-                        n_offset,
-                        k_dtile_num,
-                        li,
-                        core_loop,
-                        bid,
-                        num_blocks,
-                        tvA,
-                        tvB,
-                        tvC,
-                    )
+                        N_HALF, tile_view_b_128, tile_view_c_128, tile_buf_b_l1_128, tile_buf_b_l0_128, tile_buf_c_128, *shared_args)
 
             for li in pto.range(bid, core_loop, num_blocks):
                 with pto.if_context(swizzle_direction == c0, has_else=True) as c0_branch:
