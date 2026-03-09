@@ -237,6 +237,73 @@ def execute_tool(name: str, tool_input: dict) -> str:
 # ---------------------------------------------------------------------------
 # System prompt  (built from config)
 # ---------------------------------------------------------------------------
+
+_API_CHEATSHEET = """\
+## PTO-DSL API cheatsheet — use these, do NOT reimplement them
+
+```python
+from ptodsl import pto, tile, to_ir_module
+from ptodsl import scalar as s
+
+# --- Kernel entry point ---
+@to_ir_module
+def _kernel(x: pto.PtrType, y: pto.PtrType, batch: pto.int32, n_cols: pto.int32):
+    ...
+
+# --- Tile ops (all operate on allocated tile buffers, no return value) ---
+tile.mov(src, dst)              # copy tile
+tile.add(lhs, rhs, out)         # element-wise add
+tile.sub(lhs, rhs, out)         # element-wise subtract
+tile.mul(lhs, rhs, out)         # element-wise multiply
+tile.div(lhs, rhs, out)         # element-wise divide
+tile.exp(inp, out)              # element-wise e^x
+tile.log(inp, out)              # element-wise ln(x)
+tile.relu(inp, out)             # element-wise max(x, 0)
+tile.abs(inp, out)              # element-wise |x|
+tile.sqrt(inp, out)             # element-wise sqrt(x)
+tile.rsqrt(inp, out)            # element-wise 1/sqrt(x)
+tile.reciprocal(inp, out)       # element-wise 1/x
+tile.gather(src, out, indices)  # gather rows
+
+# NOT available as a single op — implement from primitives:
+#   tanh(x)    = 1 - 2/(exp(2x)+1)   [use tile.exp, tile.add, tile.div, tile.sub]
+#   sigmoid(x) = 1/(1+exp(-x))        [negate x, tile.exp, then tile.reciprocal+add]
+#   clamp(x,0,6) = relu(x) - relu(x-6)
+#   min(a,b)   = 0.5*(a+b) - 0.5*abs(a-b)
+#   max(a,b)   = relu(a-b) + b
+
+# --- Memory & layout ---
+pto.get_block_idx()             # current core index (scalar Value)
+pto.get_block_num()             # total number of cores (scalar Value)
+pto.as_tensor(type, ptr=, shape=, strides=)   # wrap pointer as tensor view
+pto.slice_view(type, source=, offsets=, sizes=)  # sub-view of a tensor
+pto.alloc_tile(tile_type)       # allocate UB tile buffer
+pto.load(source, dest)          # DMA: tensor view → tile buffer
+pto.store(source, dest)         # DMA: tile buffer → tensor view
+
+# --- Sections (context managers) ---
+with pto.vector_section():      # all tile ops must be inside here
+    ...
+
+# --- Scalar arithmetic (s.xxx returns Value) ---
+s.const(value)                  # integer constant
+s.ceil_div(a, b)                # ceil(a/b)
+s.index_cast(v, type)           # type cast
+# Scalar Value supports: +, -, *, //, %, <, >, ==, !=
+
+# --- Control flow ---
+with pto.range(start, stop, step) as i:   # for loop
+    ...
+with pto.if_context(cond):       # if branch
+    ...
+
+# --- Synchronization (when NOT using --enable-insert-sync) ---
+pto.record_event(record_op, wait_op, event_id)
+pto.wait_event(record_op, wait_op, event_id)
+pto.record_wait_pair(record_op, wait_op, event_id)
+pto.barrier(sync_op)
+```
+"""
 import textwrap as _textwrap
 
 
@@ -296,7 +363,7 @@ def _build_system_prompt(cfg: dict, kernel_dir: Path) -> str:
         except FileNotFoundError:
             local_section += f"\n### {fpath_str}\n(file not found)\n"
     if local_section:
-        local_section = "\n## PTO-DSL API (local, authoritative)\n" + local_section
+        local_section = "\n## PTO-DSL API source files (these are the exact functions you import and call — do NOT reimplement them)\n" + local_section
 
     # Fetch remote reference docs and embed them
     url_section = ""
@@ -318,6 +385,7 @@ def _build_system_prompt(cfg: dict, kernel_dir: Path) -> str:
 
         The kernel directory contains exactly these files: {file_listing}
         Do NOT attempt to read any other filenames — they do not exist.
+        {_API_CHEATSHEET}
         {preload_section}{local_section}{url_section}
         ## Your workflow
         1. Propose one targeted change based on the pre-loaded files above
@@ -369,7 +437,7 @@ def _build_create_system_prompt(cfg: dict, work_dir: Path, ref_dir: Path) -> str
         except FileNotFoundError:
             local_section += f"\n### {fpath_str}\n(file not found)\n"
     if local_section:
-        local_section = "\n## PTO-DSL API (local, authoritative)\n" + local_section
+        local_section = "\n## PTO-DSL API source files (these are the exact functions you import and call — do NOT reimplement them)\n" + local_section
 
     url_section = ""
     for entry in cfg.get("context_urls", []):
@@ -389,7 +457,7 @@ def _build_create_system_prompt(cfg: dict, work_dir: Path, ref_dir: Path) -> str
         Your task is to implement the {name} kernel entirely from scratch.
         The working directory starts with: {file_listing}
         You must create ALL required files yourself using write_file.
-
+        {_API_CHEATSHEET}
         {preload_section}{local_section}{url_section}
         ## Kernel to implement
         {description}
