@@ -267,45 +267,8 @@ def build():
             pto.record_event("MATMUL", "MOV_M2L", event_id=[0, 1])
             pto.record_event("MOV_M2L", "LOAD", event_id=[0, 1, 2, 3])
 
-            for li in pto.range(bid, core_loop, num_blocks):
-                # Default linear mapping, used when swizzle_direction is not 0/1.
-                m_idx = li // n_loop
-                n_idx = li % n_loop
-
-                with pto.if_context(swizzle_direction == c0):
-                    # Zn swizzle path (swizzle_direction == 0).
-                    tile_block_loop = (m_loop + cSwizzleM1) // cSwizzle
-                    tile_block_span = cSwizzle * n_loop
-                    tile_block_idx = li // tile_block_span
-                    in_tile_block_idx = li % tile_block_span
-                    is_last_block = tile_block_idx == (tile_block_loop - c1)
-                    n_row_tail = m_loop - cSwizzle * tile_block_idx
-                    n_row = s.select(is_last_block, n_row_tail, cSwizzle)
-                    m_idx = tile_block_idx * cSwizzle + (in_tile_block_idx % n_row)
-                    n_idx = in_tile_block_idx // n_row
-                    odd_block = (tile_block_idx % c2) == c1
-                    flipped_n_idx = n_loop - n_idx - c1
-                    n_idx = s.select(odd_block, flipped_n_idx, n_idx)
-
-                with pto.if_context(swizzle_direction == c1):
-                    # Nz swizzle path (swizzle_direction == 1).
-                    tile_block_loop = (n_loop + cSwizzleM1) // cSwizzle
-                    tile_block_span = cSwizzle * m_loop
-                    tile_block_idx = li // tile_block_span
-                    in_tile_block_idx = li % tile_block_span
-                    is_last_block = tile_block_idx == (tile_block_loop - c1)
-                    n_col_tail = n_loop - cSwizzle * tile_block_idx
-                    n_col = s.select(is_last_block, n_col_tail, cSwizzle)
-                    m_idx = in_tile_block_idx // n_col
-                    n_idx = tile_block_idx * cSwizzle + (in_tile_block_idx % n_col)
-                    odd_block = (tile_block_idx % c2) == c1
-                    flipped_m_idx = m_loop - m_idx - c1
-                    m_idx = s.select(odd_block, flipped_m_idx, m_idx)
-
-                m_offset = m_idx * c128
-                n_offset = n_idx * c256
+            def emit_for_offset(m_offset, n_offset, li):
                 n_tile_size = s.select(n_offset + c256 > n_total, c128n, c256)
-
                 with pto.if_context(n_tile_size == c256, has_else=True) as branch:
                     emit_compute_variant(
                         N_FULL,
@@ -324,24 +287,64 @@ def build():
                         tvB,
                         tvC,
                     )
-                with branch.else_context():
-                    emit_compute_variant(
-                        N_HALF,
-                        tile_view_b_128,
-                        tile_view_c_128,
-                        tile_buf_b_l1_128,
-                        tile_buf_b_l0_128,
-                        tile_buf_c_128,
-                        m_offset,
-                        n_offset,
-                        k_dtile_num,
-                        li,
-                        bid,
-                        num_blocks,
-                        tvA,
-                        tvB,
-                        tvC,
+                    with branch.else_context():
+                        emit_compute_variant(
+                            N_HALF,
+                            tile_view_b_128,
+                            tile_view_c_128,
+                            tile_buf_b_l1_128,
+                            tile_buf_b_l0_128,
+                            tile_buf_c_128,
+                            m_offset,
+                            n_offset,
+                            k_dtile_num,
+                            li,
+                            bid,
+                            num_blocks,
+                            tvA,
+                            tvB,
+                            tvC,
                         )
+
+            for li in pto.range(bid, core_loop, num_blocks):
+                with pto.if_context(swizzle_direction == c0, has_else=True) as c0_branch:
+                    # Zn swizzle path (swizzle_direction == 0).
+                    tile_block_loop = (m_loop + cSwizzleM1) // cSwizzle
+                    tile_block_span = cSwizzle * n_loop
+                    tile_block_idx = li // tile_block_span
+                    in_tile_block_idx = li % tile_block_span
+                    is_last_block = tile_block_idx == (tile_block_loop - c1)
+                    n_row_tail = m_loop - cSwizzle * tile_block_idx
+                    n_row = s.select(is_last_block, n_row_tail, cSwizzle)
+                    m_idx = tile_block_idx * cSwizzle + (in_tile_block_idx % n_row)
+                    n_idx = in_tile_block_idx // n_row
+                    odd_block = (tile_block_idx % c2) == c1
+                    flipped_n_idx = n_loop - n_idx - c1
+                    n_idx = s.select(odd_block, flipped_n_idx, n_idx)
+                    emit_for_offset(m_idx * c128, n_idx * c256, li)
+
+                with c0_branch.else_context():
+                    with pto.if_context(swizzle_direction == c1, has_else=True) as c1_branch:
+                        # Nz swizzle path (swizzle_direction == 1).
+                        tile_block_loop = (n_loop + cSwizzleM1) // cSwizzle
+                        tile_block_span = cSwizzle * m_loop
+                        tile_block_idx = li // tile_block_span
+                        in_tile_block_idx = li % tile_block_span
+                        is_last_block = tile_block_idx == (tile_block_loop - c1)
+                        n_col_tail = n_loop - cSwizzle * tile_block_idx
+                        n_col = s.select(is_last_block, n_col_tail, cSwizzle)
+                        m_idx = in_tile_block_idx // n_col
+                        n_idx = tile_block_idx * cSwizzle + (in_tile_block_idx % n_col)
+                        odd_block = (tile_block_idx % c2) == c1
+                        flipped_m_idx = m_loop - m_idx - c1
+                        m_idx = s.select(odd_block, flipped_m_idx, m_idx)
+                        emit_for_offset(m_idx * c128, n_idx * c256, li)
+
+                    with c1_branch.else_context():
+                        # Default linear mapping, used when swizzle_direction is not 0/1.
+                        m_idx = li // n_loop
+                        n_idx = li % n_loop
+                        emit_for_offset(m_idx * c128, n_idx * c256, li)
 
             pto.wait_event("MOV_M2L", "LOAD", event_id=3)
             pto.wait_event("MOV_M2L", "LOAD", event_id=2)
