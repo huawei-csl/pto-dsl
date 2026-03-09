@@ -11,6 +11,9 @@ def build(manual_sync: bool = False):
     K_TILE = 256
     K_DTILE = 512
     N_FULL = 256
+    # Hard-coded build-time swizzle config for this simple demo.
+    # Direction=1 (NZ), count=5.
+    SWIZZLE_COUNT = 5
 
     def meta_data():
         dtype = pto.float16
@@ -46,6 +49,21 @@ def build(manual_sync: bool = False):
             "tile_buf_c_256": tile_buf_c_256
         }
 
+    def swizzle_nz(li, m_loop, n_loop, cSwizzle, cSwizzleM1, c1, c2):
+        tile_block_loop = (n_loop + cSwizzleM1) // cSwizzle
+        tile_block_span = cSwizzle * m_loop
+        tile_block_idx = li // tile_block_span
+        in_tile_block_idx = li % tile_block_span
+        is_last_block = tile_block_idx == (tile_block_loop - c1)
+        n_col_tail = n_loop - cSwizzle * tile_block_idx
+        n_col = s.select(is_last_block, n_col_tail, cSwizzle)
+        m_idx = in_tile_block_idx // n_col
+        n_idx = tile_block_idx * cSwizzle + (in_tile_block_idx % n_col)
+        odd_block = (tile_block_idx % c2) == c1
+        flipped_m_idx = m_loop - m_idx - c1
+        m_idx = s.select(odd_block, flipped_m_idx, m_idx)
+        return m_idx, n_idx
+
     @to_ir_module(meta_data=meta_data)
     def matmul_kernel_ABt(
         a_ptr: "ptr_type",
@@ -73,6 +91,8 @@ def build(manual_sync: bool = False):
             m_loop = m_total // c128
             core_loop = n_loop * m_loop
             k_dtile_num = k_total // c512
+            cSwizzle = const(SWIZZLE_COUNT)
+            cSwizzleM1 = cSwizzle - c1
 
             tvA = pto.as_tensor(tv_2d, ptr=a_ptr, shape=[m_total, k_total], strides=[k_total, c1])
             tvB = pto.as_tensor(tv_2d, ptr=b_ptr, shape=[k_total, n_total], strides=[c1, k_total], layout="DN")
@@ -88,8 +108,8 @@ def build(manual_sync: bool = False):
             pto.record_event("MOV_M2L", "LOAD", event_id=[0, 1, 2, 3])
 
             for li in pto.range(bid, core_loop, num_blocks):
-                m_idx = li // n_loop
-                n_idx = li % n_loop
+                # Build-time fixed swizzle configuration: direction=1 (NZ), count=5.
+                m_idx, n_idx = swizzle_nz(li, m_loop, n_loop, cSwizzle, cSwizzleM1, c1, c2)
                 m_offset = m_idx * c128
                 n_offset = n_idx * c256
                 cKT = const(K_TILE)
@@ -230,6 +250,8 @@ def build(manual_sync: bool = False):
             m_loop = m_total // c128
             core_loop = n_loop * m_loop
             k_dtile_num = k_total // c512
+            cSwizzle = const(SWIZZLE_COUNT)
+            cSwizzleM1 = cSwizzle - c1
 
             tvA = pto.as_tensor(tv_2d, ptr=a_ptr, shape=[m_total, k_total], strides=[k_total, c1])
             tvB = pto.as_tensor(tv_2d, ptr=b_ptr, shape=[k_total, n_total], strides=[c1, k_total], layout="DN")
@@ -242,8 +264,8 @@ def build(manual_sync: bool = False):
             c_l0 = pto.alloc_tile(tile_buf_c_256)
 
             for li in pto.range(bid, core_loop, num_blocks):
-                m_idx = li // n_loop
-                n_idx = li % n_loop
+                # Build-time fixed swizzle configuration: direction=1 (NZ), count=5.
+                m_idx, n_idx = swizzle_nz(li, m_loop, n_loop, cSwizzle, cSwizzleM1, c1, c2)
                 m_offset = m_idx * c128
                 n_offset = n_idx * c256
                 cKT = const(K_TILE)
