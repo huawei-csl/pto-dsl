@@ -12,7 +12,7 @@ from ptodsl.test_util import get_test_device
 
 
 BLOCK_DIM = 24
-SWIZZLE_DIRECTION_LIST = [-1, 0, 1]
+SWIZZLE_DIRECTION_LIST = [0, 1]
 SWIZZLE_COUNT_LIST = [1, 3, 5]
 NO_SWIZZLE_DIRECTION = -1
 NO_SWIZZLE_COUNT = 1
