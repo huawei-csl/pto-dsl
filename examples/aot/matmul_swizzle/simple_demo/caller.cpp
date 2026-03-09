@@ -2,6 +2,10 @@
 #define KERNEL_CPP "matmul.cpp"
 #endif
 
+#ifndef KERNEL_FN
+#define KERNEL_FN matmul_kernel_ABt
+#endif
+
 #include KERNEL_CPP
 
 extern "C" void call_kernel(
@@ -14,7 +18,7 @@ extern "C" void call_kernel(
     int N,
     int K)
 {
-    matmul_kernel_ABt<<<blockDim, nullptr, stream>>>(
+    KERNEL_FN<<<blockDim, nullptr, stream>>>(
         reinterpret_cast<half *>(x),
         reinterpret_cast<half *>(y),
         reinterpret_cast<half *>(z),

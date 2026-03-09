@@ -1,5 +1,6 @@
 import ctypes
 import os
+import argparse
 from dataclasses import dataclass
 
 import torch
@@ -105,79 +106,99 @@ def run_case(matmul_abt, a, b, c_ref, *, block_dim):
 
 
 def test_matmul():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--variant",
+        choices=["auto-sync", "manual-sync", "all"],
+        default="all",
+        help="Which kernel variant to run.",
+    )
+    args = parser.parse_args()
+
     device = get_test_device()
     torch.npu.set_device(device)
-    matmul_abt = load_lib("./simple_matmul_kernel.so")
+
+    variants = {
+        "auto-sync": "./simple_matmul_auto_sync_kernel.so",
+        "manual-sync": "./simple_matmul_manual_sync_kernel.so",
+    }
+    if args.variant == "all":
+        selected = [("auto-sync", variants["auto-sync"]), ("manual-sync", variants["manual-sync"])]
+    else:
+        selected = [(args.variant, variants[args.variant])]
 
     torch.manual_seed(0)
-    checked_cases = 0
-    global_worst = None
+    for variant_name, lib_path in selected:
+        print(f"\n=== Running variant: {variant_name} ({lib_path}) ===")
+        matmul_abt = load_lib(lib_path)
 
-    for m in M_LIST:
-        for n, k in SHAPES_NK:
-            a = torch.randn(m, k, dtype=torch.float16, device=device)
-            b = torch.randn(n, k, dtype=torch.float16, device=device)
-            c_ref = F.linear(a, b)
-            torch.npu.synchronize()
+        checked_cases = 0
+        global_worst = None
+        for m in M_LIST:
+            for n, k in SHAPES_NK:
+                a = torch.randn(m, k, dtype=torch.float16, device=device)
+                b = torch.randn(n, k, dtype=torch.float16, device=device)
+                c_ref = F.linear(a, b)
+                torch.npu.synchronize()
 
-            shape_worst = None
-            for block_dim in BLOCK_DIM_LIST:
-                result = run_case(
-                    matmul_abt,
-                    a,
-                    b,
-                    c_ref,
-                    block_dim=block_dim
+                shape_worst = None
+                for block_dim in BLOCK_DIM_LIST:
+                    result = run_case(
+                        matmul_abt,
+                        a,
+                        b,
+                        c_ref,
+                        block_dim=block_dim
+                    )
+                    checked_cases += 1
+
+                    if (
+                        shape_worst is None
+                        or result.max_absdiff > shape_worst.max_absdiff
+                        or (
+                            result.max_absdiff == shape_worst.max_absdiff
+                            and result.mean_absdiff > shape_worst.mean_absdiff
+                        )
+                    ):
+                        shape_worst = result
+
+                    if (
+                        global_worst is None
+                        or result.max_absdiff > global_worst.max_absdiff
+                        or (
+                            result.max_absdiff == global_worst.max_absdiff
+                            and result.mean_absdiff > global_worst.mean_absdiff
+                        )
+                    ):
+                        global_worst = result
+
+                print(
+                    f"(m, n, k)=({m}, {n}, {k}) "
+                    f"worst(block_dim)={shape_worst.block_dim} "
+                    f"max_absdiff={shape_worst.max_absdiff:.6f} "
+                    f"mean_absdiff={shape_worst.mean_absdiff:.6f}"
                 )
-                checked_cases += 1
 
-                if (
-                    shape_worst is None
-                    or result.max_absdiff > shape_worst.max_absdiff
-                    or (
-                        result.max_absdiff == shape_worst.max_absdiff
-                        and result.mean_absdiff > shape_worst.mean_absdiff
-                    )
-                ):
-                    shape_worst = result
+        print(f"[{variant_name}] checked_cases={checked_cases}")
+        print(
+            f"[{variant_name}] global_worst "
+            f"max_absdiff={global_worst.max_absdiff:.6f} "
+            f"mean_absdiff={global_worst.mean_absdiff:.6f} "
+            f"at (m, n, k, block_dim)="
+            f"({global_worst.m}, {global_worst.n}, {global_worst.k}, "
+            f"{global_worst.block_dim})"
+        )
 
-                if (
-                    global_worst is None
-                    or result.max_absdiff > global_worst.max_absdiff
-                    or (
-                        result.max_absdiff == global_worst.max_absdiff
-                        and result.mean_absdiff > global_worst.mean_absdiff
-                    )
-                ):
-                    global_worst = result
-
-            print(
-                f"(m, n, k)=({m}, {n}, {k}) "
-                f"worst(block_dim)={shape_worst.block_dim} "
-                f"max_absdiff={shape_worst.max_absdiff:.6f} "
-                f"mean_absdiff={shape_worst.mean_absdiff:.6f}"
+        if global_worst.max_absdiff > MAX_ABSDIFF_THRESHOLD:
+            raise AssertionError(
+                f"[{variant_name}] max_absdiff {global_worst.max_absdiff:.6f} exceeds "
+                f"threshold {MAX_ABSDIFF_THRESHOLD:.6f}"
             )
-
-    print(f"checked_cases={checked_cases}")
-    print(
-        "global_worst "
-        f"max_absdiff={global_worst.max_absdiff:.6f} "
-        f"mean_absdiff={global_worst.mean_absdiff:.6f} "
-        f"at (m, n, k, block_dim)="
-        f"({global_worst.m}, {global_worst.n}, {global_worst.k}, "
-        f"{global_worst.block_dim})"
-    )
-
-    if global_worst.max_absdiff > MAX_ABSDIFF_THRESHOLD:
-        raise AssertionError(
-            f"max_absdiff {global_worst.max_absdiff:.6f} exceeds "
-            f"threshold {MAX_ABSDIFF_THRESHOLD:.6f}"
-        )
-    if global_worst.mean_absdiff > MEAN_ABSDIFF_THRESHOLD:
-        raise AssertionError(
-            f"mean_absdiff {global_worst.mean_absdiff:.6f} exceeds "
-            f"threshold {MEAN_ABSDIFF_THRESHOLD:.6f}"
-        )
+        if global_worst.mean_absdiff > MEAN_ABSDIFF_THRESHOLD:
+            raise AssertionError(
+                f"[{variant_name}] mean_absdiff {global_worst.mean_absdiff:.6f} exceeds "
+                f"threshold {MEAN_ABSDIFF_THRESHOLD:.6f}"
+            )
 
 
 if __name__ == "__main__":
