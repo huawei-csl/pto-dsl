@@ -1,3 +1,4 @@
+import argparse
 import ctypes
 import os
 from dataclasses import dataclass
@@ -118,10 +119,10 @@ def run_case(matmul_abt, a, b, c_ref, *, block_dim, swizzle_direction, swizzle_c
     )
 
 
-def test_matmul():
+def test_matmul(lib_path):
     device = get_test_device()
     torch.npu.set_device(device)
-    matmul_abt = load_lib("./matmul_kernel.so")
+    matmul_abt = load_lib(lib_path)
 
     torch.manual_seed(0)
     checked_cases = 0
@@ -202,4 +203,17 @@ def test_matmul():
 
 
 if __name__ == "__main__":
-    test_matmul()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--manual-sync",
+        action="store_true",
+        help="Use manual-sync library instead of the default auto-sync library.",
+    )
+    args = parser.parse_args()
+
+    lib_path = (
+        "./matmul_manual_sync_lib.so"
+        if args.manual_sync
+        else "./matmul_auto_sync_lib.so"
+    )
+    test_matmul(lib_path)

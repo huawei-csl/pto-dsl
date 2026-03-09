@@ -2,9 +2,14 @@ Usage:
 
 ```bash
 bash ./compile.sh
-python ./run_matmul.py
 
+# Auto-sync (default)
+python ./run_matmul.py
 python ./bench_matmul.py
+
+# Manual-sync
+python ./run_matmul.py --manual-sync
+python ./bench_matmul.py --manual-sync
 ```
 
 Benchmark outputs:
@@ -17,5 +22,6 @@ Useful benchmark options:
 python ./bench_matmul.py --csv outputs/csv/my_bench.csv --plot-dir outputs/plots
 python ./bench_matmul.py --m-list 512,1024,2048,4096
 python ./bench_matmul.py --warmup 10 --repeat 50
-python ./bench_matmul.py --lib ./matmul_kernel.so
+python ./bench_matmul.py --lib ./matmul_auto_sync_lib.so
+python ./bench_matmul.py --lib ./matmul_manual_sync_lib.so
 ```
