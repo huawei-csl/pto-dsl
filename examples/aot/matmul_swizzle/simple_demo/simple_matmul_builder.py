@@ -9,7 +9,6 @@ def build():
     K_TILE = 256
     K_DTILE = 512
     N_FULL = 256
-    N_HALF = 128
 
     def meta_data():
         dtype = pto.float16
@@ -192,7 +191,6 @@ def build():
             c2 = const(2)
             c128 = const(M_TILE)
             c256 = const(N_FULL)
-            c128n = const(N_HALF)
             c512 = const(K_DTILE)
 
             m_total = s.index_cast(m_i32)
