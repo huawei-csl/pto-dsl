@@ -3,8 +3,7 @@ from ptodsl import scalar as s
 
 const = s.const
 
-
-def build(*, manual_sync=False):
+def build():
     M_TILE = 128
     K_QTILE = 64
     K_TILE = 256
@@ -122,7 +121,7 @@ def build(*, manual_sync=False):
 
         not_first_tile = li != bid
         with pto.if_context(not_first_tile):
-            wait_event("STORE_ACC", "MATMUL", event_id=0)
+            pto.wait_event("STORE_ACC", "MATMUL", event_id=0)
 
         sv_a0 = pto.slice_view(
             tile_view_a,
@@ -130,9 +129,9 @@ def build(*, manual_sync=False):
             offsets=[m_offset, c0],
             sizes=[const(M_TILE), cKD],
         )
-        wait_event("MOV_M2L", "LOAD", event_id=0)
+        pto.wait_event("MOV_M2L", "LOAD", event_id=0)
         pto.load(sv_a0, a_l1[0])
-        record_event("LOAD", "MOV_M2L", event_id=0)
+        pto.record_event("LOAD", "MOV_M2L", event_id=0)
 
         for k_idx in pto.range(c0, k_dtile_num, c1):
             k_offset = k_idx * cKD
@@ -151,9 +150,9 @@ def build(*, manual_sync=False):
                         sizes=[cKT, cNT],
                     )
 
-                    wait_event("MOV_M2L", "LOAD", event_id=b_evt)
+                    pto.wait_event("MOV_M2L", "LOAD", event_id=b_evt)
                     pto.load(sv_b, b_l1[h])
-                    record_event("LOAD", "MOV_M2L", event_id=b_evt)
+                    pto.record_event("LOAD", "MOV_M2L", event_id=b_evt)
 
                     for quarter in range(4):
                         phase = h * 4 + quarter
@@ -161,24 +160,24 @@ def build(*, manual_sync=False):
                         a_col = const(phase * K_QTILE)
                         b_row = const(quarter * K_QTILE)
 
-                        wait_event("MATMUL", "MOV_M2L", event_id=ping)
+                        pto.wait_event("MATMUL", "MOV_M2L", event_id=ping)
                         if phase == 0:
-                            wait_event("LOAD", "MOV_M2L", event_id=curr_id)
+                            pto.wait_event("LOAD", "MOV_M2L", event_id=curr_id)
 
                         tile.extract(a_curr, c0, a_col, a_l0[ping])
                         if phase == 7:
-                            record_event("MOV_M2L", "LOAD", event_id=curr_id)
+                            pto.record_event("MOV_M2L", "LOAD", event_id=curr_id)
 
                         if quarter == 0:
-                            wait_event("LOAD", "MOV_M2L", event_id=b_evt)
+                            pto.wait_event("LOAD", "MOV_M2L", event_id=b_evt)
 
                         tile.extract(b_l1[h], b_row, c0, b_l0[ping])
-                        record_event("MOV_M2L", "MATMUL", event_id=0)
+                        pto.record_event("MOV_M2L", "MATMUL", event_id=0)
 
                         if quarter == 3:
-                            record_event("MOV_M2L", "LOAD", event_id=b_evt)
+                            pto.record_event("MOV_M2L", "LOAD", event_id=b_evt)
 
-                        wait_event("MOV_M2L", "MATMUL", event_id=0)
+                        pto.wait_event("MOV_M2L", "MATMUL", event_id=0)
                         if phase == 0:
                             pto.cond(
                                 is_first_k_tile,
@@ -188,7 +187,7 @@ def build(*, manual_sync=False):
                         else:
                             tile.matmul_acc(c_l0, a_l0[ping], b_l0[ping], c_l0)
 
-                        record_event("MATMUL", "MOV_M2L", event_id=ping)
+                        pto.record_event("MATMUL", "MOV_M2L", event_id=ping)
 
                 with pto.if_context(k_idx + c1 < k_dtile_num):
                     sv_a_next = pto.slice_view(
@@ -197,9 +196,9 @@ def build(*, manual_sync=False):
                         offsets=[m_offset, k_offset + cKD],
                         sizes=[const(M_TILE), cKD],
                     )
-                    wait_event("MOV_M2L", "LOAD", event_id=next_id)
+                    pto.wait_event("MOV_M2L", "LOAD", event_id=next_id)
                     pto.load(sv_a_next, a_next)
-                    record_event("LOAD", "MOV_M2L", event_id=next_id)
+                    pto.record_event("LOAD", "MOV_M2L", event_id=next_id)
 
             with pto.if_context(is_curr0, has_else=True) as branch:
                 level2_loop_k(0, 1, a_l1[0], a_l1[1])
@@ -212,23 +211,11 @@ def build(*, manual_sync=False):
             offsets=[m_offset, n_offset],
             sizes=[const(M_TILE), cNT],
         )
-        record_wait_pair("MATMUL", "STORE_ACC", event_id=0)
+        pto.record_wait_pair("MATMUL", "STORE_ACC", event_id=0)
         pto.store(c_l0, sv_c)
 
         with pto.if_context(li + num_blocks < core_loop):
-            record_event("STORE_ACC", "MATMUL", event_id=0)
-
-    def wait_event(src, dst, event_id):
-        if manual_sync:
-            pto.wait_event(src, dst, event_id=event_id)
-
-    def record_event(src, dst, event_id):
-        if manual_sync:
-            pto.record_event(src, dst, event_id=event_id)
-
-    def record_wait_pair(src, dst, event_id):
-        if manual_sync:
-            pto.record_wait_pair(src, dst, event_id=event_id)
+            pto.record_event("STORE_ACC", "MATMUL", event_id=0)
 
     @to_ir_module(meta_data=meta_data)
     def matmul_kernel_ABt(
@@ -269,8 +256,8 @@ def build(*, manual_sync=False):
             tvB = pto.as_tensor(tv_b, ptr=b_ptr, shape=[k_total, n_total], strides=[c1, k_total], layout="DN")
             tvC = pto.as_tensor(tv_c, ptr=c_ptr, shape=[m_total, n_total], strides=[n_total, c1])
 
-            record_event("MATMUL", "MOV_M2L", event_id=[0, 1])
-            record_event("MOV_M2L", "LOAD", event_id=[0, 1, 2, 3])
+            pto.record_event("MATMUL", "MOV_M2L", event_id=[0, 1])
+            pto.record_event("MOV_M2L", "LOAD", event_id=[0, 1, 2, 3])
 
             def level1_loop_mn(m_offset, n_offset, li):
                 # TODO: make a simpler version that only uses full-tile (256) branch, and reduce the types needed in meta_data
@@ -299,24 +286,15 @@ def build(*, manual_sync=False):
                         n_idx = li % n_loop
                         level1_loop_mn(m_idx * c128, n_idx * c256, li)
 
-            wait_event("MOV_M2L", "LOAD", event_id=3)
-            wait_event("MOV_M2L", "LOAD", event_id=2)
-            wait_event("MOV_M2L", "LOAD", event_id=1)
-            wait_event("MOV_M2L", "LOAD", event_id=0)
-            wait_event("MATMUL", "MOV_M2L", event_id=0)
-            wait_event("MATMUL", "MOV_M2L", event_id=1)
+            pto.wait_event("MOV_M2L", "LOAD", event_id=3)
+            pto.wait_event("MOV_M2L", "LOAD", event_id=2)
+            pto.wait_event("MOV_M2L", "LOAD", event_id=1)
+            pto.wait_event("MOV_M2L", "LOAD", event_id=0)
+            pto.wait_event("MATMUL", "MOV_M2L", event_id=0)
+            pto.wait_event("MATMUL", "MOV_M2L", event_id=1)
 
     return matmul_kernel_ABt
 
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--manual-sync",
-        action="store_true",
-        help="Emit explicit record/wait events instead of relying on --enable-insert-sync.",
-    )
-    args = parser.parse_args()
-    print(build(manual_sync=args.manual_sync))
+    print(build())

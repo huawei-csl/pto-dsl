@@ -108,16 +108,8 @@ def _parse_args():
     parser.add_argument(
         "--lib",
         type=str,
-        default=None,
-        help=(
-            "Path to shared library with call_kernel. If omitted, selects "
-            "auto-sync or manual-sync default by --manual-sync."
-        ),
-    )
-    parser.add_argument(
-        "--manual-sync",
-        action="store_true",
-        help="Use manual-sync library instead of the default auto-sync library.",
+        default="matmul_kernel.so",
+        help="Path to shared library with call_kernel (default: matmul_kernel.so).",
     )
     parser.add_argument(
         "--csv",
@@ -340,16 +332,7 @@ def main():
     if args.warmup < 1 or args.repeat < 1:
         raise ValueError("--warmup and --repeat must be positive integers.")
 
-    selected_lib = (
-        args.lib
-        if args.lib is not None
-        else (
-            "matmul_manual_sync_lib.so"
-            if args.manual_sync
-            else "matmul_auto_sync_lib.so"
-        )
-    )
-    lib_path = Path(selected_lib)
+    lib_path = Path(args.lib)
     if not lib_path.is_absolute():
         lib_path = base_dir / lib_path
     if not lib_path.exists():
