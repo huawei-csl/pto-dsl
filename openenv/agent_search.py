@@ -41,41 +41,54 @@ def load_config(config_path: str) -> dict:
         return tomllib.load(f)
 
 
-def build_env(cfg: dict) -> tuple["KernelSearchEnv", Path]:
-    kernel_dir = Path(cfg["kernel_dir"])
-    if not kernel_dir.is_absolute():
-        kernel_dir = ROOT / kernel_dir
+def build_env(cfg: dict) -> tuple["KernelSearchEnv", Path, Path]:
+    """Returns (env, work_dir, ref_dir).
 
-    # Resolve working directory (copy of originals — never touch kernel_dir itself)
+    ref_dir is kernel_dir (the reference/skeleton).  For create mode work_dir
+    starts empty; for optimize mode it is a full copy of ref_dir.
+    """
+    ref_dir = Path(cfg["kernel_dir"])
+    if not ref_dir.is_absolute():
+        ref_dir = ROOT / ref_dir
+
+    # Resolve working directory
     if "work_dir" in cfg:
         work_dir = Path(cfg["work_dir"])
         if not work_dir.is_absolute():
             work_dir = ROOT / work_dir
     else:
-        work_dir = ROOT / "examples" / "agent" / kernel_dir.name
+        default_name = cfg.get("kernel_name", ref_dir.name)
+        work_dir = ROOT / "examples" / "agent" / default_name
 
     if work_dir.exists():
         shutil.rmtree(work_dir)
-    shutil.copytree(kernel_dir, work_dir)
-    print(f"Working directory: {work_dir}  (originals in {kernel_dir} are untouched)")
+
+    if cfg.get("mode") == "create":
+        # Start with an empty directory — agent creates all files from scratch
+        work_dir.mkdir(parents=True)
+        print(f"Working directory: {work_dir}  (empty — agent will create all files)")
+    else:
+        shutil.copytree(ref_dir, work_dir)
+        print(f"Working directory: {work_dir}  (originals in {ref_dir} are untouched)")
 
     baseline_files = {
-        name: (kernel_dir / name).read_text(encoding="utf-8")
-        for name in cfg["baseline_files"]
+        name: (ref_dir / name).read_text(encoding="utf-8")
+        for name in cfg.get("baseline_files", [])
     }
 
     def resolve_cmd(cmd: list[str]) -> list[str]:
-        # Replace bare "python" with the current interpreter
         return [sys.executable if c == "python" else c for c in cmd]
+
+    bench_cmd = resolve_cmd(cfg["bench_cmd"]) if "bench_cmd" in cfg else None
 
     env = KernelSearchEnv(
         repo_path=str(work_dir),
         build_cmd=resolve_cmd(cfg["build_cmd"]),
         test_cmd=resolve_cmd(cfg["test_cmd"]),
-        bench_cmd=resolve_cmd(cfg["bench_cmd"]),
+        bench_cmd=bench_cmd,
         baseline_files=baseline_files,
     )
-    return env, work_dir
+    return env, work_dir, ref_dir
 
 
 # ---------------------------------------------------------------------------
@@ -94,8 +107,9 @@ _args = _parser.parse_args()
 
 CFG = load_config(_args.config)
 EXAMPLE_DIR: Path
+REF_DIR: Path
 env: KernelSearchEnv
-env, EXAMPLE_DIR = build_env(CFG)
+env, EXAMPLE_DIR, REF_DIR = build_env(CFG)
 
 # ---------------------------------------------------------------------------
 # Tool definitions
@@ -150,6 +164,21 @@ TOOLS = [
         "description": "Measure the kernel latency and compute speedup vs the baseline. Returns latency_ms and speedup_vs_baseline.",
         "input_schema": {"type": "object", "properties": {}, "required": []},
     },
+    {
+        "name": "write_file",
+        "description": (
+            "Write the complete content of a file, creating it if it doesn't exist. "
+            "Use this to write a new kernel file from scratch."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path":    {"type": "string", "description": "Relative file path"},
+                "content": {"type": "string", "description": "Full file content"},
+            },
+            "required": ["path", "content"],
+        },
+    },
 ]
 
 # ---------------------------------------------------------------------------
@@ -192,6 +221,16 @@ def execute_tool(name: str, tool_input: dict) -> str:
             f"speedup={obs.speedup_vs_baseline:.4f}x vs baseline ({env.baseline_ms:.4f} ms)\n"
             f"Best so far: {env.best_ms:.4f} ms ({env.best_speedup:.4f}x)"
         )
+
+    if name == "write_file":
+        for key in ("path", "content"):
+            if key not in tool_input:
+                return f"Error: write_file requires '{key}' parameter."
+        obs = env.step(KernelAction("edit", {
+            "path":    tool_input["path"],
+            "content": tool_input["content"],
+        }))
+        return obs.summary
 
     return f"Unknown tool: {name}"
 
@@ -247,6 +286,18 @@ def _build_system_prompt(cfg: dict, kernel_dir: Path) -> str:
     if preload_section:
         preload_section = "\n## Pre-loaded files (do NOT re-read these)\n" + preload_section
 
+    # Embed local reference files (repo-relative paths)
+    local_section = ""
+    for fpath_str in cfg.get("local_context_files", []):
+        fpath = ROOT / fpath_str
+        try:
+            content = fpath.read_text(encoding="utf-8")
+            local_section += f"\n### {fpath.name}\n```python\n{content}\n```\n"
+        except FileNotFoundError:
+            local_section += f"\n### {fpath_str}\n(file not found)\n"
+    if local_section:
+        local_section = "\n## PTO-DSL API (local, authoritative)\n" + local_section
+
     # Fetch remote reference docs and embed them
     url_section = ""
     for entry in cfg.get("context_urls", []):
@@ -267,7 +318,7 @@ def _build_system_prompt(cfg: dict, kernel_dir: Path) -> str:
 
         The kernel directory contains exactly these files: {file_listing}
         Do NOT attempt to read any other filenames — they do not exist.
-        {preload_section}{url_section}
+        {preload_section}{local_section}{url_section}
         ## Your workflow
         1. Propose one targeted change based on the pre-loaded files above
         2. edit_file(...)
@@ -288,35 +339,116 @@ def _build_system_prompt(cfg: dict, kernel_dir: Path) -> str:
         - Stop as soon as you achieve a confirmed speedup > 1.0x and explain what worked.
     """)
 
-SYSTEM = _build_system_prompt(CFG, EXAMPLE_DIR)
+def _build_create_system_prompt(cfg: dict, work_dir: Path, ref_dir: Path) -> str:
+    name        = cfg.get("kernel_name", "kernel")
+    create_file = cfg.get("create_file", "builder.py")
+    description = cfg.get("create_prompt", "").strip()
+
+    files = sorted(f.name for f in work_dir.iterdir() if f.is_file())
+    file_listing = ", ".join(files) if files else "(empty — you must create all files)"
+
+    # Preload_files come from ref_dir (the reference skeleton), not the empty work_dir
+    preload_section = ""
+    for fname in cfg.get("preload_files", []):
+        fpath = ref_dir / fname
+        try:
+            content = fpath.read_text(encoding="utf-8")
+            preload_section += f"\n### {fname} (from reference kernel — adapt for {name})\n```\n{content}\n```\n"
+        except FileNotFoundError:
+            preload_section += f"\n### {fname}\n(file not found in reference)\n"
+    if preload_section:
+        preload_section = "\n## Reference files (adapt these for the new kernel — do NOT copy verbatim)\n" + preload_section
+
+    # Embed local reference files (repo-relative paths)
+    local_section = ""
+    for fpath_str in cfg.get("local_context_files", []):
+        fpath = ROOT / fpath_str
+        try:
+            content = fpath.read_text(encoding="utf-8")
+            local_section += f"\n### {fpath.name}\n```python\n{content}\n```\n"
+        except FileNotFoundError:
+            local_section += f"\n### {fpath_str}\n(file not found)\n"
+    if local_section:
+        local_section = "\n## PTO-DSL API (local, authoritative)\n" + local_section
+
+    url_section = ""
+    for entry in cfg.get("context_urls", []):
+        if isinstance(entry, dict):
+            url, label = entry["url"], entry.get("label", entry["url"])
+        else:
+            url, label = entry, entry
+        print(f"  Fetching context: {label} …")
+        content = _fetch_url(url)
+        url_section += f"\n### {label}\n```\n{content}\n```\n"
+    if url_section:
+        url_section = "\n## Reference documentation\n" + url_section
+
+    return _textwrap.dedent(f"""\
+        You are an expert NPU kernel engineer specialising in Ascend/PTO-DSL.
+
+        Your task is to implement the {name} kernel entirely from scratch.
+        The working directory starts with: {file_listing}
+        You must create ALL required files yourself using write_file.
+
+        {preload_section}{local_section}{url_section}
+        ## Kernel to implement
+        {description}
+
+        ## Files you must create
+        - `{create_file}`  — PTO-DSL kernel builder (the main implementation)
+        - `compile.sh`     — build script (adapt from reference above; use {name}-specific names)
+        - `caller.cpp`     — C++ entry point (adapt signature to match the {name} kernel exactly)
+        - `run_{name}.py`  — correctness test script (adapt from reference; use `{name}_lib.so`)
+
+        ## Your workflow
+        1. Write all required files using write_file(path="...", content="...")
+        2. build()  — check for compile errors; fix with write_file/edit_file as needed
+        3. run_tests()  — verify correctness; fix failures and rebuild
+        4. Once tests pass, call benchmark() to measure latency
+
+        ## Rules
+        - Study the reference files above carefully to understand the PTO-DSL API and build system.
+        - The compile.sh and caller.cpp you create must be consistent with each other and with `{create_file}`.
+        - If build or tests fail, fix the issue — do not give up.
+        - Stop once tests pass and you have a benchmark result.
+    """)
+
+
+SYSTEM = (
+    _build_create_system_prompt(CFG, EXAMPLE_DIR, REF_DIR)
+    if CFG.get("mode") == "create"
+    else _build_system_prompt(CFG, EXAMPLE_DIR)
+)
 
 # ---------------------------------------------------------------------------
 # Agentic loop
 # ---------------------------------------------------------------------------
 def run_agent(max_turns: int = 30) -> None:
-    # Establish baseline
-    print("Establishing baseline …")
-    obs = env.reset()
-    print(f"Baseline: {obs.latency_ms:.4f} ms\n")
-
+    mode = CFG.get("mode", "optimize")
     client = anthropic.Anthropic()
-    preloaded = CFG.get("preload_files", [])
-    if preloaded:
-        start_hint = f"The source files are already in your context above — start proposing a change directly."
+
+    if mode == "create":
+        name = CFG.get("kernel_name", "kernel")
+        create_file = CFG.get("create_file", "builder.py")
+        print(f"Create mode — implementing {name} kernel from scratch …\n")
+        messages: list[dict] = [{"role": "user", "content":
+            f"Please implement the {name} kernel from scratch. "
+            f"Create all required files (compile.sh, caller.cpp, {create_file}, run_{name}.py) "
+            "using write_file. The reference files and PTO-DSL docs are in your system context above."}]
     else:
-        main_file = CFG.get("main_file", "builder.py")
-        start_hint = f"Start by reading {main_file}."
+        print("Establishing baseline …")
+        obs = env.reset()
+        print(f"Baseline: {obs.latency_ms:.4f} ms\n")
+        preloaded = CFG.get("preload_files", [])
+        start_hint = (
+            "The source files are already in your context above — start proposing a change directly."
+            if preloaded else f"Start by reading {CFG.get('main_file', 'builder.py')}."
+        )
+        messages = [{"role": "user", "content":
+            f"The baseline kernel latency is {obs.latency_ms:.4f} ms. "
+            f"Please find a faster implementation. {start_hint}"}]
 
-    messages: list[dict] = [
-        {
-            "role": "user",
-            "content": (
-                f"The baseline kernel latency is {obs.latency_ms:.4f} ms. "
-                f"Please find a faster implementation. {start_hint}"
-            ),
-        }
-    ]
-
+    tests_passed = False
     turn = 0
     while turn < max_turns:
         turn += 1
@@ -376,22 +508,34 @@ def run_agent(max_turns: int = 30) -> None:
                 "tool_use_id": block.id,
                 "content": result,
             })
+            # Track test results for create-mode exit condition
+            if block.name == "run_tests" and result.startswith("PASS"):
+                tests_passed = True
 
         if tool_results:
             messages.append({"role": "user", "content": tool_results})
 
-        # Early exit if we already have a confirmed speedup
-        if env.best_speedup is not None and env.best_speedup > 1.0:
+        if mode == "create" and tests_passed:
+            print("\n[Agent] Tests passed — kernel implemented successfully.")
+            break
+
+        if mode == "optimize" and env.best_speedup is not None and env.best_speedup > 1.0:
             print(f"\n[Agent] Speedup achieved: {env.best_speedup:.4f}x — stopping early.")
             break
 
     # Final summary
     print(f"\n{'='*60}")
-    print("SEARCH COMPLETE")
-    print(f"{'='*60}")
-    print(f"  Baseline:     {env.baseline_ms:.4f} ms")
-    print(f"  Best found:   {env.best_ms:.4f} ms")
-    print(f"  Best speedup: {env.best_speedup:.4f}x" if env.best_speedup else "  No improvement found.")
+    if mode == "create":
+        print("CREATE COMPLETE")
+        print(f"{'='*60}")
+        print(f"  Result: {'tests passed' if tests_passed else 'did not reach passing tests'}")
+        print(f"  Output: {EXAMPLE_DIR}")
+    else:
+        print("SEARCH COMPLETE")
+        print(f"{'='*60}")
+        print(f"  Baseline:     {env.baseline_ms:.4f} ms")
+        print(f"  Best found:   {env.best_ms:.4f} ms")
+        print(f"  Best speedup: {env.best_speedup:.4f}x" if env.best_speedup else "  No improvement found.")
 
 
 def _fmt_input(inp: dict) -> str:

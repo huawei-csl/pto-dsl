@@ -28,6 +28,15 @@ readonly_files = ["run_geglu.py", "caller.cpp"]
 
 preload_files = ["geglu_builder.py", "compile.sh", "caller.cpp"]
 
+# Local PTO-DSL API files (authoritative, read from repo)
+local_context_files = [
+    "ptodsl/api/pto.py",
+    "ptodsl/api/tile.py",
+    "ptodsl/api/scalar.py",
+    "ptodsl/api/control_flow.py",
+    "ptodsl/api/synchronization.py",
+]
+
 [[context_urls]]
 url   = "https://github.com/zhangstevenunity/PTOAS/blob/main/include/PTO/IR/PTOOps.td"
 label = "PTO MLIR op definitions (PTOOps.td)"

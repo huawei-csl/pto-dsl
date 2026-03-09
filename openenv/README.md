@@ -2,6 +2,12 @@
 
 Uses Claude Opus with OpenEnv to iteratively edit, build, test, and benchmark PTO-DSL kernels until a faster-than-baseline implementation is found.
 
+## Installation
+
+```bash
+pip install openenv-core   
+```
+
 ## Quick start
 
 ```bash

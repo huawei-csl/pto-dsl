@@ -45,6 +45,15 @@ preload_files = ["hadamard_builder.py", "compile.sh", "caller.cpp"]
 # Reference only (not fetchable): https://gitcode.com/cann/pto-isa/tree/master/docs/isa
 # Reference only (not fetchable): https://gitcode.com/cann/pto-isa/tree/master/include/pto/npu/a2a3
 # Reference only (not fetchable): https://gitcode.com/cann/pto-isa/blob/master/tests/npu/a2a3/src/st/testcase/
+# Local PTO-DSL API files (authoritative, read from repo)
+local_context_files = [
+    "ptodsl/api/pto.py",
+    "ptodsl/api/tile.py",
+    "ptodsl/api/scalar.py",
+    "ptodsl/api/control_flow.py",
+    "ptodsl/api/synchronization.py",
+]
+
 [[context_urls]]
 url   = "https://github.com/zhangstevenunity/PTOAS/blob/main/include/PTO/IR/PTOOps.td"
 label = "PTO MLIR op definitions (PTOOps.td)"

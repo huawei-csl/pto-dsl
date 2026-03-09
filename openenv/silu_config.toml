@@ -1,0 +1,42 @@
+mode = "create"
+
+kernel_dir  = "examples/aot/geglu_dynamic_multicore"  # reference for API patterns only
+kernel_name = "silu"
+create_file = "silu_builder.py"
+
+build_cmd = ["bash", "compile.sh"]
+test_cmd  = ["python", "run_silu.py"]
+bench_cmd = ["python", "_bench_wrapper.py"]
+
+create_prompt = """
+Implement SiLU (Swish) activation: y = x * sigmoid(x)
+PyTorch reference: torch.nn.functional.silu(x)
+
+Input:  fp16 tensor (batch, n_cols)
+Output: fp16 tensor (batch, n_cols) — separate output pointer
+
+The kernel signature in caller.cpp should be:
+    extern "C" void call_kernel(uint32_t blockDim, void *stream,
+                                uint8_t *x, uint8_t *y,
+                                uint32_t batch, uint32_t n_cols)
+
+The .so produced by compile.sh should be named silu_lib.so.
+The test script run_silu.py should compare against torch.nn.functional.silu(x.float()).to(x.dtype).
+The bench wrapper _bench_wrapper.py should print latency_ms=<value>.
+"""
+
+# These are loaded from the reference kernel_dir as examples — adapt them for silu
+preload_files = ["compile.sh", "caller.cpp", "geglu_builder.py", "run_geglu.py", "_bench_wrapper.py"]
+
+# Local PTO-DSL API files (authoritative, read from repo)
+local_context_files = [
+    "ptodsl/api/pto.py",
+    "ptodsl/api/tile.py",
+    "ptodsl/api/scalar.py",
+    "ptodsl/api/control_flow.py",
+    "ptodsl/api/synchronization.py",
+]
+
+[[context_urls]]
+url   = "https://github.com/zhangstevenunity/PTOAS/blob/main/python/pto/dialects/pto.py"
+label = "PTO Python bindings"

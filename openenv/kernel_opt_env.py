@@ -38,7 +38,7 @@ class KernelSearchEnv:
         self,
         repo_path: str,
         test_cmd: list[str],
-        bench_cmd: list[str],
+        bench_cmd: list[str] | None = None,
         build_cmd: list[str] | None = None,
         baseline_files: dict[str, str] | None = None,
     ):
