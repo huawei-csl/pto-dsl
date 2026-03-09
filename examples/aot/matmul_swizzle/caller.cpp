@@ -13,6 +13,7 @@ extern "C" void call_kernel(
     int M,
     int N,
     int K,
+    int swizzle_direction,
     int swizzle_count)
 {
     matmul_kernel_ABt<<<blockDim, nullptr, stream>>>(
@@ -22,5 +23,6 @@ extern "C" void call_kernel(
         static_cast<int32_t>(M),
         static_cast<int32_t>(N),
         static_cast<int32_t>(K),
+        static_cast<int32_t>(swizzle_direction),
         static_cast<int32_t>(swizzle_count));
 }

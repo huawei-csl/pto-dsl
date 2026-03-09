@@ -87,6 +87,7 @@ def build():
         m_i32: "i32",
         n_i32: "i32",
         k_i32: "i32",
+        swizzle_direction_i32: "i32",
         swizzle_count_i32: "i32",
     ) -> None:
         def emit_compute_variant(
@@ -214,8 +215,8 @@ def build():
 
                 with pto.if_context(is_curr0, has_else=True) as branch:
                     emit_k_group(0, 1, a_l1[0], a_l1[1])
-                    with branch.else_context():
-                        emit_k_group(1, 0, a_l1[1], a_l1[0])
+                with branch.else_context():
+                    emit_k_group(1, 0, a_l1[1], a_l1[0])
 
             sv_c = pto.slice_view(
                 c_view_type,
@@ -241,6 +242,7 @@ def build():
             m_total = s.index_cast(m_i32)
             n_total = s.index_cast(n_i32)
             k_total = s.index_cast(k_i32)
+            swizzle_direction = s.index_cast(swizzle_direction_i32)
             swizzle_count = s.index_cast(swizzle_count_i32)
             num_blocks = s.index_cast(pto.get_block_num())
             bid = s.index_cast(pto.get_block_idx())
@@ -266,20 +268,39 @@ def build():
             pto.record_event("MOV_M2L", "LOAD", event_id=[0, 1, 2, 3])
 
             for li in pto.range(bid, core_loop, num_blocks):
-                tile_block_loop = (n_loop + cSwizzleM1) // cSwizzle
-                tile_block_span = cSwizzle * m_loop
-                tile_block_idx = li // tile_block_span
-                in_tile_block_idx = li % tile_block_span
-                is_last_block = tile_block_idx == (tile_block_loop - c1)
-                n_col_tail = n_loop - cSwizzle * tile_block_idx
-                n_col = s.select(is_last_block, n_col_tail, cSwizzle)
+                # Default linear mapping, used when swizzle_direction is not 0/1.
+                m_idx = li // n_loop
+                n_idx = li % n_loop
 
-                m_idx = in_tile_block_idx // n_col
-                n_idx = tile_block_idx * cSwizzle + (in_tile_block_idx % n_col)
+                with pto.if_context(swizzle_direction == c0):
+                    # Zn swizzle path (swizzle_direction == 0).
+                    tile_block_loop = (m_loop + cSwizzleM1) // cSwizzle
+                    tile_block_span = cSwizzle * n_loop
+                    tile_block_idx = li // tile_block_span
+                    in_tile_block_idx = li % tile_block_span
+                    is_last_block = tile_block_idx == (tile_block_loop - c1)
+                    n_row_tail = m_loop - cSwizzle * tile_block_idx
+                    n_row = s.select(is_last_block, n_row_tail, cSwizzle)
+                    m_idx = tile_block_idx * cSwizzle + (in_tile_block_idx % n_row)
+                    n_idx = in_tile_block_idx // n_row
+                    odd_block = (tile_block_idx % c2) == c1
+                    flipped_n_idx = n_loop - n_idx - c1
+                    n_idx = s.select(odd_block, flipped_n_idx, n_idx)
 
-                odd_block = (tile_block_idx % c2) == c1
-                flipped_m_idx = m_loop - m_idx - c1
-                m_idx = s.select(odd_block, flipped_m_idx, m_idx)
+                with pto.if_context(swizzle_direction == c1):
+                    # Nz swizzle path (swizzle_direction == 1).
+                    tile_block_loop = (n_loop + cSwizzleM1) // cSwizzle
+                    tile_block_span = cSwizzle * m_loop
+                    tile_block_idx = li // tile_block_span
+                    in_tile_block_idx = li % tile_block_span
+                    is_last_block = tile_block_idx == (tile_block_loop - c1)
+                    n_col_tail = n_loop - cSwizzle * tile_block_idx
+                    n_col = s.select(is_last_block, n_col_tail, cSwizzle)
+                    m_idx = in_tile_block_idx // n_col
+                    n_idx = tile_block_idx * cSwizzle + (in_tile_block_idx % n_col)
+                    odd_block = (tile_block_idx % c2) == c1
+                    flipped_m_idx = m_loop - m_idx - c1
+                    m_idx = s.select(odd_block, flipped_m_idx, m_idx)
 
                 m_offset = m_idx * c128
                 n_offset = n_idx * c256
@@ -303,23 +324,23 @@ def build():
                         tvB,
                         tvC,
                     )
-                    with branch.else_context():
-                        emit_compute_variant(
-                            N_HALF,
-                            tile_view_b_128,
-                            tile_view_c_128,
-                            tile_buf_b_l1_128,
-                            tile_buf_b_l0_128,
-                            tile_buf_c_128,
-                            m_offset,
-                            n_offset,
-                            k_dtile_num,
-                            li,
-                            bid,
-                            num_blocks,
-                            tvA,
-                            tvB,
-                            tvC,
+                with branch.else_context():
+                    emit_compute_variant(
+                        N_HALF,
+                        tile_view_b_128,
+                        tile_view_c_128,
+                        tile_buf_b_l1_128,
+                        tile_buf_b_l0_128,
+                        tile_buf_c_128,
+                        m_offset,
+                        n_offset,
+                        k_dtile_num,
+                        li,
+                        bid,
+                        num_blocks,
+                        tvA,
+                        tvB,
+                        tvC,
                         )
 
             pto.wait_event("MOV_M2L", "LOAD", event_id=3)
