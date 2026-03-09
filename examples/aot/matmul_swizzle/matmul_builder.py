@@ -74,7 +74,7 @@ def build():
         swizzle_direction_i32: "i32",
         swizzle_count_i32: "i32",
     ) -> None:
-        def emit_compute_variant(
+        def level1_loop_mn_dynamic_tilesize(
             n_tile: int,
             b_view_type,
             c_view_type,
@@ -122,7 +122,7 @@ def build():
                 k_offset = k_idx * cKD
                 is_curr0 = (k_idx % c2) == c0
 
-                def emit_k_group(curr_id, next_id, a_curr, a_next):
+                def level2_loop_k(curr_id, next_id, a_curr, a_next):
                     is_first_k_tile = k_idx == c0
 
                     for h in range(2):
@@ -186,9 +186,9 @@ def build():
                         pto.record_event("LOAD", "MOV_M2L", event_id=next_id)
 
                 with pto.if_context(is_curr0, has_else=True) as branch:
-                    emit_k_group(0, 1, a_l1[0], a_l1[1])
+                    level2_loop_k(0, 1, a_l1[0], a_l1[1])
                 with branch.else_context():
-                    emit_k_group(1, 0, a_l1[1], a_l1[0])
+                    level2_loop_k(1, 0, a_l1[1], a_l1[0])
 
             sv_c = pto.slice_view(
                 c_view_type,
@@ -233,10 +233,10 @@ def build():
             pto.record_event("MATMUL", "MOV_M2L", event_id=[0, 1])
             pto.record_event("MOV_M2L", "LOAD", event_id=[0, 1, 2, 3])
 
-            def emit_for_offset(m_offset, n_offset, li):
+            def level1_loop_mn(m_offset, n_offset, li):
                 n_tile_size = s.select(n_offset + c256 > n_total, c128n, c256)
                 with pto.if_context(n_tile_size == c256, has_else=True) as branch:
-                    emit_compute_variant(
+                    level1_loop_mn_dynamic_tilesize(
                         N_FULL,
                         tile_view_b_256,
                         tile_view_c_256,
@@ -254,7 +254,7 @@ def build():
                         tvC,
                     )
                 with branch.else_context():
-                    emit_compute_variant(
+                    level1_loop_mn_dynamic_tilesize(
                         N_HALF,
                         tile_view_b_128,
                         tile_view_c_128,
@@ -287,7 +287,7 @@ def build():
                     odd_block = (tile_block_idx % c2) == c1
                     flipped_n_idx = n_loop - n_idx - c1
                     n_idx = s.select(odd_block, flipped_n_idx, n_idx)
-                    emit_for_offset(m_idx * c128, n_idx * c256, li)
+                    level1_loop_mn(m_idx * c128, n_idx * c256, li)
 
                 with c0_branch.else_context():
                     with pto.if_context(swizzle_direction == c1, has_else=True) as c1_branch:
@@ -304,13 +304,13 @@ def build():
                         odd_block = (tile_block_idx % c2) == c1
                         flipped_m_idx = m_loop - m_idx - c1
                         m_idx = s.select(odd_block, flipped_m_idx, m_idx)
-                        emit_for_offset(m_idx * c128, n_idx * c256, li)
+                        level1_loop_mn(m_idx * c128, n_idx * c256, li)
 
                     with c1_branch.else_context():
                         # Default linear mapping, used when swizzle_direction is not 0/1.
                         m_idx = li // n_loop
                         n_idx = li % n_loop
-                        emit_for_offset(m_idx * c128, n_idx * c256, li)
+                        level1_loop_mn(m_idx * c128, n_idx * c256, li)
 
             pto.wait_event("MOV_M2L", "LOAD", event_id=3)
             pto.wait_event("MOV_M2L", "LOAD", event_id=2)
