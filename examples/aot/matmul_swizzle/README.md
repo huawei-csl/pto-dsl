@@ -13,7 +13,7 @@ Benchmark outputs:
 
 Useful benchmark options:
 
-```bash
+```
 python ./bench_matmul.py --csv outputs/csv/my_bench.csv --plot-dir outputs/plots
 python ./bench_matmul.py --m-list 512,1024,2048,4096
 python ./bench_matmul.py --warmup 10 --repeat 50

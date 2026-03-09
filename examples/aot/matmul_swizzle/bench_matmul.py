@@ -12,8 +12,10 @@ from ptodsl.test_util import get_test_device
 
 
 BLOCK_DIM = 24
-SWIZZLE_DIRECTION_LIST = [0, 1]
+SWIZZLE_DIRECTION_LIST = [-1, 0, 1]
 SWIZZLE_COUNT_LIST = [1, 3, 5]
+NO_SWIZZLE_DIRECTION = -1
+NO_SWIZZLE_COUNT = 1
 M_LIST = [128 * i for i in range(1, 37, 4)]  # 128, ..., 4224
 SHAPES_NK = [
     (4096, 4096),
@@ -159,12 +161,35 @@ def _time_fn(fn, a_list, b_list, warmup, repeat):
     return elapsed_ms * 1000.0 / repeat
 
 
+def _swizzle_cases():
+    # direction=-1 disables swizzle; treat it as one dedicated baseline case.
+    cases = [(NO_SWIZZLE_DIRECTION, NO_SWIZZLE_COUNT)]
+    for direction in SWIZZLE_DIRECTION_LIST:
+        if direction == NO_SWIZZLE_DIRECTION:
+            continue
+        for count in SWIZZLE_COUNT_LIST:
+            cases.append((direction, count))
+    return cases
+
+
 def _maybe_plot(rows, plot_dir):
     try:
         import matplotlib.pyplot as plt
     except ImportError:
         print("matplotlib not installed; skipping plot generation.")
         return
+
+    # Prefer a white-grid background style for readability in reports.
+    style_candidates = ("seaborn-v0_8-whitegrid", "seaborn-whitegrid")
+    for style_name in style_candidates:
+        try:
+            plt.style.use(style_name)
+            break
+        except OSError:
+            continue
+
+    plt.rcParams["figure.facecolor"] = "white"
+    plt.rcParams["axes.facecolor"] = "white"
 
     plot_dir.mkdir(parents=True, exist_ok=True)
 
@@ -212,13 +237,20 @@ def _maybe_plot(rows, plot_dir):
                     series.append(
                         sum(r["custom_tflops"] for r in candidates) / len(candidates)
                     )
+            is_baseline = direction == NO_SWIZZLE_DIRECTION
+            label = (
+                "matmul_abt(no-swizzle)"
+                if is_baseline
+                else f"matmul_abt(d={direction}, c={count})"
+            )
             plt.plot(
                 m_values,
                 series,
                 marker="o",
                 linestyle="-",
                 color=cmap(idx % 10),
-                label=f"matmul_abt(d={direction}, c={count})",
+                alpha=1.0 if is_baseline else 0.7,
+                label=label,
             )
 
         plt.title(f"TFLOPS vs M (N={n}, K={k})")
@@ -233,6 +265,84 @@ def _maybe_plot(rows, plot_dir):
         plt.savefig(out, dpi=160)
         plt.close()
         print(f"Saved plot: {out}")
+
+        plt.figure(figsize=(10, 5))
+        ax_left = plt.gca()
+        ax_right = ax_left.twinx()
+        lines = []
+        labels = []
+        cmap = plt.get_cmap("tab10")
+
+        for idx, (direction, count) in enumerate(swizzles):
+            speedup_series = []
+            fraction_series = []
+            for m in m_values:
+                candidates = [
+                    r
+                    for r in chunk
+                    if r["m"] == m
+                    and r["swizzle_direction"] == direction
+                    and r["swizzle_count"] == count
+                ]
+                if not candidates:
+                    speedup_series.append(float("nan"))
+                    fraction_series.append(float("nan"))
+                else:
+                    speedup_series.append(
+                        sum(r["speedup_vs_no_swizzle"] for r in candidates)
+                        / len(candidates)
+                    )
+                    fraction_series.append(
+                        sum(r["flops_fraction_vs_linear"] for r in candidates)
+                        / len(candidates)
+                    )
+
+            is_baseline = direction == NO_SWIZZLE_DIRECTION
+            alpha = 1.0 if is_baseline else 0.7
+            color = cmap(idx % 10)
+            base_label = (
+                "no-swizzle baseline"
+                if is_baseline
+                else f"d={direction}, c={count}"
+            )
+            speedup_label = f"speedup {base_label}"
+            fraction_label = f"frac {base_label}"
+
+            (line_speedup,) = ax_left.plot(
+                m_values,
+                speedup_series,
+                marker="o",
+                linestyle="-",
+                color=color,
+                alpha=alpha,
+                label=speedup_label,
+            )
+            (line_fraction,) = ax_right.plot(
+                m_values,
+                fraction_series,
+                marker="s",
+                linestyle="--",
+                color=color,
+                alpha=alpha,
+                label=fraction_label,
+            )
+            lines.extend([line_speedup, line_fraction])
+            labels.extend([speedup_label, fraction_label])
+
+        ax_left.set_title(f"Speedup/FLOPs Ratio vs M (N={n}, K={k})")
+        ax_left.set_xlabel("M")
+        ax_left.set_ylabel("Speed-up vs no-swizzle")
+        ax_right.set_ylabel("Fraction of CANN matmul FLOPs")
+        ax_left.set_xlim(left=0)
+        ax_left.set_ylim(bottom=0)
+        ax_right.set_ylim(bottom=0)
+        ax_left.grid(alpha=0.25)
+        ax_left.legend(lines, labels, fontsize=7, ncol=2)
+        plt.tight_layout()
+        ratio_out = plot_dir / f"ratio_n{n}_k{k}.png"
+        plt.savefig(ratio_out, dpi=160)
+        plt.close()
+        print(f"Saved plot: {ratio_out}")
 
 
 def main():
@@ -264,9 +374,8 @@ def main():
     torch.manual_seed(0)
 
     rows = []
-    total_cases = len(m_list) * len(SHAPES_NK) * len(SWIZZLE_DIRECTION_LIST) * len(
-        SWIZZLE_COUNT_LIST
-    )
+    swizzle_cases = _swizzle_cases()
+    total_cases = len(m_list) * len(SHAPES_NK) * len(swizzle_cases)
     case_idx = 0
 
     for n, k in SHAPES_NK:
@@ -283,51 +392,79 @@ def main():
 
             print(f"\n(M,N,K)=({m},{n},{k}) F.linear={linear_tflops:.3f} TFLOPS")
 
-            for swizzle_direction in SWIZZLE_DIRECTION_LIST:
-                for swizzle_count in SWIZZLE_COUNT_LIST:
-                    case_idx += 1
+            case_rows = []
+            no_swizzle_time_us = None
+            no_swizzle_tflops = None
 
-                    def _custom(a, b, _d=swizzle_direction, _c=swizzle_count):
-                        return matmul_abt(
-                            a,
-                            b,
-                            block_dim=BLOCK_DIM,
-                            swizzle_direction=_d,
-                            swizzle_count=_c,
-                        )
+            for swizzle_direction, swizzle_count in swizzle_cases:
+                case_idx += 1
 
-                    c = _custom(a_list[0], b_list[0])
-                    torch.npu.synchronize()
-                    max_absdiff = float((c - c_ref).abs().max().item())
-                    mean_absdiff = float((c - c_ref).abs().mean().item())
-                    custom_time_us = _time_fn(_custom, a_list, b_list, args.warmup, args.repeat)
-                    custom_tflops = flops / custom_time_us / 1e6
-
-                    print(
-                        f"  [{case_idx:03d}/{total_cases}] "
-                        f"d={swizzle_direction} c={swizzle_count} "
-                        f"custom={custom_tflops:.3f} TFLOPS "
-                        f"speedup={linear_time_us / custom_time_us:.3f}x "
-                        f"mean_diff={mean_absdiff:.3e}"
+                def _custom(a, b, _d=swizzle_direction, _c=swizzle_count):
+                    return matmul_abt(
+                        a,
+                        b,
+                        block_dim=BLOCK_DIM,
+                        swizzle_direction=_d,
+                        swizzle_count=_c,
                     )
 
-                    rows.append(
-                        {
-                            "m": m,
-                            "n": n,
-                            "k": k,
-                            "block_dim": BLOCK_DIM,
-                            "swizzle_direction": swizzle_direction,
-                            "swizzle_count": swizzle_count,
-                            "linear_time_us": linear_time_us,
-                            "linear_tflops": linear_tflops,
-                            "custom_time_us": custom_time_us,
-                            "custom_tflops": custom_tflops,
-                            "speedup_vs_linear": linear_time_us / custom_time_us,
-                            "max_absdiff": max_absdiff,
-                            "mean_absdiff": mean_absdiff,
-                        }
-                    )
+                c = _custom(a_list[0], b_list[0])
+                torch.npu.synchronize()
+                max_absdiff = float((c - c_ref).abs().max().item())
+                mean_absdiff = float((c - c_ref).abs().mean().item())
+                custom_time_us = _time_fn(_custom, a_list, b_list, args.warmup, args.repeat)
+                custom_tflops = flops / custom_time_us / 1e6
+                flops_fraction_vs_linear = custom_tflops / linear_tflops
+
+                if (
+                    swizzle_direction == NO_SWIZZLE_DIRECTION
+                    and swizzle_count == NO_SWIZZLE_COUNT
+                ):
+                    no_swizzle_time_us = custom_time_us
+                    no_swizzle_tflops = custom_tflops
+
+                case_rows.append(
+                    {
+                        "case_idx": case_idx,
+                        "m": m,
+                        "n": n,
+                        "k": k,
+                        "block_dim": BLOCK_DIM,
+                        "swizzle_direction": swizzle_direction,
+                        "swizzle_count": swizzle_count,
+                        "linear_time_us": linear_time_us,
+                        "linear_tflops": linear_tflops,
+                        "custom_time_us": custom_time_us,
+                        "custom_tflops": custom_tflops,
+                        "flops_fraction_vs_linear": flops_fraction_vs_linear,
+                        "max_absdiff": max_absdiff,
+                        "mean_absdiff": mean_absdiff,
+                    }
+                )
+
+            if no_swizzle_time_us is None or no_swizzle_tflops is None:
+                raise RuntimeError(
+                    "No no-swizzle baseline result found "
+                    f"(direction={NO_SWIZZLE_DIRECTION}, count={NO_SWIZZLE_COUNT})."
+                )
+
+            for record in case_rows:
+                record["no_swizzle_time_us"] = no_swizzle_time_us
+                record["no_swizzle_tflops"] = no_swizzle_tflops
+                record["speedup_vs_no_swizzle"] = (
+                    no_swizzle_time_us / record["custom_time_us"]
+                )
+                progress_idx = record.pop("case_idx")
+
+                print(
+                    f"  [{progress_idx:03d}/{total_cases}] "
+                    f"d={record['swizzle_direction']} c={record['swizzle_count']} "
+                    f"custom={record['custom_tflops']:.3f} TFLOPS "
+                    f"frac_of_linear={record['flops_fraction_vs_linear']:.3f} "
+                    f"speedup_vs_no_swizzle={record['speedup_vs_no_swizzle']:.3f}x "
+                    f"mean_diff={record['mean_absdiff']:.3e}"
+                )
+                rows.append(record)
 
     fieldnames = [
         "m",
@@ -340,7 +477,10 @@ def main():
         "linear_tflops",
         "custom_time_us",
         "custom_tflops",
-        "speedup_vs_linear",
+        "flops_fraction_vs_linear",
+        "no_swizzle_time_us",
+        "no_swizzle_tflops",
+        "speedup_vs_no_swizzle",
         "max_absdiff",
         "mean_absdiff",
     ]
