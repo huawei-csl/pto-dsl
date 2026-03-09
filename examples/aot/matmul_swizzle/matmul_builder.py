@@ -1,5 +1,3 @@
-from mlir.ir import IntegerType
-
 from ptodsl import pto, tile, to_ir_module
 from ptodsl import scalar as s
 
@@ -31,25 +29,11 @@ def build():
         tile_view_c_256 = pto.SubTensorType(shape=[M_TILE, N_FULL], dtype=dtype)
         tile_view_c_128 = pto.SubTensorType(shape=[M_TILE, N_HALF], dtype=dtype)
 
-        b_l1_cfg = pto.TileBufConfig(
-            blayout="RowMajor",
-            slayout="ColMajor",
-            s_fractal_size=512,
-        )
+        b_l1_cfg = pto.TileBufConfig(blayout="RowMajor", slayout="ColMajor", s_fractal_size=512)
 
         tile_buf_a_l1 = pto.TileBufType(shape=[M_TILE, K_DTILE], dtype=dtype, memory_space="MAT")
-        tile_buf_b_l1_256 = pto.TileBufType(
-            shape=[K_TILE, N_FULL],
-            dtype=dtype,
-            memory_space="MAT",
-            config=b_l1_cfg,
-        )
-        tile_buf_b_l1_128 = pto.TileBufType(
-            shape=[K_TILE, N_HALF],
-            dtype=dtype,
-            memory_space="MAT",
-            config=b_l1_cfg,
-        )
+        tile_buf_b_l1_256 = pto.TileBufType(shape=[K_TILE, N_FULL], dtype=dtype, memory_space="MAT", config=b_l1_cfg)
+        tile_buf_b_l1_128 = pto.TileBufType(shape=[K_TILE, N_HALF], dtype=dtype, memory_space="MAT", config=b_l1_cfg)
         tile_buf_a_l0 = pto.TileBufType(shape=[M_TILE, K_QTILE], dtype=dtype, memory_space="LEFT")
         tile_buf_b_l0_256 = pto.TileBufType(shape=[K_QTILE, N_FULL], dtype=dtype, memory_space="RIGHT")
         tile_buf_b_l0_128 = pto.TileBufType(shape=[K_QTILE, N_HALF], dtype=dtype, memory_space="RIGHT")
@@ -114,22 +98,10 @@ def build():
             cKD = const(K_DTILE)
             cNT = const(n_tile)
 
-            a_l1 = [
-                pto.alloc_tile(tile_buf_a_l1),
-                pto.alloc_tile(tile_buf_a_l1),
-            ]
-            b_l1 = [
-                pto.alloc_tile(b_l1_type),
-                pto.alloc_tile(b_l1_type),
-            ]
-            a_l0 = [
-                pto.alloc_tile(tile_buf_a_l0),
-                pto.alloc_tile(tile_buf_a_l0),
-            ]
-            b_l0 = [
-                pto.alloc_tile(b_l0_type),
-                pto.alloc_tile(b_l0_type),
-            ]
+            a_l1 = [pto.alloc_tile(tile_buf_a_l1), pto.alloc_tile(tile_buf_a_l1)]
+            b_l1 = [pto.alloc_tile(b_l1_type), pto.alloc_tile(b_l1_type)]
+            a_l0 = [pto.alloc_tile(tile_buf_a_l0), pto.alloc_tile(tile_buf_a_l0)]
+            b_l0 = [pto.alloc_tile(b_l0_type), pto.alloc_tile(b_l0_type)]
             c_l0 = pto.alloc_tile(c_type)
 
             not_first_tile = li != bid
@@ -255,13 +227,7 @@ def build():
             k_dtile_num = k_total // c512
 
             tvA = pto.as_tensor(tv_a, ptr=a_ptr, shape=[m_total, k_total], strides=[k_total, c1])
-            tvB = pto.as_tensor(
-                tv_b,
-                ptr=b_ptr,
-                shape=[k_total, n_total],
-                strides=[c1, k_total],
-                layout="DN",
-            )
+            tvB = pto.as_tensor(tv_b, ptr=b_ptr, shape=[k_total, n_total], strides=[c1, k_total], layout="DN")
             tvC = pto.as_tensor(tv_c, ptr=c_ptr, shape=[m_total, n_total], strides=[n_total, c1])
 
             pto.record_event("MATMUL", "MOV_M2L", event_id=[0, 1])
@@ -287,24 +253,24 @@ def build():
                         tvB,
                         tvC,
                     )
-                    with branch.else_context():
-                        emit_compute_variant(
-                            N_HALF,
-                            tile_view_b_128,
-                            tile_view_c_128,
-                            tile_buf_b_l1_128,
-                            tile_buf_b_l0_128,
-                            tile_buf_c_128,
-                            m_offset,
-                            n_offset,
-                            k_dtile_num,
-                            li,
-                            bid,
-                            num_blocks,
-                            tvA,
-                            tvB,
-                            tvC,
-                        )
+                with branch.else_context():
+                    emit_compute_variant(
+                        N_HALF,
+                        tile_view_b_128,
+                        tile_view_c_128,
+                        tile_buf_b_l1_128,
+                        tile_buf_b_l0_128,
+                        tile_buf_c_128,
+                        m_offset,
+                        n_offset,
+                        k_dtile_num,
+                        li,
+                        bid,
+                        num_blocks,
+                        tvA,
+                        tvB,
+                        tvC,
+                    )
 
             for li in pto.range(bid, core_loop, num_blocks):
                 with pto.if_context(swizzle_direction == c0, has_else=True) as c0_branch:
