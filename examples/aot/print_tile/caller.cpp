@@ -1,4 +1,4 @@
-#include "add.cpp"
+#include "print_gen.cpp"
 
 extern "C" void call_kernel(
     void *stream, uint8_t *x, uint8_t *y, uint8_t *z, int32_t vrow, int32_t vcol)

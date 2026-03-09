@@ -35,7 +35,7 @@ def test_add():
     device = get_test_device()
     torch.npu.set_device(device)
 
-    lib_path = "./add_lib.so"
+    lib_path = "./print_lib.so"
     lib = ctypes.CDLL(lib_path)
     add_func = lib_to_func(lib)
 

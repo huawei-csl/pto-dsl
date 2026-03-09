@@ -5,9 +5,11 @@ set -e
 PTO_DIR="$ASCEND_HOME_PATH/include/pto"
 PTO_BACKUP="$ASCEND_HOME_PATH/include/pto_hidden"
 PTO_LIB_PATH="/sources/pto-isa"
-
-# Ensure PTO_LIB_PATH exists, otherwise exit
 [ -d "$PTO_LIB_PATH" ] || exit 0
+
+
+rm -f print_lib.so print_gen.cpp
+python ./print_builder.py | ptoas --enable-insert-sync > print_gen.cpp
 
 restore() {
     if [ -d "$PTO_BACKUP" ]; then
@@ -32,4 +34,4 @@ bisheng \
     -I${PTO_LIB_PATH}/include \
     -std=gnu++17 \
     ./caller.cpp \
-    -o ./add_lib.so
+    -o ./print_lib.so
