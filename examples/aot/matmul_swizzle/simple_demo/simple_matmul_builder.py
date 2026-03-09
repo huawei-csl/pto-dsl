@@ -15,10 +15,9 @@ def build():
         acc_dtype = pto.float32
         ptr_type = pto.PtrType(dtype)
         i32 = pto.int32
-        tv_a = pto.TensorType(rank=2, dtype=dtype)
-        tv_b = pto.TensorType(rank=2, dtype=dtype)
-        tv_c = pto.TensorType(rank=2, dtype=dtype)
+        tv_2d = pto.TensorType(rank=2, dtype=dtype)
 
+        # TODO: omit shape for `SubTensorType`, can merge into one type https://github.com/zhangstevenunity/PTOAS/issues/31
         tile_view_a = pto.SubTensorType(shape=[M_TILE, K_DTILE], dtype=dtype)
         tile_view_b_256 = pto.SubTensorType(shape=[K_TILE, N_FULL], dtype=dtype)
         tile_view_c_256 = pto.SubTensorType(shape=[M_TILE, N_FULL], dtype=dtype)
@@ -34,9 +33,7 @@ def build():
         return {
             "ptr_type": ptr_type,
             "i32": i32,
-            "tv_a": tv_a,
-            "tv_b": tv_b,
-            "tv_c": tv_c,
+            "tv_2d": tv_2d,
             "tile_view_a": tile_view_a,
             "tile_view_b_256": tile_view_b_256,
             "tile_view_c_256": tile_view_c_256,
@@ -75,9 +72,9 @@ def build():
             core_loop = n_loop * m_loop
             k_dtile_num = k_total // c512
 
-            tvA = pto.as_tensor(tv_a, ptr=a_ptr, shape=[m_total, k_total], strides=[k_total, c1])
-            tvB = pto.as_tensor(tv_b, ptr=b_ptr, shape=[k_total, n_total], strides=[c1, k_total], layout="DN")
-            tvC = pto.as_tensor(tv_c, ptr=c_ptr, shape=[m_total, n_total], strides=[n_total, c1])
+            tvA = pto.as_tensor(tv_2d, ptr=a_ptr, shape=[m_total, k_total], strides=[k_total, c1])
+            tvB = pto.as_tensor(tv_2d, ptr=b_ptr, shape=[k_total, n_total], strides=[c1, k_total], layout="DN")
+            tvC = pto.as_tensor(tv_2d, ptr=c_ptr, shape=[m_total, n_total], strides=[n_total, c1])
 
             a_l1 = [pto.alloc_tile(tile_buf_a_l1), pto.alloc_tile(tile_buf_a_l1)]
             b_l1 = [pto.alloc_tile(tile_buf_b_l1_256), pto.alloc_tile(tile_buf_b_l1_256)]
