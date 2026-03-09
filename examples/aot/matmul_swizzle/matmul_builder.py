@@ -306,22 +306,19 @@ def build():
                     )
 
             for li in pto.range(bid, core_loop, num_blocks):
-                with pto.if_context(swizzle_direction == c0, has_else=True) as c0_branch:
-                    # Zn swizzle path (swizzle_direction == 0).
+                with pto.if_context(swizzle_direction == c0):
                     m_idx, n_idx = swizzle_zn(li, m_loop, n_loop, cSwizzle, cSwizzleM1, c1, c2)
                     level1_loop_mn(m_idx * c128, n_idx * c256, li)
-
-                with c0_branch.else_context():
-                    with pto.if_context(swizzle_direction == c1, has_else=True) as c1_branch:
-                        # Nz swizzle path (swizzle_direction == 1).
-                        m_idx, n_idx = swizzle_nz(li, m_loop, n_loop, cSwizzle, cSwizzleM1, c1, c2)
-                        level1_loop_mn(m_idx * c128, n_idx * c256, li)
-
-                    with c1_branch.else_context():
-                        # Default linear mapping, used when swizzle_direction is not 0/1.
-                        m_idx = li // n_loop
-                        n_idx = li % n_loop
-                        level1_loop_mn(m_idx * c128, n_idx * c256, li)
+                with pto.if_context(swizzle_direction == c1, has_else=True) as c1_branch:
+                    m_idx, n_idx = swizzle_nz(li, m_loop, n_loop, cSwizzle, cSwizzleM1, c1, c2)
+                    level1_loop_mn(m_idx * c128, n_idx * c256, li)
+                with c1_branch.else_context():
+                    # Default linear mapping, used when swizzle_direction is not 0/1.
+                    m_idx = li // n_loop
+                    n_idx = li % n_loop
+                    level1_loop_mn(m_idx * c128, n_idx * c256, li)
+                # NOTE: duplicating `level1_loop_mn` calls is due to SSA dominance in MLIR: 
+                #       values defined in a branch region (like m_idx/n_idx) cannot be used after the region
 
             pto.wait_event("MOV_M2L", "LOAD", event_id=3)
             pto.wait_event("MOV_M2L", "LOAD", event_id=2)
