@@ -268,14 +268,10 @@ def _maybe_plot(rows, plot_dir):
 
         plt.figure(figsize=(10, 5))
         ax_left = plt.gca()
-        ax_right = ax_left.twinx()
-        lines = []
-        labels = []
         cmap = plt.get_cmap("tab10")
 
         for idx, (direction, count) in enumerate(swizzles):
             speedup_series = []
-            fraction_series = []
             for m in m_values:
                 candidates = [
                     r
@@ -286,14 +282,9 @@ def _maybe_plot(rows, plot_dir):
                 ]
                 if not candidates:
                     speedup_series.append(float("nan"))
-                    fraction_series.append(float("nan"))
                 else:
                     speedup_series.append(
                         sum(r["speedup_vs_no_swizzle"] for r in candidates)
-                        / len(candidates)
-                    )
-                    fraction_series.append(
-                        sum(r["flops_fraction_vs_linear"] for r in candidates)
                         / len(candidates)
                     )
 
@@ -306,9 +297,8 @@ def _maybe_plot(rows, plot_dir):
                 else f"d={direction}, c={count}"
             )
             speedup_label = f"speedup {base_label}"
-            fraction_label = f"frac {base_label}"
 
-            (line_speedup,) = ax_left.plot(
+            ax_left.plot(
                 m_values,
                 speedup_series,
                 marker="o",
@@ -317,27 +307,14 @@ def _maybe_plot(rows, plot_dir):
                 alpha=alpha,
                 label=speedup_label,
             )
-            (line_fraction,) = ax_right.plot(
-                m_values,
-                fraction_series,
-                marker="s",
-                linestyle="--",
-                color=color,
-                alpha=alpha,
-                label=fraction_label,
-            )
-            lines.extend([line_speedup, line_fraction])
-            labels.extend([speedup_label, fraction_label])
 
-        ax_left.set_title(f"Speedup/FLOPs Ratio vs M (N={n}, K={k})")
+        ax_left.set_title(f"Speed-up vs no-swizzle (N={n}, K={k})")
         ax_left.set_xlabel("M")
         ax_left.set_ylabel("Speed-up vs no-swizzle")
-        ax_right.set_ylabel("Fraction of CANN matmul FLOPs")
         ax_left.set_xlim(left=0)
         ax_left.set_ylim(bottom=0)
-        ax_right.set_ylim(bottom=0)
         ax_left.grid(alpha=0.25)
-        ax_left.legend(lines, labels, fontsize=7, ncol=2)
+        ax_left.legend(fontsize=8)
         plt.tight_layout()
         ratio_out = plot_dir / f"ratio_n{n}_k{k}.png"
         plt.savefig(ratio_out, dpi=160)
