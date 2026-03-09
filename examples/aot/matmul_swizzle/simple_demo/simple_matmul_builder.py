@@ -110,9 +110,9 @@ def build():
 
                 for k_idx in pto.range(c0, k_dtile_num, c1):
                     k_offset = k_idx * cKD
-                    is_curr0 = (k_idx % c2) == c0
 
-                    def level2_loop_k(curr_id, next_id, a_curr, a_next):
+                    def run_loop_k(curr_id, next_id, a_curr, a_next):
+                        # NOTE: here declare nested function so we can reuse for double-buffering
                         is_first_k_tile = k_idx == c0
 
                         for h in range(2):
@@ -130,6 +130,7 @@ def build():
                             pto.record_event("LOAD", "MOV_M2L", event_id=b_evt)
 
                             for quarter in range(4):
+                                # NOTE: here is native Python loop, treats as build-time loop unrolling
                                 phase = h * 4 + quarter
                                 ping = phase & 1
                                 a_col = const(phase * K_QTILE)
@@ -175,10 +176,11 @@ def build():
                             pto.load(sv_a_next, a_next)
                             pto.record_event("LOAD", "MOV_M2L", event_id=next_id)
 
+                    is_curr0 = (k_idx % c2) == c0
                     with pto.if_context(is_curr0, has_else=True) as branch:
-                        level2_loop_k(0, 1, a_l1[0], a_l1[1])
+                        run_loop_k(0, 1, a_l1[0], a_l1[1])
                     with branch.else_context():
-                        level2_loop_k(1, 0, a_l1[1], a_l1[0])
+                        run_loop_k(1, 0, a_l1[1], a_l1[0])
 
                 sv_c = pto.slice_view(
                     tile_view_c_256,
