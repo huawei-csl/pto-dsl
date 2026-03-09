@@ -22,10 +22,24 @@ def get_block_num():
     return Value(_pto.GetBlockNumOp().result)
 
 
-def as_tensor(tensor_type, *, ptr, shape, strides):
+def _resolve_layout_attr(layout):
+    if layout is None:
+        return None
+    if isinstance(layout, str):
+        return _pto.LayoutAttr.get(getattr(_pto.Layout, layout))
+    return layout
+
+
+def as_tensor(tensor_type, *, ptr, shape, strides, layout=None):
     shape_vals = [_unwrap(v) for v in shape]
     stride_vals = [_unwrap(v) for v in strides]
-    return _pto.MakeTensorViewOp(tensor_type, _unwrap(ptr), shape_vals, stride_vals).result
+    kwargs = {}
+    layout_attr = _resolve_layout_attr(layout)
+    if layout_attr is not None:
+        kwargs["layout"] = layout_attr
+    return _pto.MakeTensorViewOp(
+        tensor_type, _unwrap(ptr), shape_vals, stride_vals, **kwargs
+    ).result
 
 
 def slice_view(subtensor_type, *, source, offsets, sizes):
@@ -52,8 +66,10 @@ def cube_section():
         yield
 
 
-def alloc_tile(tile_type, *, valid_row=None, valid_col=None):
+def alloc_tile(tile_type, *, addr=None, valid_row=None, valid_col=None):
     kwargs = {}
+    if addr is not None:
+        kwargs["addr"] = _unwrap(addr)
     if valid_row is not None:
         kwargs["valid_row"] = _unwrap(valid_row)
     if valid_col is not None:

@@ -75,6 +75,10 @@ def matmul_acc(acc, lhs, rhs, out):
     _pto.TMatmulAccOp(None, acc, lhs, rhs, out)
 
 
+def extract(source, index_row, index_col, out):
+    _pto.TExtractOp(src=source, indexRow=_unwrap(index_row), indexCol=_unwrap(index_col), dst=out)
+
+
 def row_sum(src, tmp, dst):
     _pto.TRowSumOp(src=src, tmp=tmp, dst=dst)
 
@@ -106,6 +110,7 @@ __all__ = [
     "matmul",
     "matmul_bias",
     "matmul_acc",
+    "extract",
     "row_sum",
     "subset",
 ]
