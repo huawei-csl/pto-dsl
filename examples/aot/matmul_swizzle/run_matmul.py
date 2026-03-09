@@ -10,6 +10,7 @@ from ptodsl.test_util import get_test_device
 
 
 BLOCK_DIM_LIST = [1, 20, 24]
+SWIZZLE_COUNT_LIST = [1, 3, 5]
 M_LIST = [128 * i for i in range(1, 37, 4)]  # 128, ..., 4224
 SHAPES_NK = [
     (4096, 4096),
@@ -26,6 +27,7 @@ class CaseResult:
     n: int
     k: int
     block_dim: int
+    swizzle_count: int
     max_absdiff: float
     mean_absdiff: float
 
@@ -45,10 +47,11 @@ def load_lib(lib_path):
         ctypes.c_int,
         ctypes.c_int,
         ctypes.c_int,
+        ctypes.c_int,
     ]
     lib.call_kernel.restype = None
 
-    def matmul_abt(a, b, *, block_dim=24, stream_ptr=None):
+    def matmul_abt(a, b, *, block_dim=24, swizzle_count=3, stream_ptr=None):
         if a.ndim != 2 or b.ndim != 2:
             raise ValueError("matmul_abt expects 2D tensors: a[M,K], b[N,K]")
         if a.shape[1] != b.shape[1]:
@@ -75,20 +78,22 @@ def load_lib(lib_path):
             m,
             n,
             k,
+            swizzle_count,
         )
         return c
 
     return matmul_abt
 
 
-def run_case(matmul_abt, a, b, c_ref, *, block_dim):
-    c = matmul_abt(a, b, block_dim=block_dim)
+def run_case(matmul_abt, a, b, c_ref, *, block_dim, swizzle_count):
+    c = matmul_abt(a, b, block_dim=block_dim, swizzle_count=swizzle_count)
     torch.npu.synchronize()
     return CaseResult(
         m=int(a.shape[0]),
         n=int(b.shape[0]),
         k=int(a.shape[1]),
         block_dim=block_dim,
+        swizzle_count=swizzle_count,
         max_absdiff=float((c - c_ref).abs().max().item()),
         mean_absdiff=float((c - c_ref).abs().mean().item()),
     )
@@ -112,32 +117,41 @@ def test_matmul():
 
             shape_worst = None
             for block_dim in BLOCK_DIM_LIST:
-                result = run_case(matmul_abt, a, b, c_ref, block_dim=block_dim)
-                checked_cases += 1
-
-                if (
-                    shape_worst is None
-                    or result.max_absdiff > shape_worst.max_absdiff
-                    or (
-                        result.max_absdiff == shape_worst.max_absdiff
-                        and result.mean_absdiff > shape_worst.mean_absdiff
+                for swizzle_count in SWIZZLE_COUNT_LIST:
+                    result = run_case(
+                        matmul_abt,
+                        a,
+                        b,
+                        c_ref,
+                        block_dim=block_dim,
+                        swizzle_count=swizzle_count,
                     )
-                ):
-                    shape_worst = result
+                    checked_cases += 1
 
-                if (
-                    global_worst is None
-                    or result.max_absdiff > global_worst.max_absdiff
-                    or (
-                        result.max_absdiff == global_worst.max_absdiff
-                        and result.mean_absdiff > global_worst.mean_absdiff
-                    )
-                ):
-                    global_worst = result
+                    if (
+                        shape_worst is None
+                        or result.max_absdiff > shape_worst.max_absdiff
+                        or (
+                            result.max_absdiff == shape_worst.max_absdiff
+                            and result.mean_absdiff > shape_worst.mean_absdiff
+                        )
+                    ):
+                        shape_worst = result
+
+                    if (
+                        global_worst is None
+                        or result.max_absdiff > global_worst.max_absdiff
+                        or (
+                            result.max_absdiff == global_worst.max_absdiff
+                            and result.mean_absdiff > global_worst.mean_absdiff
+                        )
+                    ):
+                        global_worst = result
 
             print(
                 f"(m, n, k)=({m}, {n}, {k}) "
-                f"worst_block_dim={shape_worst.block_dim} "
+                f"worst(block_dim, swizzle_count)=({shape_worst.block_dim}, "
+                f"{shape_worst.swizzle_count}) "
                 f"max_absdiff={shape_worst.max_absdiff:.6f} "
                 f"mean_absdiff={shape_worst.mean_absdiff:.6f}"
             )
@@ -147,8 +161,9 @@ def test_matmul():
         "global_worst "
         f"max_absdiff={global_worst.max_absdiff:.6f} "
         f"mean_absdiff={global_worst.mean_absdiff:.6f} "
-        f"at (m, n, k, block_dim)=({global_worst.m}, {global_worst.n}, "
-        f"{global_worst.k}, {global_worst.block_dim})"
+        f"at (m, n, k, block_dim, swizzle_count)=({global_worst.m}, "
+        f"{global_worst.n}, {global_worst.k}, {global_worst.block_dim}, "
+        f"{global_worst.swizzle_count})"
     )
 
     if global_worst.max_absdiff > MAX_ABSDIFF_THRESHOLD:

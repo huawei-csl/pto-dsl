@@ -10,8 +10,6 @@ K_TILE = 256
 K_DTILE = 512
 N_FULL = 256
 N_HALF = 128
-SWIZZLE_COUNT = 3
-
 A_FULL_BYTES = M_TILE * K_DTILE * 2
 A_SUB_BYTES = M_TILE * K_QTILE * 2
 B_L1_START = 2 * A_FULL_BYTES
@@ -89,6 +87,7 @@ def build():
         m_i32: "i32",
         n_i32: "i32",
         k_i32: "i32",
+        swizzle_count_i32: "i32",
     ) -> None:
         def emit_compute_variant(
             n_tile: int,
@@ -238,14 +237,15 @@ def build():
             c256 = const(N_FULL)
             c128n = const(N_HALF)
             c512 = const(K_DTILE)
-            cSwizzle = const(SWIZZLE_COUNT)
-            cSwizzleM1 = const(SWIZZLE_COUNT - 1)
 
             m_total = s.index_cast(m_i32)
             n_total = s.index_cast(n_i32)
             k_total = s.index_cast(k_i32)
+            swizzle_count = s.index_cast(swizzle_count_i32)
             num_blocks = s.index_cast(pto.get_block_num())
             bid = s.index_cast(pto.get_block_idx())
+            cSwizzle = s.select(swizzle_count > c0, swizzle_count, c1)
+            cSwizzleM1 = cSwizzle - c1
 
             n_loop = (n_total + c256 - c1) // c256
             m_loop = m_total // c128
