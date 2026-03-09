@@ -1,7 +1,7 @@
-from ptodsl import to_ir_module
-import ptodsl.language as pto
+from ptodsl import pto, tile, to_ir_module
+from ptodsl import scalar as s
 
-const = pto.const
+const = s.const
 
 # 32 KB of UB / sizeof(fp16) = 16384 elements per tile
 ELEMENTS_PER_TILE = 32 * 1024 // 2

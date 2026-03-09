@@ -52,7 +52,7 @@ def build_env(cfg: dict) -> tuple["KernelSearchEnv", Path]:
         if not work_dir.is_absolute():
             work_dir = ROOT / work_dir
     else:
-        work_dir = kernel_dir.parent / (kernel_dir.name + "_opt")
+        work_dir = ROOT / "examples" / "agent" / kernel_dir.name
 
     if work_dir.exists():
         shutil.rmtree(work_dir)
