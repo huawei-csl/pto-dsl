@@ -9,22 +9,20 @@ python ./ir_builder.py --with-addr > withaddr.pto
 echo "== Case A: default level, no addr (expected: success) =="
 ptoas noaddr.pto -o noaddr.cpp
 
-echo "== Case B: default level, with addr (expected: fail) =="
-set +e
-ptoas withaddr.pto -o withaddr_default.cpp
-status_default=$?
-set -e
-echo "default-level with-addr exit code: ${status_default}"
+bisheng -fPIC -shared -xcce -O2 -std=c++17 \
+    --npu-arch=dav-2201 -DMEMORY_BASE \
+    -I"${ASCEND_TOOLKIT_HOME}/include" \
+    ./noaddr.cpp \
+    -o ./noaddr.so
 
-echo "== Case C: level3, with addr (expected: success) =="
+echo "== Case B: level3, with addr (expected: success at ptoas, but fail at bisheng) =="
 ptoas --pto-level=level3 withaddr.pto -o withaddr_level3.cpp
 
-echo "== Case D: level3, no addr (expected: fail) =="
-set +e
-ptoas --pto-level=level3 noaddr.pto -o noaddr_level3.cpp
-status_level3=$?
-set -e
-echo "level3 no-addr exit code: ${status_level3}"
+bisheng -fPIC -shared -xcce -O2 -std=c++17 \
+    --npu-arch=dav-2201 -DMEMORY_BASE \
+    -I"${ASCEND_TOOLKIT_HOME}/include" \
+    ./withaddr_level3.cpp \
+    -o ./withaddr_level3.so
 
 echo "Done."
 

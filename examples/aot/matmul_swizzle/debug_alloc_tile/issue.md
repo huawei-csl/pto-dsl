@@ -1,20 +1,25 @@
-# Minimal Reproducer: `alloc_tile` + `addr` Level Coupling
+# Minimal Reproducer: Unwanted `TRESHAPE` for no-addr `alloc_tile`
 
 ## Summary
 
-This reproducer demonstrates that `pto.alloc_tile` with `addr` is accepted only at `--pto-level=level3`, while `pto.alloc_tile` without `addr` is rejected at level3.
+This reproducer highlights an extra `TRESHAPE` emitted in generated C++ when
+`pto.alloc_tile` is used **without** `addr` (default build level).
 
-In practice, this forces users to choose between:
+For a semantically equivalent kernel compiled at level3 (with explicit `addr`),
+the generated C++ does **not** include this extra `TRESHAPE`.
 
-- default level (no `addr` allowed), and
-- level3 (explicit `addr` required).
+Known-by-design level gating (`addr` only allowed in `--pto-level=level3`) is
+not the issue here; the issue is the additional reshape introduced in default
+mode output.
 
 ## Reproducer Files
 
-- `ir_builder.py`: emits a minimal PTO module with exactly one `pto.alloc_tile`
-  - no `addr` mode: `python ir_builder.py > noaddr.pto`
-  - with `addr` mode: `python ir_builder.py --with-addr > withaddr.pto`
-- `compile.sh`: runs four compile cases and prints exit codes.
+- `ir_builder.py`: emits minimal PTO module with one tile allocation + `tload`
+  - no-addr: `python ir_builder.py > noaddr.pto`
+  - with-addr: `python ir_builder.py --with-addr > withaddr.pto`
+- `compile.sh`: compiles two successful cases:
+  - default level (no addr)
+  - level3 (with addr)
 
 ## How to Run
 
@@ -23,70 +28,56 @@ cd debug_alloc_tile
 bash ./compile.sh
 ```
 
-## Expected/Observed Results
+## Observed Difference in Generated C++
 
-### Case A: default level + no addr
+### A) Default level, no addr
 
 ```bash
 ptoas noaddr.pto -o noaddr.cpp
 ```
 
-Expected: success  
-Observed: success
+`noaddr.cpp` contains an extra reshape:
 
-### Case B: default level + with addr
-
-```bash
-ptoas withaddr.pto -o withaddr_default.cpp
+```cpp
+Tile<...RowMajor...> v9;
+TASSIGN(v9, v8);
+Tile<...ColMajor..., SLayout::RowMajor...> v10;
+TRESHAPE(v10, v9);   // extra conversion
+TLOAD(v10, v13);
 ```
 
-Expected: fail  
-Observed: fail, with:
-
-> unexpected 'addr' operand: only supported when --pto-level=level3
-
-### Case C: level3 + with addr
+### B) Level3, with addr
 
 ```bash
 ptoas --pto-level=level3 withaddr.pto -o withaddr_level3.cpp
 ```
 
-Expected: success  
-Observed: success
+`withaddr_level3.cpp` does not need reshape:
 
-### Case D: level3 + no addr
-
-```bash
-ptoas --pto-level=level3 noaddr.pto -o noaddr_level3.cpp
+```cpp
+Tile<...ColMajor..., SLayout::RowMajor...> v9;
+TASSIGN(v9, v8);
+TLOAD(v9, v12);
 ```
 
-Expected: fail  
-Observed: fail, with:
+## Why This Is Problematic
 
-> requires 'addr' operand when --pto-level=level3
+- The default-level path introduces additional generated operations
+  (`TRESHAPE`) that are absent in the level3 path for equivalent tile usage.
+- This makes codegen behavior inconsistent across build levels and can affect
+  readability/debuggability and possibly performance-sensitive paths.
 
-## Where This Is Enforced
-
-The behavior is explicitly enforced in `ptoas`:
+## Relevant PTOAS Areas
 
 - `PTOAS/tools/ptoas/ptoas.cpp`
-  - In level3:
-    - rejects missing `addr` on `pto::AllocTileOp`
-  - In non-level3:
-    - rejects present `addr` on `pto::AllocTileOp`
+  - Contains known level gating for `alloc_tile.addr` (design behavior).
+- `PTOAS/lib/PTO/Transforms/PTOToEmitC.cpp`
+  - Lowering path where tile view semantics can emit `TRESHAPE` in default mode.
 
-Relevant logic (roughly around lines 604-626):
+## Request
 
-- `if (effectiveLevel == PTOBuildLevel::Level3) { ... requires 'addr' ... }`
-- `else { ... unexpected 'addr' ... }`
-
-## Why This Matters
-
-For users trying to move from explicit-address flow (`level3`) to default-level flow, this strict split can expose behavior differences in generated C++ (for example, additional intermediate shape/view adaptation paths depending on lowering), but there is no mixed mode to keep explicit allocation intent while testing non-level3 compilation.
-
-## Suggested Discussion Points for PTOAS
-
-1. Whether `addr` handling should remain strictly level-gated, or allow a compatibility mode.
-2. Whether a warning-based migration mode is desirable (instead of hard error).
-3. Whether downstream lowering behavior can be made more consistent between level3 and non-level3 for equivalent tile semantics.
+Please review why default-level no-addr `alloc_tile` lowering materializes
+`TRESHAPE` for this minimal case, and whether codegen can avoid this extra step
+when source/destination tile semantics are effectively equivalent for the
+generated `TLOAD` usage.
 
