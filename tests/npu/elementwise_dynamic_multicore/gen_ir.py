@@ -8,15 +8,15 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-import ptodsl.language as pto
+from ptodsl import tile
 from builder import build_binary_kernels
 
 _OPS = {
-    "add": pto.add,
-    "sub": pto.sub,
-    "mul": pto.mul,
-    "div": pto.div,
-    "or": pto.or_,
+    "add": tile.add,
+    "sub": tile.sub,
+    "mul": tile.mul,
+    "div": tile.div,
+    "or": tile.or_,
 }
 
 if __name__ == "__main__":

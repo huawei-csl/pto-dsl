@@ -1,7 +1,7 @@
 from mlir.ir import IntegerType
 
-from ptodsl import to_ir_module
-import ptodsl.language as pto
+from ptodsl import pto, tile, to_ir_module
+from ptodsl import scalar as s
 
 
 def build(
@@ -56,7 +56,7 @@ def build(
             "tile_buf_biasTile": tile_buf_biasTile,
         }
 
-    const = pto.const
+    const = s.const
 
     @to_ir_module(meta_data=meta_data)
     def RunTMATMULSplitK(
@@ -78,15 +78,15 @@ def build(
             cTileM = const(M)
             cTileN = const(N)
 
-            batch = pto.index_cast(batch_i32)
+            batch = s.index_cast(batch_i32)
             cBM = batch * cM
 
-            num_blocks = pto.index_cast(pto.get_block_num())
-            batches_per_core = pto.ceil_div(batch, num_blocks)
-            bid = pto.index_cast(pto.get_block_idx())
+            num_blocks = s.index_cast(pto.get_block_num())
+            batches_per_core = s.ceil_div(batch, num_blocks)
+            bid = s.index_cast(pto.get_block_idx())
             b_start = bid * batches_per_core
             b_end_unclamped = b_start + batches_per_core
-            b_end = pto.min_u(b_end_unclamped, batch)
+            b_end = s.min_u(b_end_unclamped, batch)
 
             tvA = pto.as_tensor(tensor_type, ptr=a_ptr, shape=[cBM, cK], strides=[cK, c1])
             tvB = pto.as_tensor(tensor_type, ptr=b_ptr, shape=[cK, cN], strides=[cN, c1])
@@ -101,10 +101,10 @@ def build(
             cTile = pto.alloc_tile(tile_buf_cTile)
             biasTile = pto.alloc_tile(tile_buf_biasTile)
 
-            for b_idx in pto.for_range(b_start, b_end, c1):
+            for b_idx in pto.range(b_start, b_end, c1):
                 row_off = b_idx * cM
 
-                for i in pto.for_range(c0, cIter, c1):
+                for i in pto.range(c0, cIter, c1):
                     kOff = i * cBASEK
                     svA = pto.slice_view(tile_view_a, source=tvA, offsets=[row_off, kOff], sizes=[cTileM, cBASEK])
                     svB = pto.slice_view(tile_view_b, source=tvB, offsets=[kOff, c0], sizes=[cBASEK, cTileN])
@@ -117,26 +117,26 @@ def build(
 
                     pto.record_wait_pair("LOAD", "MOV_M2L", event_id=0)
 
-                    pto.mov(aMatTile, aTile)
-                    pto.mov(bMatTile, bTile)
+                    tile.mov(aMatTile, aTile)
+                    tile.mov(bMatTile, bTile)
                     with pto.if_context(isBias):
-                        pto.mov(biasDataTile, biasTile)
+                        tile.mov(biasDataTile, biasTile)
 
                     pto.record_wait_pair("MOV_M2L", "MATMUL", event_id=0)
 
-                    is_i0 = pto.eq(i, c0)
+                    is_i0 = s.eq(i, c0)
 
                     def _first_iter():
                         pto.cond(
                             isBias,
-                            lambda: pto.matmul_bias(aTile, bTile, biasTile, cTile),
-                            lambda: pto.matmul(aTile, bTile, cTile),
+                            lambda: tile.matmul_bias(aTile, bTile, biasTile, cTile),
+                            lambda: tile.matmul(aTile, bTile, cTile),
                         )
 
                     pto.cond(
                         is_i0,
                         _first_iter,
-                        lambda: pto.matmul_acc(cTile, aTile, bTile, cTile),
+                        lambda: tile.matmul_acc(cTile, aTile, bTile, cTile),
                     )
 
                     pto.record_wait_pair("MATMUL", "LOAD", event_id=0)

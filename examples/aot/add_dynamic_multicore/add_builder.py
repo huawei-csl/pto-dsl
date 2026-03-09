@@ -1,7 +1,7 @@
-from ptodsl import to_ir_module
-import ptodsl.language as pto
+from ptodsl import pto, tile, to_ir_module
+from ptodsl import scalar as s
 
-const = pto.const
+const = s.const
 
 
 def meta_data():
@@ -46,12 +46,12 @@ def vec_add_1d_dynamic(
     num_blocks = pto.get_block_num()
 
     # Convert i64/i32 values to index for arithmetic ops.
-    vid = pto.index_cast(cid * sub_bnum + sub_bid)  # vector core index
-    num_cores = pto.index_cast(num_blocks * sub_bnum)  # number of vector cores
-    total_elements = pto.index_cast(argN)
+    vid = s.index_cast(cid * sub_bnum + sub_bid)  # vector core index
+    num_cores = s.index_cast(num_blocks * sub_bnum)  # number of vector cores
+    total_elements = s.index_cast(argN)
 
-    num_tiles_global = pto.ceil_div(total_elements, c_tile)
-    num_tiles_per_core = pto.ceil_div(num_tiles_global, num_cores)
+    num_tiles_global = s.ceil_div(total_elements, c_tile)
+    num_tiles_per_core = s.ceil_div(num_tiles_global, num_cores)
     tile_offset_this_core = vid * num_tiles_per_core
 
     with pto.vector_section():
@@ -69,13 +69,13 @@ def vec_add_1d_dynamic(
             need_truncate = tiles_end_this_core > num_tiles_global
             remaining_tiles = num_tiles_global - tile_offset_this_core
 
-            tiles_to_process = pto.select(
+            tiles_to_process = s.select(
                 need_truncate, remaining_tiles, num_tiles_per_core
             )
 
             elements_to_process = tiles_to_process * c_tile
             with pto.if_context(elements_to_process > c0):
-                for i in pto.for_range(c0, tiles_to_process, c1):
+                for i in pto.range(c0, tiles_to_process, c1):
                     tile_offset_global = i + tile_offset_this_core
                     offset_global = tile_offset_global * c_tile
 
@@ -91,7 +91,7 @@ def vec_add_1d_dynamic(
 
                     pto.load(sv0, tb0)
                     pto.load(sv1, tb1)
-                    pto.add(tb0, tb1, tb2)
+                    tile.add(tb0, tb1, tb2)
                     pto.store(tb2, sv2)
 
 

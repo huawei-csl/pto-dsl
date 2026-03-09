@@ -1,7 +1,7 @@
 # adapted from https://github.com/zhangstevenunity/PTOAS/blob/a301aa43b388d9b2e1ba0db8773b3a719e8c445b/test/samples/MatMul/tmatmulk.py
 
-from ptodsl import to_ir_module
-import ptodsl.language as pto
+from ptodsl import pto, tile, to_ir_module
+from ptodsl import scalar as s
 
 
 def build(
@@ -49,7 +49,7 @@ def build(
             "tile_buf_cTile": tile_buf_cTile,
         }
 
-    const = pto.const
+    const = s.const
 
     @to_ir_module(meta_data=meta_data)
     def RunTMATMULSplitK(
@@ -75,19 +75,19 @@ def build(
             cTileM = const(M)
             cTileN = const(N)
 
-            batch = pto.index_cast(batch_i32)
+            batch = s.index_cast(batch_i32)
 
             # Distribute batches over cores with "base + remainder" policy.
-            num_blocks = pto.index_cast(pto.get_block_num())
-            bid = pto.index_cast(pto.get_block_idx())
+            num_blocks = s.index_cast(pto.get_block_num())
+            bid = s.index_cast(pto.get_block_idx())
 
             base = batch // num_blocks
             rem = batch % num_blocks
-            lt_rem = pto.lt(bid, rem)
-            min_bid_rem = pto.min_u(bid, rem)
+            lt_rem = s.lt(bid, rem)
+            min_bid_rem = s.min_u(bid, rem)
             b_start = bid * base + min_bid_rem
-            length = base + pto.select(lt_rem, c1, c0)
-            b_end = pto.min_u(b_start + length, batch)
+            length = base + s.select(lt_rem, c1, c0)
+            b_end = s.min_u(b_start + length, batch)
 
             tvA = pto.as_tensor(tv_a, ptr=a_ptr, shape=[batch, cM, cK], strides=[cKM, cK, c1])
             tvB = pto.as_tensor(tv_b, ptr=b_ptr, shape=[cK, cN], strides=[cN, c1])
@@ -103,9 +103,9 @@ def build(
             svB = pto.slice_view(tile_view_b, source=tvB, offsets=[c0, c0], sizes=[cK, cTileN])
             pto.load(svB, bMatTile)
             pto.record_wait_pair("LOAD", "MOV_M2L", event_id=0)
-            pto.mov(bMatTile, bTile)
+            tile.mov(bMatTile, bTile)
 
-            for b_idx in pto.for_range(b_start, b_end, c1):
+            for b_idx in pto.range(b_start, b_end, c1):
                 svA = pto.slice_view(
                     tile_view_a,
                     source=tvA,
@@ -122,9 +122,9 @@ def build(
                 pto.load(svA, aMatTile)
                 pto.record_wait_pair("LOAD", "MOV_M2L", event_id=0)
 
-                pto.mov(aMatTile, aTile)
+                tile.mov(aMatTile, aTile)
                 pto.record_wait_pair("MOV_M2L", "MATMUL", event_id=0)
-                pto.matmul(aTile, bTile, cTile)
+                tile.matmul(aTile, bTile, cTile)
                 pto.record_wait_pair("MATMUL", "LOAD", event_id=0)
 
                 pto.record_wait_pair("MATMUL", "STORE_ACC", event_id=0)

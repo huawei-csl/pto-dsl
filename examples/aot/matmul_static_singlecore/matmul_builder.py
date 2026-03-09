@@ -1,7 +1,7 @@
 # adapted from https://github.com/zhangstevenunity/PTOAS/blob/a301aa43b388d9b2e1ba0db8773b3a719e8c445b/test/samples/MatMul/tmatmulk.py
 
-from ptodsl import to_ir_module
-import ptodsl.language as pto
+from ptodsl import pto, tile, to_ir_module
+from ptodsl import scalar as s
 
 
 def build(
@@ -55,7 +55,7 @@ def build(
             "tile_buf_biasTile": tile_buf_biasTile,
         }
 
-    const = pto.const
+    const = s.const
 
     @to_ir_module(meta_data=meta_data)
     def RunTMATMULSplitK(
@@ -89,7 +89,7 @@ def build(
             cTile = pto.alloc_tile(tile_buf_cTile)
             biasTile = pto.alloc_tile(tile_buf_biasTile)
 
-            for i in pto.for_range(c0, cIter, c1):
+            for i in pto.range(c0, cIter, c1):
                 kOff = i * cBASEK
                 svA = pto.slice_view(
                     tile_view_a,
@@ -115,24 +115,24 @@ def build(
                 with pto.if_context(isBias):
                     pto.load(svBias, biasDataTile)
 
-                pto.mov(aMatTile, aTile)
-                pto.mov(bMatTile, bTile)
+                tile.mov(aMatTile, aTile)
+                tile.mov(bMatTile, bTile)
                 with pto.if_context(isBias):
-                    pto.mov(biasDataTile, biasTile)
+                    tile.mov(biasDataTile, biasTile)
 
-                is_i0 = pto.eq(i, c0)
+                is_i0 = s.eq(i, c0)
 
                 def _first_iter():
                     pto.cond(
                         isBias,
-                        lambda: pto.matmul_bias(aTile, bTile, biasTile, cTile),
-                        lambda: pto.matmul(aTile, bTile, cTile),
+                        lambda: tile.matmul_bias(aTile, bTile, biasTile, cTile),
+                        lambda: tile.matmul(aTile, bTile, cTile),
                     )
 
                 pto.cond(
                     is_i0,
                     _first_iter,
-                    lambda: pto.matmul_acc(cTile, aTile, bTile, cTile),
+                    lambda: tile.matmul_acc(cTile, aTile, bTile, cTile),
                 )
 
             svOut = pto.slice_view(

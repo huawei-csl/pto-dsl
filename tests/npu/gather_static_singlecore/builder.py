@@ -1,7 +1,7 @@
-from ptodsl import to_ir_module
-import ptodsl.language as pto
+from ptodsl import pto, tile, to_ir_module
+from ptodsl import scalar as s
 
-const = pto.const
+const = s.const
 
 _DTYPE_MAP = {
     "float32": lambda: pto.float32,
@@ -90,8 +90,8 @@ def build_gather_kernel(
             pto.load(sv0, tb0)
             pto.load(sv1, tb1)
 
-            pto.gather(tb0, tb2, tb1)  # index-gather: tb2[i,j] = tb0[tb1[i,j]]
-            pto.gather(
+            tile.gather(tb0, tb2, tb1)  # index-gather: tb2[i,j] = tb0[tb1[i,j]]
+            tile.gather(
                 tb2, tb3, mask_pattern=mask_pattern
             )  # mask-gather with configurable pattern
 
