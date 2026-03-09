@@ -260,6 +260,7 @@ def build():
             pto.record_event("MOV_M2L", "LOAD", event_id=[0, 1, 2, 3])
 
             def level1_loop_mn(m_offset, n_offset, li):
+                # TODO: make a simpler version that only uses full-tile (256) branch, and reduce the types needed in meta_data
                 n_tile_size = s.select(n_offset + c256 > n_total, c128n, c256)
                 shared_args = [m_offset, n_offset, k_dtile_num, li, core_loop, bid, num_blocks, tvA, tvB, tvC]
                 with pto.if_context(n_tile_size == c256, has_else=True) as branch:
