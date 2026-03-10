@@ -313,3 +313,88 @@ max FLOP ratio(double_swizzle_manual/double_swizzle_auto): 1.173x
 - Finally, study `step4` event dependencies as a timeline (LOAD -> MOV_M2L -> MATMUL -> STORE).
 
 If you keep this one-change-per-step mindset, it becomes much easier to learn NPU kernel optimization systematically.
+
+---
+
+## Appendix A) ptodsl Syntax for Python Users
+
+If you are new to ptodsl, the biggest source of confusion is:
+- some syntax is **Python control flow**
+- some syntax is **IR-builder control flow**
+
+They look similar, but they execute at different times.
+
+### Build-time vs run-time cheat sheet
+
+- **Python `for ... in range(...)`**
+  - runs when generating the IR (build-time)
+  - usually acts like compile-time metaprogramming/unrolling
+- **`for ... in pto.range(...)`**
+  - emits an MLIR `scf.for` loop
+  - executes dynamically at kernel run-time
+- **Python `if condition:`**
+  - condition evaluated at build-time by Python
+  - branch is selected while generating IR
+- **`with pto.if_context(cond):` / `pto.cond(...)`**
+  - emits runtime `scf.if`
+  - condition is evaluated when kernel runs
+
+### Example 1: `pto.range` (runtime loop in IR)
+
+From `step1_baseline.py`:
+
+```python
+for li in pto.range(bid, core_loop, num_blocks):
+    ...
+```
+
+This is **not** Python iteration over integers. In ptodsl, `pto.range` is an IR-builder primitive (see `control_flow.py`) that constructs `scf.ForOp` and yields an induction variable value.
+
+Practical effect:
+- loop trip count depends on runtime values like `bid`, `core_loop`, `num_blocks`
+- loop stays as a loop in generated IR (not unrolled by Python)
+
+### Example 2: Python `range` (build-time unrolling)
+
+From `step1_baseline.py`:
+
+```python
+for phase in range(8):
+    ...
+```
+
+This loop is executed by Python while building IR, so it typically creates 8 repeated code regions in IR.
+
+For readers with C++ background:
+- this is conceptually similar to compile-time code generation / metaprogramming
+- useful when loop bounds are small constants
+
+### Example 3: Python `if` vs `pto.if_context`
+
+From `step1_baseline.py`:
+
+```python
+if phase == 0:
+    with pto.if_context(is_first_k_tile, has_else=True) as branch:
+        tile.matmul(a_l0, b_l0, c_l0)
+    with branch.else_context():
+        tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)
+else:
+    tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)
+```
+
+How to read this correctly:
+- `if phase == 0` is a **Python** branch (build-time), because `phase` is a Python integer from `range(8)`.
+- `pto.if_context(is_first_k_tile, ...)` emits a **runtime** branch in IR, because `is_first_k_tile` is a kernel scalar value.
+
+In plain words:
+- first, Python decides which code shape to generate for each unrolled `phase`
+- inside that shape, ptodsl inserts dynamic control flow for runtime conditions
+
+### Rule of thumb
+
+When in doubt, ask:
+1. Is this condition/index a Python value (`int`, `bool`)?
+   - then it is build-time.
+2. Is this a ptodsl scalar/value (`s.*`, kernel arg-derived)?
+   - then use ptodsl control flow (`pto.range`, `pto.if_context`, `pto.cond`) for runtime behavior.
