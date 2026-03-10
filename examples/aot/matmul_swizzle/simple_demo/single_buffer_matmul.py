@@ -124,34 +124,36 @@ def build():
                     k_offset = k_idx * c_kd
                     is_first_k_tile = k_idx == c0
 
-                    for h in range(2):
-                        h_off = const(h * K_TILE)
-                        sv_b = pto.slice_view(
-                            tile_view_b_256,
-                            source=tv_b,
-                            offsets=[k_offset + h_off, n_offset],
-                            sizes=[c_kt, c_nt],
-                        )
-                        pto.load(sv_b, b_l1)
+                    # 8 phases = 512 / 64. This single loop is easier to read than (h, quarter).
+                    for phase in range(8):
+                        # NOTE: python-native `for-range` is treated as build-time static loop unrolling
+                        # Load one B half-tile every 4 phases.
+                        if phase % 4 == 0:
+                            b_half = phase // 4
+                            h_off = const(b_half * K_TILE)
+                            sv_b = pto.slice_view(
+                                tile_view_b_256,
+                                source=tv_b,
+                                offsets=[k_offset + h_off, n_offset],
+                                sizes=[c_kt, c_nt],
+                            )
+                            pto.load(sv_b, b_l1)
 
-                        for quarter in range(4): 
-                            # NOTE: python-native `for` is evaluated at build-time, effectively loop-unrolling
-                            phase = h * 4 + quarter
-                            a_col = const(phase * K_QTILE)
-                            b_row = const(quarter * K_QTILE)
+                        a_col = const(phase * K_QTILE)
+                        b_row = const((phase % 4) * K_QTILE)
 
-                            tile.extract(a_l1, c0, a_col, a_l0)
-                            tile.extract(b_l1, b_row, c0, b_l0)
+                        tile.extract(a_l1, c0, a_col, a_l0)
+                        tile.extract(b_l1, b_row, c0, b_l0)
 
-                            if phase == 0:  
-                                # NOTE: python-native `if` is evaluated at build-time (compile-time)
-                                # while `pto.if_context` is evaluated at run-time
-                                with pto.if_context(is_first_k_tile, has_else=True) as branch:
-                                    tile.matmul(a_l0, b_l0, c_l0)
-                                with branch.else_context():
-                                    tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)
-                            else:
+                        # phase==0 uses matmul to initialize accumulator; later phases accumulate.
+                        if phase == 0:
+                            # NOTE: python-native `if` branch is evaluated at build-time (like compile-time cpp metaprogramming)
+                            with pto.if_context(is_first_k_tile, has_else=True) as branch:
+                                tile.matmul(a_l0, b_l0, c_l0)
+                            with branch.else_context():
                                 tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)
+                        else:
+                            tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)
 
                     # prefetch next tile if k-loop is not finished
                     with pto.if_context(k_idx + c1 < k_dtile_num):
