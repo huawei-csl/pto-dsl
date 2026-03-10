@@ -202,12 +202,12 @@ def main():
     max_single_vs_auto = max(ratios_single_vs_auto)
 
     print("=== Summary ===")
-    print(f"avg FLOP ratio(manual/auto): {avg_manual_vs_auto:.3f}x")
-    print(f"min FLOP ratio(manual/auto): {min_manual_vs_auto:.3f}x")
-    print(f"max FLOP ratio(manual/auto): {max_manual_vs_auto:.3f}x")
-    print(f"avg FLOP ratio(single/auto): {avg_single_vs_auto:.3f}x")
-    print(f"min FLOP ratio(single/auto): {min_single_vs_auto:.3f}x")
-    print(f"max FLOP ratio(single/auto): {max_single_vs_auto:.3f}x")
+    print(f"avg FLOP ratio(manual/auto): {1.0 / avg_manual_vs_auto:.3f}x")
+    print(f"min FLOP ratio(manual/auto): {1.0 / max_manual_vs_auto:.3f}x")
+    print(f"max FLOP ratio(manual/auto): {1.0 / min_manual_vs_auto:.3f}x")
+    print(f"avg FLOP ratio(single/auto): {1.0 / avg_single_vs_auto:.3f}x")
+    print(f"min FLOP ratio(single/auto): {1.0 / max_single_vs_auto:.3f}x")
+    print(f"max FLOP ratio(single/auto): {1.0 / min_single_vs_auto:.3f}x")
 
 
 if __name__ == "__main__":
