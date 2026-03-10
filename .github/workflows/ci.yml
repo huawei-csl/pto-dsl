@@ -17,6 +17,7 @@ jobs:
             runs-on: ubuntu-24.04
           - arch: aarch64
             runs-on: ubuntu-24.04-arm
+        install-mode: [standard, editable]
     runs-on: ${{ matrix.runs-on }}
 
     container:
@@ -63,8 +64,13 @@ jobs:
           git clone https://gitcode.com/cann/pto-isa.git /sources/pto-isa
           cd /sources/pto-isa && git checkout ${PTOISA_COMMIT}
 
-      - name: Install ptodsl
-        run: pip install -e ./ptodsl
+      - name: Install ptodsl (${{ matrix.install-mode }})
+        run: |
+          if [ "${{ matrix.install-mode }}" = "standard" ]; then
+            pip install ./ptodsl
+          else
+            pip install -e ./ptodsl
+          fi
 
       - name: Run frontend tests
         run: pytest -v ./tests/frontend
