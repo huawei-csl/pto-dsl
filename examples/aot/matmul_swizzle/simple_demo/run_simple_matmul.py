@@ -109,7 +109,7 @@ def test_matmul():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--variant",
-        choices=["auto-sync", "manual-sync", "all"],
+        choices=["auto-sync", "manual-sync", "single-buffer", "all"],
         default="all",
         help="Which kernel variant to run.",
     )
@@ -121,9 +121,14 @@ def test_matmul():
     variants = {
         "auto-sync": "./simple_matmul_auto_sync_kernel.so",
         "manual-sync": "./simple_matmul_manual_sync_kernel.so",
+        "single-buffer": "./single_buffer_matmul_auto_sync_kernel.so",
     }
     if args.variant == "all":
-        selected = [("auto-sync", variants["auto-sync"]), ("manual-sync", variants["manual-sync"])]
+        selected = [
+            ("auto-sync", variants["auto-sync"]),
+            ("manual-sync", variants["manual-sync"]),
+            ("single-buffer", variants["single-buffer"]),
+        ]
     else:
         selected = [(args.variant, variants[args.variant])]
 
