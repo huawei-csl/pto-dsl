@@ -85,31 +85,31 @@ def _time_us(fn, a_list, b_list, warmup, repeat):
 
 def _parse_args():
     parser = argparse.ArgumentParser(
-        description="Benchmark double-buffer (auto/manual) and single-buffer variants."
+        description="Stepwise performance benchmark for buffering, swizzle, and manual sync."
     )
     parser.add_argument(
-        "--auto-lib",
+        "--double-auto-swizzle-lib",
         type=str,
         default="./simple_matmul_auto_sync_kernel.so",
-        help="Path to auto-sync shared library.",
+        help="Path to double-buffer auto-sync swizzled shared library.",
     )
     parser.add_argument(
-        "--manual-lib",
+        "--double-auto-noswizzle-lib",
+        type=str,
+        default="./simple_matmul_auto_sync_noswizzle_kernel.so",
+        help="Path to double-buffer auto-sync non-swizzle shared library.",
+    )
+    parser.add_argument(
+        "--double-manual-swizzle-lib",
         type=str,
         default="./simple_matmul_manual_sync_kernel.so",
-        help="Path to manual-sync shared library.",
+        help="Path to double-buffer manual-sync swizzled shared library.",
     )
     parser.add_argument(
-        "--single-lib",
+        "--single-auto-noswizzle-lib",
         type=str,
         default="./single_buffer_matmul_auto_sync_kernel.so",
-        help="Path to single-buffer auto-sync (swizzle) shared library.",
-    )
-    parser.add_argument(
-        "--single-noswizzle-lib",
-        type=str,
-        default="./single_buffer_matmul_auto_sync_noswizzle_kernel.so",
-        help="Path to single-buffer auto-sync (non-swizzle) shared library.",
+        help="Path to single-buffer auto-sync non-swizzle shared library.",
     )
     parser.add_argument(
         "--m-list",
@@ -139,44 +139,50 @@ def main():
 
     base_dir = Path(__file__).resolve().parent
 
-    auto_lib = Path(args.auto_lib)
-    if not auto_lib.is_absolute():
-        auto_lib = base_dir / auto_lib
-    manual_lib = Path(args.manual_lib)
-    if not manual_lib.is_absolute():
-        manual_lib = base_dir / manual_lib
-    single_lib = Path(args.single_lib)
-    if not single_lib.is_absolute():
-        single_lib = base_dir / single_lib
-    single_noswizzle_lib = Path(args.single_noswizzle_lib)
-    if not single_noswizzle_lib.is_absolute():
-        single_noswizzle_lib = base_dir / single_noswizzle_lib
-    if not auto_lib.exists():
-        raise FileNotFoundError(f"Auto-sync library not found: {auto_lib}")
-    if not manual_lib.exists():
-        raise FileNotFoundError(f"Manual-sync library not found: {manual_lib}")
-    if not single_lib.exists():
-        raise FileNotFoundError(f"Single-buffer library not found: {single_lib}")
-    if not single_noswizzle_lib.exists():
-        raise FileNotFoundError(f"Single-buffer non-swizzle library not found: {single_noswizzle_lib}")
+    double_auto_swizzle_lib = Path(args.double_auto_swizzle_lib)
+    if not double_auto_swizzle_lib.is_absolute():
+        double_auto_swizzle_lib = base_dir / double_auto_swizzle_lib
+    double_auto_noswizzle_lib = Path(args.double_auto_noswizzle_lib)
+    if not double_auto_noswizzle_lib.is_absolute():
+        double_auto_noswizzle_lib = base_dir / double_auto_noswizzle_lib
+    double_manual_swizzle_lib = Path(args.double_manual_swizzle_lib)
+    if not double_manual_swizzle_lib.is_absolute():
+        double_manual_swizzle_lib = base_dir / double_manual_swizzle_lib
+    single_auto_noswizzle_lib = Path(args.single_auto_noswizzle_lib)
+    if not single_auto_noswizzle_lib.is_absolute():
+        single_auto_noswizzle_lib = base_dir / single_auto_noswizzle_lib
+    if not double_auto_swizzle_lib.exists():
+        raise FileNotFoundError(f"Double-buffer auto-sync swizzle library not found: {double_auto_swizzle_lib}")
+    if not double_auto_noswizzle_lib.exists():
+        raise FileNotFoundError(
+            f"Double-buffer auto-sync non-swizzle library not found: {double_auto_noswizzle_lib}"
+        )
+    if not double_manual_swizzle_lib.exists():
+        raise FileNotFoundError(
+            f"Double-buffer manual-sync swizzle library not found: {double_manual_swizzle_lib}"
+        )
+    if not single_auto_noswizzle_lib.exists():
+        raise FileNotFoundError(
+            f"Single-buffer auto-sync non-swizzle library not found: {single_auto_noswizzle_lib}"
+        )
 
     device = get_test_device()
     torch.npu.set_device(device)
     torch.manual_seed(0)
 
-    auto_mm = load_lib(str(auto_lib))
-    manual_mm = load_lib(str(manual_lib))
-    single_mm = load_lib(str(single_lib))
-    single_noswizzle_mm = load_lib(str(single_noswizzle_lib))
+    double_auto_swizzle_mm = load_lib(str(double_auto_swizzle_lib))
+    double_auto_noswizzle_mm = load_lib(str(double_auto_noswizzle_lib))
+    double_manual_swizzle_mm = load_lib(str(double_manual_swizzle_lib))
+    single_auto_noswizzle_mm = load_lib(str(single_auto_noswizzle_lib))
     m_list = _parse_int_list(args.m_list)
 
-    ratios_manual_vs_auto = []
-    ratios_single_vs_auto = []
-    ratios_single_vs_single_noswizzle = []
-    print(f"auto-sync lib:   {auto_lib}")
-    print(f"manual-sync lib: {manual_lib}")
-    print(f"single-buffer swizzle lib:    {single_lib}")
-    print(f"single-buffer non-swizzle lib: {single_noswizzle_lib}")
+    ratios_step1_double_vs_single_noswizzle = []
+    ratios_step2_swizzle_vs_noswizzle = []
+    ratios_step3_manual_vs_auto_swizzle = []
+    print(f"double-buffer auto-sync swizzle lib:      {double_auto_swizzle_lib}")
+    print(f"double-buffer auto-sync non-swizzle lib:  {double_auto_noswizzle_lib}")
+    print(f"double-buffer manual-sync swizzle lib:    {double_manual_swizzle_lib}")
+    print(f"single-buffer auto-sync non-swizzle lib:  {single_auto_noswizzle_lib}")
     print("")
 
     for n, k in SHAPES_NK:
@@ -186,65 +192,71 @@ def main():
             a_list = [torch.randn(m, k, dtype=torch.float16, device=device) for _ in range(alloc)]
             b_list = [torch.randn(n, k, dtype=torch.float16, device=device) for _ in range(alloc)]
 
-            auto_us = _time_us(auto_mm, a_list, b_list, args.warmup, args.repeat)
-            manual_us = _time_us(manual_mm, a_list, b_list, args.warmup, args.repeat)
-            single_us = _time_us(single_mm, a_list, b_list, args.warmup, args.repeat)
-            single_noswizzle_us = _time_us(single_noswizzle_mm, a_list, b_list, args.warmup, args.repeat)
+            double_auto_swizzle_us = _time_us(
+                double_auto_swizzle_mm, a_list, b_list, args.warmup, args.repeat
+            )
+            double_auto_noswizzle_us = _time_us(
+                double_auto_noswizzle_mm, a_list, b_list, args.warmup, args.repeat
+            )
+            double_manual_swizzle_us = _time_us(
+                double_manual_swizzle_mm, a_list, b_list, args.warmup, args.repeat
+            )
+            single_auto_noswizzle_us = _time_us(
+                single_auto_noswizzle_mm, a_list, b_list, args.warmup, args.repeat
+            )
 
             flops = 2.0 * m * n * k
-            auto_tflops = flops / auto_us / 1e6
-            manual_tflops = flops / manual_us / 1e6
-            single_tflops = flops / single_us / 1e6
-            single_noswizzle_tflops = flops / single_noswizzle_us / 1e6
-            # FLOP ratios (>1 means numerator has higher throughput).
-            manual_vs_auto = manual_tflops / auto_tflops
-            single_vs_auto = single_tflops / auto_tflops
-            single_vs_single_noswizzle = single_tflops / single_noswizzle_tflops
-            ratios_manual_vs_auto.append(manual_vs_auto)
-            ratios_single_vs_auto.append(single_vs_auto)
-            ratios_single_vs_single_noswizzle.append(single_vs_single_noswizzle)
+            double_auto_swizzle_tflops = flops / double_auto_swizzle_us / 1e6
+            double_auto_noswizzle_tflops = flops / double_auto_noswizzle_us / 1e6
+            double_manual_swizzle_tflops = flops / double_manual_swizzle_us / 1e6
+            single_auto_noswizzle_tflops = flops / single_auto_noswizzle_us / 1e6
+
+            # Step 1: buffering effect (double-buffer vs single-buffer, both non-swizzle auto-sync).
+            step1_double_vs_single = double_auto_noswizzle_tflops / single_auto_noswizzle_tflops
+            # Step 2: swizzle effect (double-buffer auto-sync swizzle vs non-swizzle).
+            step2_swizzle_vs_noswizzle = double_auto_swizzle_tflops / double_auto_noswizzle_tflops
+            # Step 3: manual-sync effect (double-buffer swizzle manual-sync vs auto-sync).
+            step3_manual_vs_auto = double_manual_swizzle_tflops / double_auto_swizzle_tflops
+
+            ratios_step1_double_vs_single_noswizzle.append(step1_double_vs_single)
+            ratios_step2_swizzle_vs_noswizzle.append(step2_swizzle_vs_noswizzle)
+            ratios_step3_manual_vs_auto_swizzle.append(step3_manual_vs_auto)
 
             print(
                 f"(M,N,K)=({m},{n},{k}) "
-                f"auto={auto_tflops:.3f}TF, manual={manual_tflops:.3f}TF, "
-                f"single_swizzle={single_tflops:.3f}TF, single_noswizzle={single_noswizzle_tflops:.3f}TF, "
-                f"ratio(manual/auto)={manual_vs_auto:.3f}x, "
-                f"ratio(single_swizzle/auto)={single_vs_auto:.3f}x, "
-                f"ratio(single_swizzle/single_noswizzle)={single_vs_single_noswizzle:.3f}x"
+                f"single_noswizzle={single_auto_noswizzle_tflops:.3f}TF, "
+                f"double_noswizzle_auto={double_auto_noswizzle_tflops:.3f}TF, "
+                f"double_swizzle_auto={double_auto_swizzle_tflops:.3f}TF, "
+                f"double_swizzle_manual={double_manual_swizzle_tflops:.3f}TF, "
+                f"step1_ratio(double_noswizzle_auto/single_noswizzle)={step1_double_vs_single:.3f}x, "
+                f"step2_ratio(double_swizzle_auto/double_noswizzle_auto)={step2_swizzle_vs_noswizzle:.3f}x, "
+                f"step3_ratio(double_swizzle_manual/double_swizzle_auto)={step3_manual_vs_auto:.3f}x"
             )
         print("")
 
-    avg_manual_vs_auto = sum(ratios_manual_vs_auto) / len(ratios_manual_vs_auto)
-    min_manual_vs_auto = min(ratios_manual_vs_auto)
-    max_manual_vs_auto = max(ratios_manual_vs_auto)
-    avg_single_vs_auto = sum(ratios_single_vs_auto) / len(ratios_single_vs_auto)
-    min_single_vs_auto = min(ratios_single_vs_auto)
-    max_single_vs_auto = max(ratios_single_vs_auto)
-    avg_single_vs_single_noswizzle = (
-        sum(ratios_single_vs_single_noswizzle) / len(ratios_single_vs_single_noswizzle)
-    )
-    min_single_vs_single_noswizzle = min(ratios_single_vs_single_noswizzle)
-    max_single_vs_single_noswizzle = max(ratios_single_vs_single_noswizzle)
+    avg_step1 = sum(ratios_step1_double_vs_single_noswizzle) / len(ratios_step1_double_vs_single_noswizzle)
+    min_step1 = min(ratios_step1_double_vs_single_noswizzle)
+    max_step1 = max(ratios_step1_double_vs_single_noswizzle)
+    avg_step2 = sum(ratios_step2_swizzle_vs_noswizzle) / len(ratios_step2_swizzle_vs_noswizzle)
+    min_step2 = min(ratios_step2_swizzle_vs_noswizzle)
+    max_step2 = max(ratios_step2_swizzle_vs_noswizzle)
+    avg_step3 = sum(ratios_step3_manual_vs_auto_swizzle) / len(ratios_step3_manual_vs_auto_swizzle)
+    min_step3 = min(ratios_step3_manual_vs_auto_swizzle)
+    max_step3 = max(ratios_step3_manual_vs_auto_swizzle)
 
     print("=== Summary ===")
-    print(f"avg FLOP ratio(manual/auto): {avg_manual_vs_auto:.3f}x")
-    print(f"min FLOP ratio(manual/auto): {min_manual_vs_auto:.3f}x")
-    print(f"max FLOP ratio(manual/auto): {max_manual_vs_auto:.3f}x")
-    print(f"avg FLOP ratio(single_swizzle/auto): {avg_single_vs_auto:.3f}x")
-    print(f"min FLOP ratio(single_swizzle/auto): {min_single_vs_auto:.3f}x")
-    print(f"max FLOP ratio(single_swizzle/auto): {max_single_vs_auto:.3f}x")
-    print(
-        f"avg FLOP ratio(single_swizzle/single_noswizzle): "
-        f"{avg_single_vs_single_noswizzle:.3f}x"
-    )
-    print(
-        f"min FLOP ratio(single_swizzle/single_noswizzle): "
-        f"{min_single_vs_single_noswizzle:.3f}x"
-    )
-    print(
-        f"max FLOP ratio(single_swizzle/single_noswizzle): "
-        f"{max_single_vs_single_noswizzle:.3f}x"
-    )
+    print("Step1 (double-buffer speedup, both non-swizzle auto-sync):")
+    print(f"avg FLOP ratio(double_noswizzle_auto/single_noswizzle): {avg_step1:.3f}x")
+    print(f"min FLOP ratio(double_noswizzle_auto/single_noswizzle): {min_step1:.3f}x")
+    print(f"max FLOP ratio(double_noswizzle_auto/single_noswizzle): {max_step1:.3f}x")
+    print("Step2 (swizzle speedup, both double-buffer auto-sync):")
+    print(f"avg FLOP ratio(double_swizzle_auto/double_noswizzle_auto): {avg_step2:.3f}x")
+    print(f"min FLOP ratio(double_swizzle_auto/double_noswizzle_auto): {min_step2:.3f}x")
+    print(f"max FLOP ratio(double_swizzle_auto/double_noswizzle_auto): {max_step2:.3f}x")
+    print("Step3 (manual-sync speedup, both double-buffer swizzle):")
+    print(f"avg FLOP ratio(double_swizzle_manual/double_swizzle_auto): {avg_step3:.3f}x")
+    print(f"min FLOP ratio(double_swizzle_manual/double_swizzle_auto): {min_step3:.3f}x")
+    print(f"max FLOP ratio(double_swizzle_manual/double_swizzle_auto): {max_step3:.3f}x")
 
 
 if __name__ == "__main__":

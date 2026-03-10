@@ -109,7 +109,13 @@ def test_matmul():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--variant",
-        choices=["auto-sync", "manual-sync", "single-buffer", "all"],
+        choices=[
+            "single-auto-noswizzle",
+            "double-auto-noswizzle",
+            "double-auto-swizzle",
+            "double-manual-swizzle",
+            "all",
+        ],
         default="all",
         help="Which kernel variant to run.",
     )
@@ -119,15 +125,17 @@ def test_matmul():
     torch.npu.set_device(device)
 
     variants = {
-        "auto-sync": "./simple_matmul_auto_sync_kernel.so",
-        "manual-sync": "./simple_matmul_manual_sync_kernel.so",
-        "single-buffer": "./single_buffer_matmul_auto_sync_kernel.so",
+        "single-auto-noswizzle": "./single_buffer_matmul_auto_sync_kernel.so",
+        "double-auto-noswizzle": "./simple_matmul_auto_sync_noswizzle_kernel.so",
+        "double-auto-swizzle": "./simple_matmul_auto_sync_kernel.so",
+        "double-manual-swizzle": "./simple_matmul_manual_sync_kernel.so",
     }
     if args.variant == "all":
         selected = [
-            ("auto-sync", variants["auto-sync"]),
-            ("manual-sync", variants["manual-sync"]),
-            ("single-buffer", variants["single-buffer"]),
+            ("single-auto-noswizzle", variants["single-auto-noswizzle"]),
+            ("double-auto-noswizzle", variants["double-auto-noswizzle"]),
+            ("double-auto-swizzle", variants["double-auto-swizzle"]),
+            ("double-manual-swizzle", variants["double-manual-swizzle"]),
         ]
     else:
         selected = [(args.variant, variants[args.variant])]

@@ -6,13 +6,12 @@ from ptodsl import scalar as s
 const = s.const
 
 
-def build(enable_swizzle: bool = True):
+def build():
     M_TILE = 128
     K_QTILE = 64
     K_TILE = 256
     K_DTILE = 512
     N_FULL = 256
-    SWIZZLE_COUNT = 5
 
     def meta_data():
         dtype = pto.float16
@@ -49,21 +48,6 @@ def build(enable_swizzle: bool = True):
             "tile_buf_c_256": tile_buf_c_256,
         }
 
-    def swizzle_nz(li, m_loop, n_loop, c_swizzle, c_swizzle_m1, c1, c2):
-        tile_block_loop = (n_loop + c_swizzle_m1) // c_swizzle
-        tile_block_span = c_swizzle * m_loop
-        tile_block_idx = li // tile_block_span
-        in_tile_block_idx = li % tile_block_span
-        is_last_block = tile_block_idx == (tile_block_loop - c1)
-        n_col_tail = n_loop - c_swizzle * tile_block_idx
-        n_col = s.select(is_last_block, n_col_tail, c_swizzle)
-        m_idx = in_tile_block_idx // n_col
-        n_idx = tile_block_idx * c_swizzle + (in_tile_block_idx % n_col)
-        odd_block = (tile_block_idx % c2) == c1
-        flipped_m_idx = m_loop - m_idx - c1
-        m_idx = s.select(odd_block, flipped_m_idx, m_idx)
-        return m_idx, n_idx
-
     @to_ir_module(meta_data=meta_data)
     def matmul_kernel_ABt_single_buffer_autosync(
         a_ptr: "ptr_type",
@@ -76,7 +60,6 @@ def build(enable_swizzle: bool = True):
         with pto.cube_section():
             c0 = const(0)
             c1 = const(1)
-            c2 = const(2)
             c128 = const(M_TILE)
             c256 = const(N_FULL)
             c512 = const(K_DTILE)
@@ -91,8 +74,6 @@ def build(enable_swizzle: bool = True):
             m_loop = m_total // c128
             core_loop = n_loop * m_loop
             k_dtile_num = k_total // c512
-            c_swizzle = const(SWIZZLE_COUNT)
-            c_swizzle_m1 = c_swizzle - c1
 
             tv_a = pto.as_tensor(tv_2d, ptr=a_ptr, shape=[m_total, k_total], strides=[k_total, c1])
             tv_b = pto.as_tensor(tv_2d, ptr=b_ptr, shape=[k_total, n_total], strides=[c1, k_total], layout="DN")
@@ -105,11 +86,8 @@ def build(enable_swizzle: bool = True):
             c_l0 = pto.alloc_tile(tile_buf_c_256)
 
             for li in pto.range(bid, core_loop, num_blocks):
-                if enable_swizzle:
-                    m_idx, n_idx = swizzle_nz(li, m_loop, n_loop, c_swizzle, c_swizzle_m1, c1, c2)
-                else:
-                    m_idx = li // n_loop
-                    n_idx = li % n_loop
+                m_idx = li // n_loop
+                n_idx = li % n_loop
                 m_offset = m_idx * c128
                 n_offset = n_idx * c256
                 c_kt = const(K_TILE)
@@ -182,10 +160,5 @@ def build(enable_swizzle: bool = True):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--disable-swizzle",
-        action="store_true",
-        help="Disable swizzled tile traversal and use linear m/n indexing.",
-    )
-    args = parser.parse_args()
-    print(build(enable_swizzle=not args.disable_swizzle))
+    _ = parser.parse_args()
+    print(build())
