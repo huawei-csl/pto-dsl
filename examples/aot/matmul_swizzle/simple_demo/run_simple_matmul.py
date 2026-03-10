@@ -125,10 +125,10 @@ def test_matmul():
     torch.npu.set_device(device)
 
     variants = {
-        "single-auto-noswizzle": "./single_buffer_matmul_auto_sync_kernel.so",
-        "double-auto-noswizzle": "./simple_matmul_auto_sync_noswizzle_kernel.so",
-        "double-auto-swizzle": "./simple_matmul_auto_sync_kernel.so",
-        "double-manual-swizzle": "./simple_matmul_manual_sync_kernel.so",
+        "single-auto-noswizzle": "./build_artifacts/single_buffer_matmul_auto_sync_kernel.so",
+        "double-auto-noswizzle": "./build_artifacts/simple_matmul_auto_sync_noswizzle_kernel.so",
+        "double-auto-swizzle": "./build_artifacts/simple_matmul_auto_sync_kernel.so",
+        "double-manual-swizzle": "./build_artifacts/simple_matmul_manual_sync_kernel.so",
     }
     if args.variant == "all":
         selected = [

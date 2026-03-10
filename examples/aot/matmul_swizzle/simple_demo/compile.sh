@@ -1,59 +1,55 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-rm -f \
-    simple_matmul_auto_sync.pto simple_matmul_manual_sync.pto \
-    simple_matmul_auto_sync.cpp simple_matmul_manual_sync.cpp \
-    simple_matmul_auto_sync_kernel.so simple_matmul_manual_sync_kernel.so \
-    simple_matmul_auto_sync_noswizzle.pto simple_matmul_auto_sync_noswizzle.cpp \
-    simple_matmul_auto_sync_noswizzle_kernel.so \
-    single_buffer_matmul_auto_sync.pto single_buffer_matmul_auto_sync.cpp \
-    single_buffer_matmul_auto_sync_kernel.so
+ARTIFACT_DIR="./build_artifacts"
+mkdir -p "${ARTIFACT_DIR}"
+
+rm -f "${ARTIFACT_DIR}"/*.pto "${ARTIFACT_DIR}"/*.cpp "${ARTIFACT_DIR}"/*.so
 
 # Manual-sync kernel variant: explicit record/wait events in PTO.
-python ./simple_matmul_builder.py --manual-sync > simple_matmul_manual_sync.pto
-ptoas simple_matmul_manual_sync.pto -o simple_matmul_manual_sync.cpp
+python ./simple_matmul_builder.py --manual-sync > "${ARTIFACT_DIR}/simple_matmul_manual_sync.pto"
+ptoas "${ARTIFACT_DIR}/simple_matmul_manual_sync.pto" -o "${ARTIFACT_DIR}/simple_matmul_manual_sync.cpp"
 
 bisheng -fPIC -shared -xcce -O2 -std=c++17 \
     --npu-arch=dav-2201 -DMEMORY_BASE \
     -I"${ASCEND_TOOLKIT_HOME}/include" \
-    -DKERNEL_CPP="\"simple_matmul_manual_sync.cpp\"" \
+    -DKERNEL_CPP="\"${ARTIFACT_DIR}/simple_matmul_manual_sync.cpp\"" \
     -DKERNEL_FN=matmul_kernel_ABt \
     ./caller.cpp \
-    -o ./simple_matmul_manual_sync_kernel.so
+    -o "${ARTIFACT_DIR}/simple_matmul_manual_sync_kernel.so"
 
 # Auto-sync kernel variant: no explicit record/wait events in PTO.
-python ./simple_matmul_builder.py > simple_matmul_auto_sync.pto
-ptoas --enable-insert-sync simple_matmul_auto_sync.pto -o simple_matmul_auto_sync.cpp
+python ./simple_matmul_builder.py > "${ARTIFACT_DIR}/simple_matmul_auto_sync.pto"
+ptoas --enable-insert-sync "${ARTIFACT_DIR}/simple_matmul_auto_sync.pto" -o "${ARTIFACT_DIR}/simple_matmul_auto_sync.cpp"
 
 bisheng -fPIC -shared -xcce -O2 -std=c++17 \
     --npu-arch=dav-2201 -DMEMORY_BASE \
     -I"${ASCEND_TOOLKIT_HOME}/include" \
-    -DKERNEL_CPP="\"simple_matmul_auto_sync.cpp\"" \
+    -DKERNEL_CPP="\"${ARTIFACT_DIR}/simple_matmul_auto_sync.cpp\"" \
     -DKERNEL_FN=matmul_kernel_ABt_autosync \
     ./caller.cpp \
-    -o ./simple_matmul_auto_sync_kernel.so
+    -o "${ARTIFACT_DIR}/simple_matmul_auto_sync_kernel.so"
 
 # Auto-sync kernel variant without swizzle.
-python ./simple_matmul_builder.py --disable-swizzle > simple_matmul_auto_sync_noswizzle.pto
-ptoas --enable-insert-sync simple_matmul_auto_sync_noswizzle.pto -o simple_matmul_auto_sync_noswizzle.cpp
+python ./simple_matmul_builder.py --disable-swizzle > "${ARTIFACT_DIR}/simple_matmul_auto_sync_noswizzle.pto"
+ptoas --enable-insert-sync "${ARTIFACT_DIR}/simple_matmul_auto_sync_noswizzle.pto" -o "${ARTIFACT_DIR}/simple_matmul_auto_sync_noswizzle.cpp"
 
 bisheng -fPIC -shared -xcce -O2 -std=c++17 \
     --npu-arch=dav-2201 -DMEMORY_BASE \
     -I"${ASCEND_TOOLKIT_HOME}/include" \
-    -DKERNEL_CPP="\"simple_matmul_auto_sync_noswizzle.cpp\"" \
+    -DKERNEL_CPP="\"${ARTIFACT_DIR}/simple_matmul_auto_sync_noswizzle.cpp\"" \
     -DKERNEL_FN=matmul_kernel_ABt_autosync \
     ./caller.cpp \
-    -o ./simple_matmul_auto_sync_noswizzle_kernel.so
+    -o "${ARTIFACT_DIR}/simple_matmul_auto_sync_noswizzle_kernel.so"
 
 # Single-buffer auto-sync variant: simplified no ping-pong buffers, baseline non-swizzle.
-python ./single_buffer_matmul.py > single_buffer_matmul_auto_sync.pto
-ptoas --enable-insert-sync single_buffer_matmul_auto_sync.pto -o single_buffer_matmul_auto_sync.cpp
+python ./single_buffer_matmul.py > "${ARTIFACT_DIR}/single_buffer_matmul_auto_sync.pto"
+ptoas --enable-insert-sync "${ARTIFACT_DIR}/single_buffer_matmul_auto_sync.pto" -o "${ARTIFACT_DIR}/single_buffer_matmul_auto_sync.cpp"
 
 bisheng -fPIC -shared -xcce -O2 -std=c++17 \
     --npu-arch=dav-2201 -DMEMORY_BASE \
     -I"${ASCEND_TOOLKIT_HOME}/include" \
-    -DKERNEL_CPP="\"single_buffer_matmul_auto_sync.cpp\"" \
+    -DKERNEL_CPP="\"${ARTIFACT_DIR}/single_buffer_matmul_auto_sync.cpp\"" \
     -DKERNEL_FN=matmul_kernel_ABt_single_buffer_autosync \
     ./caller.cpp \
-    -o ./single_buffer_matmul_auto_sync_kernel.so
+    -o "${ARTIFACT_DIR}/single_buffer_matmul_auto_sync_kernel.so"
