@@ -17,6 +17,8 @@ BINARY_OPS = [
     ("sub", lambda x, y: x - y),
     ("mul", lambda x, y: x * y),
     ("div", lambda x, y: x / y),
+    ("max", lambda x, y: torch.max(x, y)),
+    ("min", lambda x, y: torch.min(x, y)),
     #("or", lambda x, y: x | y), #TODO add back bitwise or test after fixing int16 support in the builder
 ]
 

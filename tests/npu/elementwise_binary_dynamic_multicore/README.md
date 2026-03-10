@@ -41,6 +41,8 @@ pytest test_builder.py -k "test_binary_2d_precision and add-float32"
 | sub | ✓       | ✓       | ✓     |
 | mul | ✓       | ✓       | ✓     |
 | div | ✓       | ✓       | skip  |
+| min | ✓       | ✓       | ✓     |
+| max | ✓       | ✓       | ✓     |
 
 ## Compile a kernel manually
 

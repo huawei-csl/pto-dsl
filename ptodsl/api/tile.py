@@ -27,6 +27,14 @@ def or_(lhs, rhs, out):
     _pto.TOrOp(lhs, rhs, out)
 
 
+def min(lhs, rhs, out):
+    _pto.TMinOp(lhs, rhs, out)
+
+
+def max(lhs, rhs, out):
+    _pto.TMaxOp(lhs, rhs, out)
+
+
 def gather(src, out, indices=None, *, mask_pattern=None):
     if mask_pattern is not None:
         mask = _pto.MaskPatternAttr.get(getattr(_pto.MaskPattern, mask_pattern))

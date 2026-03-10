@@ -9,6 +9,8 @@ OPS = {
     "sub": "float",
     "add": "float",
     "or": "int16_t",
+    "max": "float",
+    "min": "float",
 }
 
 
