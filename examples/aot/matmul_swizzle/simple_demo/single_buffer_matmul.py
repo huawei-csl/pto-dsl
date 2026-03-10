@@ -134,7 +134,8 @@ def build():
                         )
                         pto.load(sv_b, b_l1)
 
-                        for quarter in range(4):
+                        for quarter in range(4): 
+                            # NOTE: python-native `for` is evaluated at build-time, effectively loop-unrolling
                             phase = h * 4 + quarter
                             a_col = const(phase * K_QTILE)
                             b_row = const(quarter * K_QTILE)
@@ -142,15 +143,17 @@ def build():
                             tile.extract(a_l1, c0, a_col, a_l0)
                             tile.extract(b_l1, b_row, c0, b_l0)
 
-                            if phase == 0:
-                                pto.cond(
-                                    is_first_k_tile,
-                                    lambda: tile.matmul(a_l0, b_l0, c_l0),
-                                    lambda: tile.matmul_acc(c_l0, a_l0, b_l0, c_l0),
-                                )
+                            if phase == 0:  
+                                # NOTE: python-native `if` is evaluated at build-time (compile-time)
+                                # while `pto.if_context` is evaluated at run-time
+                                with pto.if_context(is_first_k_tile, has_else=True) as branch:
+                                    tile.matmul(a_l0, b_l0, c_l0)
+                                with branch.else_context():
+                                    tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)
                             else:
                                 tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)
 
+                    # prefetch next tile if k-loop is not finished
                     with pto.if_context(k_idx + c1 < k_dtile_num):
                         sv_a_next = pto.slice_view(
                             tile_view_a,
