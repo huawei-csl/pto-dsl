@@ -247,6 +247,35 @@ Everything else (double-buffer loop body) stays essentially the same as Step2, w
 
 Swizzling is **not changing math**, only **work scheduling order**. On NPUs, scheduling order can strongly affect memory traffic and utilization.
 
+### NumPy swizzle mapping demo
+
+To make swizzle behavior concrete, use `step3_swizzle_numpy_sim.py`.
+It prints tile index mapping before/after swizzle for several swizzle factors.
+
+```bash
+python ./step3_swizzle_numpy_sim.py
+```
+
+Example output format:
+
+```text
+=== swizzle=5, m_loop=4, n_loop=7, core_loop=28 ===
+li | linear(m,n) -> swizzle(m,n)
+ 0 | ( 0, 0) -> ( 0, 0)
+ 1 | ( 0, 1) -> ( 0, 1)
+ 2 | ( 0, 2) -> ( 0, 2)
+ ...
+```
+
+Interpretation:
+- `linear(m,n)` is the baseline order (`m_idx = li // n_loop`, `n_idx = li % n_loop`).
+- `swizzle(m,n)` is the remapped order used by `swizzle_nz(...)`.
+- As you vary `c_swizzle` (2, 3, 5), you can see how traversal shape and direction change, especially near N-tail blocks.
+- The script also prints 2D order grids:
+  - `linear_order_grid[m, n] = li` in baseline traversal
+  - `swizzle_order_grid[m, n] = li` in swizzled traversal
+  This gives an intuitive “heatmap-like” view of where each tile is visited in time.
+
 ---
 
 ## 6) Step4 Manual Pipelining: explicit software schedule
