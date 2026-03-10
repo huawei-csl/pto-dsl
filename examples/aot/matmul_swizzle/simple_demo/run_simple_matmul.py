@@ -110,10 +110,10 @@ def test_matmul():
     parser.add_argument(
         "--variant",
         choices=[
-            "single-auto-noswizzle",
-            "double-auto-noswizzle",
-            "double-auto-swizzle",
-            "double-manual-swizzle",
+            "step1-baseline",
+            "step2-doublebuffer",
+            "step3-swizzle",
+            "step4-manual-pipelining",
             "all",
         ],
         default="all",
@@ -125,17 +125,17 @@ def test_matmul():
     torch.npu.set_device(device)
 
     variants = {
-        "single-auto-noswizzle": "./build_artifacts/single_buffer_matmul_auto_sync_kernel.so",
-        "double-auto-noswizzle": "./build_artifacts/simple_matmul_auto_sync_noswizzle_kernel.so",
-        "double-auto-swizzle": "./build_artifacts/simple_matmul_auto_sync_kernel.so",
-        "double-manual-swizzle": "./build_artifacts/simple_matmul_manual_sync_kernel.so",
+        "step1-baseline": "./build_artifacts/step1_baseline_kernel.so",
+        "step2-doublebuffer": "./build_artifacts/step2_doublebuffer_kernel.so",
+        "step3-swizzle": "./build_artifacts/step3_swizzle_kernel.so",
+        "step4-manual-pipelining": "./build_artifacts/step4_manual_pipelining_kernel.so",
     }
     if args.variant == "all":
         selected = [
-            ("single-auto-noswizzle", variants["single-auto-noswizzle"]),
-            ("double-auto-noswizzle", variants["double-auto-noswizzle"]),
-            ("double-auto-swizzle", variants["double-auto-swizzle"]),
-            ("double-manual-swizzle", variants["double-manual-swizzle"]),
+            ("step1-baseline", variants["step1-baseline"]),
+            ("step2-doublebuffer", variants["step2-doublebuffer"]),
+            ("step3-swizzle", variants["step3-swizzle"]),
+            ("step4-manual-pipelining", variants["step4-manual-pipelining"]),
         ]
     else:
         selected = [(args.variant, variants[args.variant])]

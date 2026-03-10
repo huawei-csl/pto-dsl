@@ -90,25 +90,25 @@ def _parse_args():
     parser.add_argument(
         "--double-auto-swizzle-lib",
         type=str,
-        default="./build_artifacts/simple_matmul_auto_sync_kernel.so",
+        default="./build_artifacts/step3_swizzle_kernel.so",
         help="Path to double-buffer auto-sync swizzled shared library.",
     )
     parser.add_argument(
         "--double-auto-noswizzle-lib",
         type=str,
-        default="./build_artifacts/simple_matmul_auto_sync_noswizzle_kernel.so",
+        default="./build_artifacts/step2_doublebuffer_kernel.so",
         help="Path to double-buffer auto-sync non-swizzle shared library.",
     )
     parser.add_argument(
         "--double-manual-swizzle-lib",
         type=str,
-        default="./build_artifacts/simple_matmul_manual_sync_kernel.so",
+        default="./build_artifacts/step4_manual_pipelining_kernel.so",
         help="Path to double-buffer manual-sync swizzled shared library.",
     )
     parser.add_argument(
         "--single-auto-noswizzle-lib",
         type=str,
-        default="./build_artifacts/single_buffer_matmul_auto_sync_kernel.so",
+        default="./build_artifacts/step1_baseline_kernel.so",
         help="Path to single-buffer auto-sync non-swizzle shared library.",
     )
     parser.add_argument(
