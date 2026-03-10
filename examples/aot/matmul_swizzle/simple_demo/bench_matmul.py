@@ -158,9 +158,8 @@ def main():
     single_mm = load_lib(str(single_lib))
     m_list = _parse_int_list(args.m_list)
 
-    ratios_auto_vs_manual = []
+    ratios_manual_vs_auto = []
     ratios_single_vs_auto = []
-    ratios_single_vs_manual = []
     print(f"auto-sync lib:   {auto_lib}")
     print(f"manual-sync lib: {manual_lib}")
     print(f"single-buffer lib: {single_lib}")
@@ -181,47 +180,34 @@ def main():
             auto_tflops = flops / auto_us / 1e6
             manual_tflops = flops / manual_us / 1e6
             single_tflops = flops / single_us / 1e6
-            auto_vs_manual = manual_us / auto_us
-            single_vs_auto = auto_us / single_us
-            single_vs_manual = manual_us / single_us
-            ratios_auto_vs_manual.append(auto_vs_manual)
+            # Latency ratios (>1 means denominator is faster).
+            manual_vs_auto = manual_us / auto_us
+            single_vs_auto = single_us / auto_us
+            ratios_manual_vs_auto.append(manual_vs_auto)
             ratios_single_vs_auto.append(single_vs_auto)
-            ratios_single_vs_manual.append(single_vs_manual)
 
             print(
                 f"(M,N,K)=({m},{n},{k}) "
                 f"auto={auto_tflops:.3f}TF, manual={manual_tflops:.3f}TF, single={single_tflops:.3f}TF, "
-                f"ratio(auto/manual)={auto_vs_manual:.3f}x, "
-                f"ratio(auto/single)={single_vs_auto:.3f}x, "
-                f"ratio(manual/single)={single_vs_manual:.3f}x"
+                f"ratio(manual/auto)={manual_vs_auto:.3f}x, "
+                f"ratio(single/auto)={single_vs_auto:.3f}x"
             )
         print("")
 
-    avg_auto_vs_manual = sum(ratios_auto_vs_manual) / len(ratios_auto_vs_manual)
-    min_auto_vs_manual = min(ratios_auto_vs_manual)
-    max_auto_vs_manual = max(ratios_auto_vs_manual)
+    avg_manual_vs_auto = sum(ratios_manual_vs_auto) / len(ratios_manual_vs_auto)
+    min_manual_vs_auto = min(ratios_manual_vs_auto)
+    max_manual_vs_auto = max(ratios_manual_vs_auto)
     avg_single_vs_auto = sum(ratios_single_vs_auto) / len(ratios_single_vs_auto)
     min_single_vs_auto = min(ratios_single_vs_auto)
     max_single_vs_auto = max(ratios_single_vs_auto)
-    avg_single_vs_manual = sum(ratios_single_vs_manual) / len(ratios_single_vs_manual)
-    min_single_vs_manual = min(ratios_single_vs_manual)
-    max_single_vs_manual = max(ratios_single_vs_manual)
 
     print("=== Summary ===")
-    print(f"avg ratio(auto/manual): {avg_auto_vs_manual:.3f}x")
-    print(f"min ratio(auto/manual): {min_auto_vs_manual:.3f}x")
-    print(f"max ratio(auto/manual): {max_auto_vs_manual:.3f}x")
-    print(f"avg ratio(auto/single): {avg_single_vs_auto:.3f}x")
-    print(f"min ratio(auto/single): {min_single_vs_auto:.3f}x")
-    print(f"max ratio(auto/single): {max_single_vs_auto:.3f}x")
-    print(f"avg ratio(manual/single): {avg_single_vs_manual:.3f}x")
-    print(f"min ratio(manual/single): {min_single_vs_manual:.3f}x")
-    print(f"max ratio(manual/single): {max_single_vs_manual:.3f}x")
-
-    if avg_single_vs_auto >= 1.0:
-        print(f"auto-sync double-buffer is faster than single-buffer by {(avg_single_vs_auto - 1.0) * 100.0:.2f}% on average")
-    else:
-        print(f"single-buffer is faster than auto-sync double-buffer by {(1.0 - avg_single_vs_auto) * 100.0:.2f}% on average")
+    print(f"avg FLOP ratio(manual/auto): {avg_manual_vs_auto:.3f}x")
+    print(f"min FLOP ratio(manual/auto): {min_manual_vs_auto:.3f}x")
+    print(f"max FLOP ratio(manual/auto): {max_manual_vs_auto:.3f}x")
+    print(f"avg FLOP ratio(single/auto): {avg_single_vs_auto:.3f}x")
+    print(f"min FLOP ratio(single/auto): {min_single_vs_auto:.3f}x")
+    print(f"max FLOP ratio(single/auto): {max_single_vs_auto:.3f}x")
 
 
 if __name__ == "__main__":
