@@ -107,6 +107,66 @@ else:
 
 It is easy to reason about and debug. Every later step should preserve this numerical result.
 
+### NumPy simulation of Step1 (algorithm teaching version)
+
+The full code is in `step1_numpy_sim.py`.
+
+Run it directly:
+
+```bash
+python ./step1_numpy_sim.py
+```
+
+### Line-by-line mapping to `step1_baseline.py`
+
+- **Loop space construction**
+  - NumPy: `n_loop`, `m_loop`, `core_loop`, `k_dtile_num`
+  - ptodsl: same scalar setup in `step1_baseline.py`
+- **Core tile traversal**
+  - NumPy: `for li in range(core_loop)`
+  - ptodsl: `for li in pto.range(bid, core_loop, num_blocks)`
+- **Tile index mapping**
+  - NumPy: `m_idx = li // n_loop`, `n_idx = li % n_loop`
+  - ptodsl: same formulas
+- **K loop**
+  - NumPy: `for k_idx in range(k_dtile_num)`
+  - ptodsl: `for k_idx in pto.range(c0, k_dtile_num, c1)`
+- **Phase loop (build-time unrolled in ptodsl)**
+  - NumPy: `for phase in range(8)`
+  - ptodsl: same Python loop, used for static unrolling in IR build
+- **First-accumulate logic**
+  - NumPy: `if phase == 0 and is_first_k_tile: c_tile = prod else: c_tile += prod`
+  - ptodsl: `if phase == 0` + `pto.if_context(is_first_k_tile, has_else=True)` with `matmul` / `matmul_acc`
+
+### Why `b_l0.T` is needed (and how it maps to ptodsl)
+
+In this tutorial, `b` is stored as shape `[n, k]`, while `a` is `[m, k]`.
+
+- NumPy quarter tile:
+  - `a_l0` shape is `[M_TILE, K_QTILE]`
+  - `b_l0` shape is `[N_FULL, K_QTILE]`
+- To compute output tile `[M_TILE, N_FULL]`, we need:
+  - `[M_TILE, K_QTILE] @ [K_QTILE, N_FULL]`
+  - therefore NumPy uses `a_l0 @ b_l0.T`
+
+In ptodsl, this transpose handling is embedded by the tensor/view layout settings and tile ops:
+- `tv_b` is created with `layout="DN"` in `step1_baseline.py`
+- `tile.extract(...)` and `tile.matmul(...)` then consume B in the expected orientation for GEMM
+
+So `b_l0.T` in NumPy is the explicit equivalent of what ptodsl layout + tile pipeline already encodes implicitly.
+
+### Why accumulate in `float32`
+
+The original kernel metadata sets:
+- input dtype: `float16`
+- accumulator dtype: `float32`
+
+That is why the NumPy simulation casts tile loads to `float32` and keeps `c_tile`/`c` as `float32`. This mirrors:
+- `acc_dtype = pto.float32`
+- `tile_buf_c_256` using `acc_dtype`
+
+Using float32 accumulation is important for numerical stability across many partial products (especially large K).
+
 ---
 
 ## 4) Step2 Double-buffer: overlap movement and compute
