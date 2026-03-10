@@ -1,98 +1,291 @@
-# Matmul Optimization Guide (4 Steps)
+# PTO DSL Matmul Optimization Guide (4 Steps)
 
-This folder is organized as a tutorial-style optimization path for dynamic-shape matmul.
+This tutorial walks through a practical optimization path for dynamic-shape matmul on NPU using the ptodsl framework.
 
-## Step Overview
+The key idea: **keep correctness fixed**, then change only one optimization dimension at a time so each speedup is easy to understand and measure.
 
-1. `step1_baseline.py`
-   - Functionally correct dynamic-shape matmul.
-   - No double-buffer, no swizzle, no manual software pipelining.
-2. `step2_doublebuffer.py`
-   - Adds double-buffer only.
-   - Still no swizzle, uses auto-sync insertion.
-3. `step3_swizzle.py`
-   - Adds swizzle on top of step2.
-   - Uses double-buffer + auto-sync.
-4. `step4_manual_pipelining.py`
-   - Adds manual software pipelining on top of step3.
-   - Uses explicit event record/wait.
+---
 
-Shared pieces are extracted into `common_utils.py`:
-- metadata/type/buffer definitions
-- `swizzle_nz(...)`
+## 1) Mental Model: What each step changes
 
-## Build All Steps
+- **Step1 (`step1_baseline.py`)**: functionally correct baseline; simple tile order; single L1 buffers.
+- **Step2 (`step2_doublebuffer.py`)**: add double-buffering for A/B tiles (overlap data movement with compute), still linear tile order.
+- **Step3 (`step3_swizzle.py`)**: keep double-buffering and add swizzled tile traversal to improve access/balance patterns.
+- **Step4 (`step4_manual_pipelining.py`)**: keep step3 algorithm but replace compiler auto-sync with explicit event-driven software pipeline.
+
+---
+
+## 2) Shared Building Blocks (`common_utils.py`)
+
+All steps reuse the same tile sizes, metadata, and swizzle helper.
+
+### Why shared utilities matter
+
+- Keeps step diffs focused on optimization logic.
+- Reduces accidental config drift across kernels.
+- Makes benchmarking comparisons fair.
+
+### Key shared code
+
+```python
+M_TILE = 128
+K_QTILE = 64
+K_TILE = 256
+K_DTILE = 512
+N_FULL = 256
+SWIZZLE_COUNT = 5
+```
+
+```python
+def build_meta_data():
+    def meta_data():
+        dtype = pto.float16
+        acc_dtype = pto.float32
+        ptr_type = pto.PtrType(dtype)
+        i32 = pto.int32
+        tv_2d = pto.TensorType(rank=2, dtype=dtype)
+        ...
+```
+
+```python
+def swizzle_nz(li, m_loop, n_loop, c_swizzle, c_swizzle_m1, c1, c2):
+    tile_block_loop = (n_loop + c_swizzle_m1) // c_swizzle
+    tile_block_span = c_swizzle * m_loop
+    tile_block_idx = li // tile_block_span
+    ...
+    m_idx = s.select(odd_block, flipped_m_idx, m_idx)
+    return m_idx, n_idx
+```
+
+If `swizzle_nz` looks confusing: think of it as remapping linear tile index `li` into a 2D `(m_idx, n_idx)` traversal order that improves behavior compared with pure row-major tile walking.
+
+---
+
+## 3) Step1 Baseline: Correctness-first kernel
+
+File: `step1_baseline.py`
+
+### Algorithm behavior
+
+- Dynamic shape support from runtime `(m, n, k)` parameters.
+- Tiles are visited in plain linear order:
+  - `m_idx = li // n_loop`
+  - `n_idx = li % n_loop`
+- One L1 tile for A and one L1 tile for B (no ping-pong buffers).
+- No explicit pipeline/event synchronization.
+
+### Important code
+
+```python
+for li in pto.range(bid, core_loop, num_blocks):
+    m_idx = li // n_loop
+    n_idx = li % n_loop
+    m_offset = m_idx * c128
+    n_offset = n_idx * c256
+```
+
+```python
+a_l1 = pto.alloc_tile(tile_buf_a_l1)
+b_l1 = pto.alloc_tile(tile_buf_b_l1_256)
+...
+pto.load(sv_a0, a_l1)
+...
+pto.load(sv_b, b_l1)
+```
+
+```python
+if phase == 0:
+    with pto.if_context(is_first_k_tile, has_else=True) as branch:
+        tile.matmul(a_l0, b_l0, c_l0)
+    with branch.else_context():
+        tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)
+else:
+    tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)
+```
+
+### Why this is the baseline
+
+It is easy to reason about and debug. Every later step should preserve this numerical result.
+
+---
+
+## 4) Step2 Double-buffer: overlap movement and compute
+
+File: `step2_doublebuffer.py`
+
+### Algorithm delta from Step1
+
+- Change single buffers into ping-pong buffers:
+  - `a_l1 = [buf0, buf1]`
+  - `b_l1 = [buf0, buf1]`
+- Keep tile traversal **non-swizzled** (same simple `m_idx/n_idx` as baseline).
+- Keep autosync flow (no explicit manual event schedule in source).
+
+### Important code
+
+```python
+a_l1 = [pto.alloc_tile(tile_buf_a_l1), pto.alloc_tile(tile_buf_a_l1)]
+b_l1 = [pto.alloc_tile(tile_buf_b_l1_256), pto.alloc_tile(tile_buf_b_l1_256)]
+...
+is_curr0 = (k_idx % c2) == c0
+with pto.if_context(is_curr0, has_else=True) as branch:
+    run_loop_k(a_l1[0], a_l1[1])
+with branch.else_context():
+    run_loop_k(a_l1[1], a_l1[0])
+```
+
+```python
+def run_loop_k(a_curr, a_next):
+    ...
+    tile.extract(a_curr, c0, a_col, a_l0[ping])
+    ...
+    with pto.if_context(k_idx + c1 < k_dtile_num):
+        ...
+        pto.load(sv_a_next, a_next)
+```
+
+### Why this tends to speed up
+
+While compute is consuming `a_curr`, the next tile can be prepared into `a_next`, reducing pipeline bubbles.
+
+Tiny timeline sketch (conceptual):
+
+```text
+Step2 (double-buffer, auto-sync)
+time ---->
+Load A/B buf0: [====]
+Compute  buf0:       [========]
+Load A/B buf1:           [====]
+Compute  buf1:                 [========]
+```
+
+---
+
+## 5) Step3 Swizzle: improve tile traversal pattern
+
+File: `step3_swizzle.py`
+
+### Algorithm delta from Step2
+
+- Keep same double-buffer kernel structure.
+- Only change the mapping from linear loop index `li` to tile coordinates `(m_idx, n_idx)`:
+  - from linear mapping
+  - to `swizzle_nz(...)` mapping
+
+### Important code
+
+```python
+c_swizzle = const(SWIZZLE_COUNT)
+c_swizzle_m1 = c_swizzle - c1
+...
+m_idx, n_idx = swizzle_nz(li, m_loop, n_loop, c_swizzle, c_swizzle_m1, c1, c2)
+```
+
+Everything else (double-buffer loop body) stays essentially the same as Step2, which makes Step2 -> Step3 comparison clean.
+
+### Intuition for new users
+
+Swizzling is **not changing math**, only **work scheduling order**. On NPUs, scheduling order can strongly affect memory traffic and utilization.
+
+---
+
+## 6) Step4 Manual Pipelining: explicit software schedule
+
+File: `step4_manual_pipelining.py`
+
+### Algorithm delta from Step3
+
+- Keep swizzled traversal and double-buffer dataflow.
+- Switch from autosync-style source to explicit event orchestration:
+  - `record_event(...)`
+  - `wait_event(...)`
+  - `record_wait_pair(...)`
+
+### Important code
+
+```python
+pto.record_event("MATMUL", "MOV_M2L", event_id=[0, 1])
+pto.record_event("MOV_M2L", "LOAD", event_id=[0, 1, 2, 3])
+```
+
+```python
+pto.wait_event("MOV_M2L", "LOAD", event_id=b_evt)
+pto.load(sv_b, b_l1[h])
+pto.record_event("LOAD", "MOV_M2L", event_id=b_evt)
+```
+
+```python
+pto.wait_event("MOV_M2L", "MATMUL", event_id=0)
+...
+pto.record_wait_pair("MATMUL", "STORE_ACC", event_id=0)
+pto.store(c_l0, sv_c)
+```
+
+### Why this can help
+
+Manual scheduling gives tighter control over producer-consumer ordering and overlap. It often improves tail behavior and removes conservative compiler sync points.
+
+Tiny timeline sketch (conceptual):
+
+```text
+Step4 (manual pipeline with explicit events)
+time ---->
+LOAD ----record----> MOV_M2L ----record----> MATMUL ----record----> STORE
+   ^                      |                        |                    |
+   |------ wait ----------+------ wait -----------+------ wait --------+
+```
+
+---
+
+## 7) Build and Run
+
+### Build all 4 steps
 
 ```bash
 bash ./compile.sh
 ```
 
-Artifacts are emitted into `build_artifacts/`:
+Artifacts are generated in `build_artifacts/`:
 - `step1_baseline_kernel.so`
 - `step2_doublebuffer_kernel.so`
 - `step3_swizzle_kernel.so`
 - `step4_manual_pipelining_kernel.so`
 
-## Reproducible Per-Step Build Commands
+### Validate correctness
 
 ```bash
-ARTIFACT_DIR=./build_artifacts
-mkdir -p "${ARTIFACT_DIR}"
-
-# Step1 baseline
-python ./step1_baseline.py > "${ARTIFACT_DIR}/step1_baseline.pto"
-ptoas --enable-insert-sync "${ARTIFACT_DIR}/step1_baseline.pto" -o "${ARTIFACT_DIR}/step1_baseline.cpp"
-bisheng -fPIC -shared -xcce -O2 -std=c++17 --npu-arch=dav-2201 -DMEMORY_BASE \
-  -I"${ASCEND_TOOLKIT_HOME}/include" \
-  -DKERNEL_CPP="\"${ARTIFACT_DIR}/step1_baseline.cpp\"" \
-  -DKERNEL_FN=matmul_kernel_step1_baseline \
-  ./caller.cpp -o "${ARTIFACT_DIR}/step1_baseline_kernel.so"
-
-# Step2 double-buffer only
-python ./step2_doublebuffer.py --disable-swizzle > "${ARTIFACT_DIR}/step2_doublebuffer.pto"
-ptoas --enable-insert-sync "${ARTIFACT_DIR}/step2_doublebuffer.pto" -o "${ARTIFACT_DIR}/step2_doublebuffer.cpp"
-bisheng -fPIC -shared -xcce -O2 -std=c++17 --npu-arch=dav-2201 -DMEMORY_BASE \
-  -I"${ASCEND_TOOLKIT_HOME}/include" \
-  -DKERNEL_CPP="\"${ARTIFACT_DIR}/step2_doublebuffer.cpp\"" \
-  -DKERNEL_FN=matmul_kernel_ABt_autosync \
-  ./caller.cpp -o "${ARTIFACT_DIR}/step2_doublebuffer_kernel.so"
-
-# Step3 swizzle + double-buffer
-python ./step3_swizzle.py > "${ARTIFACT_DIR}/step3_swizzle.pto"
-ptoas --enable-insert-sync "${ARTIFACT_DIR}/step3_swizzle.pto" -o "${ARTIFACT_DIR}/step3_swizzle.cpp"
-bisheng -fPIC -shared -xcce -O2 -std=c++17 --npu-arch=dav-2201 -DMEMORY_BASE \
-  -I"${ASCEND_TOOLKIT_HOME}/include" \
-  -DKERNEL_CPP="\"${ARTIFACT_DIR}/step3_swizzle.cpp\"" \
-  -DKERNEL_FN=matmul_kernel_ABt_autosync \
-  ./caller.cpp -o "${ARTIFACT_DIR}/step3_swizzle_kernel.so"
-
-# Step4 manual software pipelining
-python ./step4_manual_pipelining.py > "${ARTIFACT_DIR}/step4_manual_pipelining.pto"
-ptoas "${ARTIFACT_DIR}/step4_manual_pipelining.pto" -o "${ARTIFACT_DIR}/step4_manual_pipelining.cpp"
-bisheng -fPIC -shared -xcce -O2 -std=c++17 --npu-arch=dav-2201 -DMEMORY_BASE \
-  -I"${ASCEND_TOOLKIT_HOME}/include" \
-  -DKERNEL_CPP="\"${ARTIFACT_DIR}/step4_manual_pipelining.cpp\"" \
-  -DKERNEL_FN=matmul_kernel_ABt \
-  ./caller.cpp -o "${ARTIFACT_DIR}/step4_manual_pipelining_kernel.so"
+python ./run_simple_matmul.py
 ```
 
-## Correctness and Benchmark
+Run one step only:
 
 ```bash
-# Validate numerical correctness for all 4 steps
-python ./run_simple_matmul.py
-
-# Optional: run one step only
 python ./run_simple_matmul.py --variant step1-baseline
 python ./run_simple_matmul.py --variant step2-doublebuffer
 python ./run_simple_matmul.py --variant step3-swizzle
 python ./run_simple_matmul.py --variant step4-manual-pipelining
+```
 
-# Run stepwise performance comparison
+### Run stepwise benchmark
+
+```bash
 python ./bench_matmul.py
 ```
 
-## Reference Performance (Example)
+---
+
+## 8) Interpreting benchmark ratios
+
+The benchmark prints three ratio groups:
+
+1. **Step1 ratio**: `step2 / step1`
+   - isolates gain from double-buffering.
+2. **Step2 ratio**: `step3 / step2`
+   - isolates gain from swizzle.
+3. **Step3 ratio**: `step4 / step3`
+   - isolates gain from manual software pipelining.
+
+Reference result:
 
 ```text
 === Summary ===
@@ -109,3 +302,14 @@ avg FLOP ratio(double_swizzle_manual/double_swizzle_auto): 1.100x
 min FLOP ratio(double_swizzle_manual/double_swizzle_auto): 1.001x
 max FLOP ratio(double_swizzle_manual/double_swizzle_auto): 1.173x
 ```
+
+---
+
+## 9) Suggested learning path
+
+- First, run `step1` only and inspect correctness outputs.
+- Next, compare `step1` vs `step2` source side by side, focusing on buffer allocation and `run_loop_k`.
+- Then inspect only the index mapping change from `step2` to `step3`.
+- Finally, study `step4` event dependencies as a timeline (LOAD -> MOV_M2L -> MATMUL -> STORE).
+
+If you keep this one-change-per-step mindset, it becomes much easier to learn NPU kernel optimization systematically.
