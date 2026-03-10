@@ -1,0 +1,50 @@
+mode = "create"
+
+kernel_dir  = "examples/aot/geglu_dynamic_multicore"  # reference for API patterns only
+kernel_name = "sigmoid"
+create_file = "sigmoid_builder.py"
+
+build_cmd = ["bash", "compile.sh"]
+test_cmd  = ["python", "run_sigmoid.py"]
+bench_cmd = ["python", "_bench_wrapper.py"]
+
+create_prompt = """
+Implement Sigmoid activation: y = 1 / (1 + exp(-x))
+PyTorch reference: torch.sigmoid(x)
+
+Input:  fp16 tensor (batch, n_cols)
+Output: fp16 tensor (batch, n_cols) — separate output pointer
+
+The kernel signature in caller.cpp should be:
+    extern "C" void call_kernel(uint32_t blockDim, void *stream,
+                                uint8_t *x, uint8_t *y,
+                                uint32_t batch, uint32_t n_cols)
+
+The .so produced by compile.sh should be named sigmoid_lib.so.
+The test script run_sigmoid.py should compare against torch.sigmoid(x.float()).to(x.dtype).
+The bench wrapper _bench_wrapper.py should print latency_ms=<value>.
+
+Implementation hint:
+  sigmoid(x) = 1 / (1 + exp(-x))
+  -x can be computed as tile.sub(zeros, x, neg_x) where zeros = tile with 0.0.
+  Use exp(x - x) = 1.0 to derive a tile of ones (no scalar-tile broadcast available).
+  Then: tile.exp(neg_x) -> tile.add(exp_neg_x, ones) -> tile.reciprocal(...).
+
+Scalar-to-tile broadcast is NOT available — do not pass scalar values to tile ops.
+"""
+
+# These are loaded from the reference kernel_dir as examples — adapt them for sigmoid
+preload_files = ["compile.sh", "caller.cpp", "geglu_builder.py", "run_geglu.py", "_bench_wrapper.py"]
+
+# Local PTO-DSL API files (authoritative, read from repo)
+local_context_files = [
+    "ptodsl/api/pto.py",
+    "ptodsl/api/tile.py",
+    "ptodsl/api/scalar.py",
+    "ptodsl/api/control_flow.py",
+    "ptodsl/api/synchronization.py",
+]
+
+[[context_urls]]
+url   = "https://github.com/zhangstevenunity/PTOAS/blob/main/python/pto/dialects/pto.py"
+label = "PTO Python bindings"

@@ -18,19 +18,19 @@ Claude decides what to change, builds, verifies, and benchmarks in a loop.
 """
 
 import argparse
+import os
 import shutil
 import sys
-import time
 import tomllib
 import urllib.request
 from pathlib import Path
-
-import anthropic
 
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
 from openenv import KernelSearchEnv, KernelAction
+import openenv.anthropic_provider as _anthropic_provider
+import openenv.gemini_provider as _gemini_provider
 
 # ---------------------------------------------------------------------------
 # Config loading
@@ -103,6 +103,8 @@ _parser.add_argument(
 _parser.add_argument("--max-turns", type=int, default=30)
 _parser.add_argument("--max-tokens", type=int, default=None,
     help="Max tokens per API call (overrides config; default: 8192)")
+_parser.add_argument("--model", default=None,
+    help="Model to use, e.g. claude-opus-4-6 (default) or gemini-2.5-flash")
 _args = _parser.parse_args()
 
 CFG = load_config(_args.config)
@@ -404,7 +406,14 @@ def _build_system_prompt(cfg: dict, kernel_dir: Path) -> str:
         - One edit at a time; build and verify after each change.
         - If a build or test fails, revert the change with another edit_file call
           and try a different approach.
-        - Stop as soon as you achieve a confirmed speedup > 1.0x and explain what worked.
+        - Once you achieve a confirmed speedup > 1.0x, write a file called
+          `optimization_note.md` using write_file. It should explain:
+            * What changes were made compared to the baseline
+            * Why each change improves performance
+            * The final speedup achieved
+          Then stop.
+        - If you exhaust all ideas without a speedup, still write `optimization_note.md`
+          summarising what was tried and why it did not help.
     """)
 
 def _build_create_system_prompt(cfg: dict, work_dir: Path, ref_dir: Path) -> str:
@@ -489,11 +498,26 @@ SYSTEM = (
 )
 
 # ---------------------------------------------------------------------------
+# Model dispatch
+# ---------------------------------------------------------------------------
+
+def _is_gemini(model: str) -> bool:
+    return model.startswith("gemini")
+
+
+def _call_model(messages: list[dict], system: str, model: str, max_tokens: int) -> tuple[list[dict], str]:
+    if _is_gemini(model):
+        return _gemini_provider.call(messages, system, model, max_tokens, TOOLS)
+    return _anthropic_provider.call(messages, system, model, max_tokens, TOOLS)
+
+
+# ---------------------------------------------------------------------------
 # Agentic loop
 # ---------------------------------------------------------------------------
 def run_agent(max_turns: int = 30) -> None:
-    mode = CFG.get("mode", "optimize")
-    client = anthropic.Anthropic()
+    mode  = CFG.get("mode", "optimize")
+    model = _args.model or CFG.get("model", "claude-opus-4-6")
+    print(f"Model: {model}")
 
     if mode == "create":
         name = CFG.get("kernel_name", "kernel")
@@ -525,59 +549,50 @@ def run_agent(max_turns: int = 30) -> None:
         print(f"{'─'*60}")
 
         max_tokens = _args.max_tokens or CFG.get("max_tokens", 8192)
-        for attempt in range(5):
-            try:
-                with client.messages.stream(
-                    model="claude-opus-4-6",
-                    max_tokens=max_tokens,
-                    thinking={"type": "adaptive"},
-                    system=SYSTEM,
-                    tools=TOOLS,
-                    messages=messages,
-                ) as stream:
-                    response = stream.get_final_message()
-                break
-            except anthropic.RateLimitError as e:
-                wait = 60 * (attempt + 1)
-                print(f"\n[Rate limit] Waiting {wait}s before retry ({attempt+1}/5)… ({e})")
-                time.sleep(wait)
-        else:
-            raise RuntimeError("Rate limit retries exhausted")
+        content_dicts, stop_reason = _call_model(messages, SYSTEM, model, max_tokens)
 
-        # Print any text Claude produced
-        for block in response.content:
-            if block.type == "text" and block.text.strip():
-                print(f"\n[Claude] {block.text.strip()}")
+        # Print any text the model produced
+        for block in content_dicts:
+            if block["type"] == "text" and block["text"].strip():
+                print(f"\n[Agent] {block['text'].strip()}")
 
-        # Append assistant turn — strip trailing thinking blocks (API rejects them as final block)
-        content = list(response.content)
-        while content and getattr(content[-1], "type", None) == "thinking":
-            content.pop()
-        if content:
+        # Append assistant turn — strip trailing thinking blocks (Anthropic API rejects
+        # them as the final block).  If the entire response is thinking (tokens exhausted
+        # before any output), inject synthetic turns to advance context.
+        content = list(content_dicts)
+        has_non_thinking = any(b["type"] != "thinking" for b in content)
+        if has_non_thinking:
+            while content and content[-1]["type"] == "thinking":
+                content.pop()
             messages.append({"role": "assistant", "content": content})
+        elif content:
+            # All-thinking: inject a synthetic round-trip to unblock the next call.
+            messages.append({"role": "assistant", "content": [{"type": "text", "text": "I need to use the tools to proceed."}]})
+            messages.append({"role": "user", "content": "Please proceed and use the available tools."})
 
         # Done if no tool calls
-        if response.stop_reason == "end_turn":
-            print("\n[Agent] Claude finished.")
+        if stop_reason == "end_turn":
+            print("\n[Agent] Finished.")
             break
 
         # Execute tool calls
         tool_results = []
-        for block in response.content:
-            if block.type != "tool_use":
+        for block in content_dicts:
+            if block["type"] != "tool_use":
                 continue
 
-            print(f"\n  → {block.name}({_fmt_input(block.input)})")
-            result = execute_tool(block.name, block.input)
+            print(f"\n  → {block['name']}({_fmt_input(block['input'])})")
+            result = execute_tool(block["name"], block["input"])
             print(f"  ← {result[:300]}" + ("…" if len(result) > 300 else ""))
 
             tool_results.append({
-                "type": "tool_result",
-                "tool_use_id": block.id,
-                "content": result,
+                "type":      "tool_result",
+                "tool_use_id": block["id"],
+                "tool_name": block["name"],   # kept for Gemini message translation
+                "content":   result,
             })
             # Track test results for create-mode exit condition
-            if block.name == "run_tests" and result.startswith("PASS"):
+            if block["name"] == "run_tests" and result.startswith("PASS"):
                 tests_passed = True
 
         if tool_results:
@@ -588,8 +603,10 @@ def run_agent(max_turns: int = 30) -> None:
             break
 
         if mode == "optimize" and env.best_speedup is not None and env.best_speedup > 1.0:
-            print(f"\n[Agent] Speedup achieved: {env.best_speedup:.4f}x — stopping early.")
-            break
+            note_path = EXAMPLE_DIR / "optimization_note.md"
+            if note_path.exists():
+                print(f"\n[Agent] Speedup achieved: {env.best_speedup:.4f}x and optimization_note.md written — stopping.")
+                break
 
     # Final summary
     print(f"\n{'='*60}")
