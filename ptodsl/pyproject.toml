@@ -15,7 +15,12 @@ authors = [
 dev = ["matplotlib"]
 
 [tool.setuptools]
-packages = ["ptodsl"]
+packages = [
+  "ptodsl",
+  "ptodsl.api",
+  "ptodsl.compiler",
+  "ptodsl.utils",
+]
 
 [tool.setuptools.package-dir]
 ptodsl = "."
