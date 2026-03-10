@@ -6,7 +6,7 @@ from ptodsl import scalar as s
 const = s.const
 
 
-def build():
+def build(enable_swizzle: bool = True):
     M_TILE = 128
     K_QTILE = 64
     K_TILE = 256
@@ -105,7 +105,11 @@ def build():
             c_l0 = pto.alloc_tile(tile_buf_c_256)
 
             for li in pto.range(bid, core_loop, num_blocks):
-                m_idx, n_idx = swizzle_nz(li, m_loop, n_loop, c_swizzle, c_swizzle_m1, c1, c2)
+                if enable_swizzle:
+                    m_idx, n_idx = swizzle_nz(li, m_loop, n_loop, c_swizzle, c_swizzle_m1, c1, c2)
+                else:
+                    m_idx = li // n_loop
+                    n_idx = li % n_loop
                 m_offset = m_idx * c128
                 n_offset = n_idx * c256
                 c_kt = const(K_TILE)
@@ -178,5 +182,10 @@ def build():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    _ = parser.parse_args()
-    print(build())
+    parser.add_argument(
+        "--disable-swizzle",
+        action="store_true",
+        help="Disable swizzled tile traversal and use linear m/n indexing.",
+    )
+    args = parser.parse_args()
+    print(build(enable_swizzle=not args.disable_swizzle))

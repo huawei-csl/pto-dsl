@@ -103,7 +103,13 @@ def _parse_args():
         "--single-lib",
         type=str,
         default="./single_buffer_matmul_auto_sync_kernel.so",
-        help="Path to single-buffer auto-sync shared library.",
+        help="Path to single-buffer auto-sync (swizzle) shared library.",
+    )
+    parser.add_argument(
+        "--single-noswizzle-lib",
+        type=str,
+        default="./single_buffer_matmul_auto_sync_noswizzle_kernel.so",
+        help="Path to single-buffer auto-sync (non-swizzle) shared library.",
     )
     parser.add_argument(
         "--m-list",
@@ -142,12 +148,17 @@ def main():
     single_lib = Path(args.single_lib)
     if not single_lib.is_absolute():
         single_lib = base_dir / single_lib
+    single_noswizzle_lib = Path(args.single_noswizzle_lib)
+    if not single_noswizzle_lib.is_absolute():
+        single_noswizzle_lib = base_dir / single_noswizzle_lib
     if not auto_lib.exists():
         raise FileNotFoundError(f"Auto-sync library not found: {auto_lib}")
     if not manual_lib.exists():
         raise FileNotFoundError(f"Manual-sync library not found: {manual_lib}")
     if not single_lib.exists():
         raise FileNotFoundError(f"Single-buffer library not found: {single_lib}")
+    if not single_noswizzle_lib.exists():
+        raise FileNotFoundError(f"Single-buffer non-swizzle library not found: {single_noswizzle_lib}")
 
     device = get_test_device()
     torch.npu.set_device(device)
@@ -156,13 +167,16 @@ def main():
     auto_mm = load_lib(str(auto_lib))
     manual_mm = load_lib(str(manual_lib))
     single_mm = load_lib(str(single_lib))
+    single_noswizzle_mm = load_lib(str(single_noswizzle_lib))
     m_list = _parse_int_list(args.m_list)
 
     ratios_manual_vs_auto = []
     ratios_single_vs_auto = []
+    ratios_single_vs_single_noswizzle = []
     print(f"auto-sync lib:   {auto_lib}")
     print(f"manual-sync lib: {manual_lib}")
-    print(f"single-buffer lib: {single_lib}")
+    print(f"single-buffer swizzle lib:    {single_lib}")
+    print(f"single-buffer non-swizzle lib: {single_noswizzle_lib}")
     print("")
 
     for n, k in SHAPES_NK:
@@ -175,22 +189,28 @@ def main():
             auto_us = _time_us(auto_mm, a_list, b_list, args.warmup, args.repeat)
             manual_us = _time_us(manual_mm, a_list, b_list, args.warmup, args.repeat)
             single_us = _time_us(single_mm, a_list, b_list, args.warmup, args.repeat)
+            single_noswizzle_us = _time_us(single_noswizzle_mm, a_list, b_list, args.warmup, args.repeat)
 
             flops = 2.0 * m * n * k
             auto_tflops = flops / auto_us / 1e6
             manual_tflops = flops / manual_us / 1e6
             single_tflops = flops / single_us / 1e6
+            single_noswizzle_tflops = flops / single_noswizzle_us / 1e6
             # FLOP ratios (>1 means numerator has higher throughput).
             manual_vs_auto = manual_tflops / auto_tflops
             single_vs_auto = single_tflops / auto_tflops
+            single_vs_single_noswizzle = single_tflops / single_noswizzle_tflops
             ratios_manual_vs_auto.append(manual_vs_auto)
             ratios_single_vs_auto.append(single_vs_auto)
+            ratios_single_vs_single_noswizzle.append(single_vs_single_noswizzle)
 
             print(
                 f"(M,N,K)=({m},{n},{k}) "
-                f"auto={auto_tflops:.3f}TF, manual={manual_tflops:.3f}TF, single={single_tflops:.3f}TF, "
+                f"auto={auto_tflops:.3f}TF, manual={manual_tflops:.3f}TF, "
+                f"single_swizzle={single_tflops:.3f}TF, single_noswizzle={single_noswizzle_tflops:.3f}TF, "
                 f"ratio(manual/auto)={manual_vs_auto:.3f}x, "
-                f"ratio(single/auto)={single_vs_auto:.3f}x"
+                f"ratio(single_swizzle/auto)={single_vs_auto:.3f}x, "
+                f"ratio(single_swizzle/single_noswizzle)={single_vs_single_noswizzle:.3f}x"
             )
         print("")
 
@@ -200,14 +220,31 @@ def main():
     avg_single_vs_auto = sum(ratios_single_vs_auto) / len(ratios_single_vs_auto)
     min_single_vs_auto = min(ratios_single_vs_auto)
     max_single_vs_auto = max(ratios_single_vs_auto)
+    avg_single_vs_single_noswizzle = (
+        sum(ratios_single_vs_single_noswizzle) / len(ratios_single_vs_single_noswizzle)
+    )
+    min_single_vs_single_noswizzle = min(ratios_single_vs_single_noswizzle)
+    max_single_vs_single_noswizzle = max(ratios_single_vs_single_noswizzle)
 
     print("=== Summary ===")
     print(f"avg FLOP ratio(manual/auto): {avg_manual_vs_auto:.3f}x")
     print(f"min FLOP ratio(manual/auto): {min_manual_vs_auto:.3f}x")
     print(f"max FLOP ratio(manual/auto): {max_manual_vs_auto:.3f}x")
-    print(f"avg FLOP ratio(single/auto): {avg_single_vs_auto:.3f}x")
-    print(f"min FLOP ratio(single/auto): {min_single_vs_auto:.3f}x")
-    print(f"max FLOP ratio(single/auto): {max_single_vs_auto:.3f}x")
+    print(f"avg FLOP ratio(single_swizzle/auto): {avg_single_vs_auto:.3f}x")
+    print(f"min FLOP ratio(single_swizzle/auto): {min_single_vs_auto:.3f}x")
+    print(f"max FLOP ratio(single_swizzle/auto): {max_single_vs_auto:.3f}x")
+    print(
+        f"avg FLOP ratio(single_swizzle/single_noswizzle): "
+        f"{avg_single_vs_single_noswizzle:.3f}x"
+    )
+    print(
+        f"min FLOP ratio(single_swizzle/single_noswizzle): "
+        f"{min_single_vs_single_noswizzle:.3f}x"
+    )
+    print(
+        f"max FLOP ratio(single_swizzle/single_noswizzle): "
+        f"{max_single_vs_single_noswizzle:.3f}x"
+    )
 
 
 if __name__ == "__main__":
