@@ -283,7 +283,7 @@ def build(manual_sync: bool = False):
                 for k_idx in pto.range(c0, k_dtile_num, c1):
                     k_offset = k_idx * cKD
 
-                    def run_loop_k(curr_id, next_id, a_curr, a_next):
+                    def run_loop_k(a_curr, a_next):
                         # NOTE: here declare nested function so we can reuse for double-buffering
                         is_first_k_tile = k_idx == c0
 
@@ -327,9 +327,9 @@ def build(manual_sync: bool = False):
 
                     is_curr0 = (k_idx % c2) == c0
                     with pto.if_context(is_curr0, has_else=True) as branch:
-                        run_loop_k(0, 1, a_l1[0], a_l1[1])
+                        run_loop_k(a_l1[0], a_l1[1])
                     with branch.else_context():
-                        run_loop_k(1, 0, a_l1[1], a_l1[0])
+                        run_loop_k(a_l1[1], a_l1[0])
 
                 sv_c = pto.slice_view(
                     tile_view_c_256,
