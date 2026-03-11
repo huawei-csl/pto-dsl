@@ -23,10 +23,10 @@ def _ptr_elem_cpp_type(type_obj):
     type_repr = _type_repr(type_obj)
     if "f32" in type_repr:
         return "float"
+    if "bf16" in type_repr:
+        return "bfloat16_t"
     if "f16" in type_repr:
         return "__fp16"
-    if "bf16" in type_repr:
-        return "__bf16"
     if "i8" in type_repr:
         return "int8_t"
     if "u8" in type_repr:
@@ -78,6 +78,41 @@ def _normalize_stream_ptr(stream_ptr):
     if hasattr(stream_ptr, "value"):
         return ctypes.c_void_p(int(stream_ptr.value))
     return stream_ptr
+
+
+def _discover_include_dirs(toolkit_home):
+    include_dirs = []
+    if toolkit_home:
+        include_dirs.append(pathlib.Path(toolkit_home) / "include")
+
+    env_include_dirs = os.environ.get("PTO_EXTRA_INCLUDE_DIRS", "")
+    for raw in env_include_dirs.split(":"):
+        if raw:
+            include_dirs.append(pathlib.Path(raw))
+
+    isa_include = os.environ.get("PTO_ISA_INCLUDE_DIR")
+    if isa_include:
+        include_dirs.append(pathlib.Path(isa_include))
+
+    for root_var in ("PTO_ISA_ROOT", "PTO_PTO_ISA_ROOT"):
+        repo_root = os.environ.get(root_var)
+        if repo_root:
+            include_dirs.append(pathlib.Path(repo_root) / "include")
+
+    # Fall back to the common sibling workspace layout used by PTO bring-up.
+    repo_candidate = pathlib.Path(__file__).resolve().parents[3].parent / "pto-isa" / "include"
+    include_dirs.append(repo_candidate)
+
+    deduped = []
+    seen = set()
+    for path in include_dirs:
+        resolved = path.expanduser()
+        key = str(resolved)
+        if key in seen or not resolved.exists():
+            continue
+        seen.add(key)
+        deduped.append(resolved)
+    return deduped
 
 
 class JitWrapper:
@@ -142,9 +177,9 @@ class JitWrapper:
         toolkit_home = os.environ.get("ASCEND_TOOLKIT_HOME")
         if not toolkit_home:
             raise RuntimeError("ASCEND_TOOLKIT_HOME is required to compile generated caller.cpp.")
+        include_dirs = _discover_include_dirs(toolkit_home)
         cmd = [
             "bisheng",
-            f"-I{toolkit_home}/include",
             "-fPIC",
             "-shared",
             "-D_FORTIFY_SOURCE=2",
@@ -170,9 +205,14 @@ class JitWrapper:
             "-DMEMORY_BASE",  # TODO: add switch for A5
             "-std=gnu++17",
             str(caller_cpp_path),
+            f"-L{toolkit_home}/lib64",
+            f"-Wl,-rpath,{toolkit_home}/lib64",
+            "-lruntime",
             "-o",
             str(lib_path),
         ]
+        for include_dir in include_dirs:
+            cmd.insert(1, f"-I{include_dir}")
         subprocess.run(cmd, check=True, cwd=str(self._output_dir))
 
     def _resolve_runtime_arg_types(self):
