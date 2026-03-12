@@ -81,11 +81,10 @@ def build():
         is_last_block = tile_block_idx == (tile_block_loop - c1)
         n_col_tail = n_loop - cSwizzle * tile_block_idx
         n_col = s.select(is_last_block, n_col_tail, cSwizzle)
-        m_idx = in_tile_block_idx // n_col
+        m_base = in_tile_block_idx // n_col
         n_idx = tile_block_idx * cSwizzle + (in_tile_block_idx % n_col)
-        odd_block = (tile_block_idx % c2) == c1
-        flipped_m_idx = m_loop - m_idx - c1
-        m_idx = s.select(odd_block, flipped_m_idx, m_idx)
+        row_shift = n_idx % cSwizzle
+        m_idx = (m_base + row_shift) % m_loop
         return m_idx, n_idx
 
     def level1_loop_mn_dynamic_tilesize(
