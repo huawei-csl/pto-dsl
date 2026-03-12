@@ -18,8 +18,8 @@ SHAPES_NK = [
 ]
 N_WARMUP = 5
 N_REPEAT = 20
-PLOT_SHAPES_NK = [(4096, 4096), (16384, 16384)]
-DEFAULT_PLOT_DIR = Path("outputs") / "plots"
+PLOT_SHAPES_NK = [(8192, 8192), (16384, 16384)]
+DEFAULT_PLOT_DIR = Path("fig")
 
 
 def torch_to_ctypes(tensor):
@@ -105,10 +105,10 @@ def _maybe_plot(rows, plot_dir):
     plot_dir.mkdir(parents=True, exist_ok=True)
 
     step_defs = [
-        ("step1", "single_auto_noswizzle_tflops", "Step1 Kernel", "flops_step1_vs_torch_matmul.png"),
-        ("step2", "double_auto_noswizzle_tflops", "Step2 Kernel", "flops_step2_vs_torch_matmul.png"),
-        ("step3", "double_auto_swizzle_tflops", "Step3 Kernel", "flops_step3_vs_torch_matmul.png"),
-        ("step4", "double_manual_swizzle_tflops", "Step4 Kernel", "flops_step4_vs_torch_matmul.png"),
+        ("step1", "single_auto_noswizzle_tflops", "Step1 Kernel", "flops_step1_baseline.py"),
+        ("step2", "double_auto_noswizzle_tflops", "Step2 Kernel", "flops_step2_doublebuf.py"),
+        ("step3", "double_auto_swizzle_tflops", "Step3 Kernel", "flops_step3_swizzle.py"),
+        ("step4", "double_manual_swizzle_tflops", "Step4 Kernel", "flops_step4_manual_pipeline.py"),
     ]
 
     for _, custom_key, custom_label, out_name in step_defs:
@@ -154,7 +154,7 @@ def _maybe_plot(rows, plot_dir):
 
         plt.tight_layout()
         out = plot_dir / out_name
-        plt.savefig(out, dpi=160)
+        plt.savefig(out, dpi=160, format="png")
         plt.close(fig)
         print(f"Saved plot: {out}")
 
