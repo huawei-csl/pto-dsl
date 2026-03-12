@@ -103,6 +103,9 @@ def _maybe_plot(rows, plot_dir):
     plt.rcParams["figure.facecolor"] = "white"
     plt.rcParams["axes.facecolor"] = "white"
     plot_dir.mkdir(parents=True, exist_ok=True)
+    title_scale = 1.5
+    axis_label_scale = 1.5
+    legend_scale = 2.0
 
     step_defs = [
         ("step1", "single_auto_noswizzle_tflops", "Step1 Kernel", "flops_step1_baseline.png"),
@@ -114,12 +117,14 @@ def _maybe_plot(rows, plot_dir):
     for _, custom_key, custom_label, out_name in step_defs:
         fig, axes = plt.subplots(1, 2, figsize=(12, 5), sharey=True)
         for ax, (n, k) in zip(axes, PLOT_SHAPES_NK):
+            base_title_size = ax.title.get_size()
+            base_label_size = ax.xaxis.label.get_size()
             chunk = [r for r in rows if r["n"] == n and r["k"] == k]
             if not chunk:
-                ax.set_title(f"TFLOPS vs M (N={n}, K={k})")
+                ax.set_title(f"TFLOPS vs M (N={n}, K={k})", fontsize=base_title_size * title_scale)
                 ax.text(0.5, 0.5, "No data", transform=ax.transAxes, ha="center", va="center")
-                ax.set_xlabel("M")
-                ax.set_ylabel("TFLOPS")
+                ax.set_xlabel("M", fontsize=base_label_size * axis_label_scale)
+                ax.set_ylabel("TFLOPS", fontsize=base_label_size * axis_label_scale)
                 ax.grid(alpha=0.25)
                 continue
 
@@ -144,13 +149,13 @@ def _maybe_plot(rows, plot_dir):
                 color="#1f77b4",
                 label=custom_label,
             )
-            ax.set_title(f"TFLOPS vs M (N={n}, K={k})")
-            ax.set_xlabel("M")
-            ax.set_ylabel("TFLOPS")
+            ax.set_title(f"TFLOPS vs M (N={n}, K={k})", fontsize=base_title_size * title_scale)
+            ax.set_xlabel("M", fontsize=base_label_size * axis_label_scale)
+            ax.set_ylabel("TFLOPS", fontsize=base_label_size * axis_label_scale)
             ax.set_xlim(left=0)
             ax.set_ylim(bottom=0)
             ax.grid(alpha=0.25)
-            ax.legend(fontsize=8)
+            ax.legend(fontsize=8 * legend_scale)
 
         plt.tight_layout()
         out = plot_dir / out_name
