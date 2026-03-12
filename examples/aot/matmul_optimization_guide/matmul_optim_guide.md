@@ -102,7 +102,7 @@ More DSL-specific syntax details explained in [Appendix A: PTO-DSL syntax note](
 
 This simple 80-line PTO kernel produces numerically correct result on NPU, but the performance is only 50% of `torch.matmul` reference. We will close the gap in the next section.
 
-![image info](./fig/flops_step1_baseline.py)
+![image info](./fig/flops_step1_baseline.png)
 
 # Step 2: Double buffering
 
@@ -149,7 +149,7 @@ b_l0 = [pto.alloc_tile(tile_buf_b_l0), pto.alloc_tile(tile_buf_b_l0)]
 and alternate between the "odd" and "even" buffers across iterations.
 
 Now the FLOPs is doubled for not-so-large matrices:
-![image info](./fig/flops_step1_baseline.py)
+![image info](./fig/flops_step2_doublebuf.png)
 
 For large-enough matrices such as 16384x16384, the FLOPs **suddenly drops**, because the NPU L2 cache is not large enough to hold the entire matrix, and the data is being evicted from cache.
 
@@ -224,13 +224,13 @@ With swizzling, the 16384x16384 case now get high (93.72%) L2 hit rate:
 
 Now the FLOPs is much improved, getting ~90% of the `torch.matmul`
 
-![image info](./fig/flops_step3_swizzle.py)
+![image info](./fig/flops_step3_swizzle.png)
 
 # Step 4: (optional) Manual software pipelining
 
 The last 10% performance gap can be squeezed-out by manual software pipelining [./step4_manual_pipelining.py](./step4_manual_pipelining.py).
 
-![image info](./fig/flops_step4_swizzle.py)
+![image info](./fig/flops_step4_manual_pipeline.png)
 
 Manually arranging synchronization is out of scope for this guide. We are [investigating the compile pass](https://github.com/zhangstevenunity/PTOAS/issues/226) so that the compiler-inserted sync can eventually reach manual performance.
 

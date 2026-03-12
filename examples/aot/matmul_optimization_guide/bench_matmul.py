@@ -105,10 +105,10 @@ def _maybe_plot(rows, plot_dir):
     plot_dir.mkdir(parents=True, exist_ok=True)
 
     step_defs = [
-        ("step1", "single_auto_noswizzle_tflops", "Step1 Kernel", "flops_step1_baseline.py"),
-        ("step2", "double_auto_noswizzle_tflops", "Step2 Kernel", "flops_step2_doublebuf.py"),
-        ("step3", "double_auto_swizzle_tflops", "Step3 Kernel", "flops_step3_swizzle.py"),
-        ("step4", "double_manual_swizzle_tflops", "Step4 Kernel", "flops_step4_manual_pipeline.py"),
+        ("step1", "single_auto_noswizzle_tflops", "Step1 Kernel", "flops_step1_baseline.png"),
+        ("step2", "double_auto_noswizzle_tflops", "Step2 Kernel", "flops_step2_doublebuf.png"),
+        ("step3", "double_auto_swizzle_tflops", "Step3 Kernel", "flops_step3_swizzle.png"),
+        ("step4", "double_manual_swizzle_tflops", "Step4 Kernel", "flops_step4_manual_pipeline.png"),
     ]
 
     for _, custom_key, custom_label, out_name in step_defs:
