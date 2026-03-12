@@ -195,7 +195,7 @@ l2_size=100663296  # 96 MiB
 
 # Step 3: "Swizzling" for L2 cache reuse
 
-Swizzling improves L2 cache use across multi-cores. We borrow this figure [from triton matmul](https://triton-lang.org/main/getting-started/tutorials/03-matrix-multiplication.html#l2-cache-optimizations):
+Swizzling improves L2 cache reuse across multi-cores. We borrow this figure [from triton matmul](https://triton-lang.org/main/getting-started/tutorials/03-matrix-multiplication.html#l2-cache-optimizations):
 <img src="https://triton-lang.org/main/_images/grouped_vs_row_major_ordering.png" alt="Grouped vs row-major ordering (from Triton)" width="70%" />
 
 [step3_swizzle.py](./step3_swizzle.py) takes one of the swizzle scheme [from catlass](https://gitcode.com/cann/catlass/blob/v1.4.0/include/catlass/gemm/block/block_swizzle.hpp), while keeping the rest of code unchanged. [step3_swizzle_numpy_sim.py](./step3_swizzle_numpy_sim.py) explains the swizzle scheme intuitively.
@@ -210,7 +210,7 @@ msprof op \
     python ./run_matmul.py --variant step2-doublebuffer
 ```
 
-For small 4096x4096 matrix, L2 cache is high (97.88%) without an swizzled loop order:
+For small 4096x4096 matrix, L2 cache hit is high (97.88%) without an swizzled loop order:
  
 <img src="./fig/cachehit_N4096.png" alt="cachehit_N4096" width="70%" />
 
@@ -218,7 +218,7 @@ For larger 16384x16384 matrix that exceeds L2, L2 cache hit is low (30.9%) witho
 
 <img src="./fig/cachehit_N16384.png" alt="cachehit_N16384" width="70%" />
 
-With swizzling, the 16384x16384 case now get high (93.72%) L2 hit rate:
+With swizzling, the 16384x16384 case now gets high (93.72%) L2 hit rate:
 
 <img src="./fig/cachehit_N16384_swizzle.png" alt="cachehit_N16384_swizzle" width="70%" />
 
