@@ -61,7 +61,7 @@ def build_kernel(
             "tile_buf_biasTile": tile_buf_biasTile,
         }
 
-    @jit(meta_data=meta_data, block_dim=1, enable_insert_sync=False)
+    @jit(meta_data=meta_data, block_dim=1, enable_insert_sync=True)
     def RunTMATMULSplitK(
         out_ptr: "ptr_type",
         a_ptr: "ptr_type",
@@ -133,14 +133,10 @@ def build_kernel(
                     with pto.if_context(isBias):
                         pto.load(svBias, biasDataTile)
 
-                    pto.record_wait_pair("LOAD", "MOV_M2L", event_id=0)
-
                     tile.mov(aMatTile, aTile)
                     tile.mov(bMatTile, bTile)
                     with pto.if_context(isBias):
                         tile.mov(biasDataTile, biasTile)
-
-                    pto.record_wait_pair("MOV_M2L", "MATMUL", event_id=0)
 
                     is_i0 = s.eq(i, c0)
 
@@ -157,9 +153,6 @@ def build_kernel(
                         lambda: tile.matmul_acc(cTile, aTile, bTile, cTile),
                     )
 
-                    pto.record_wait_pair("MATMUL", "LOAD", event_id=0)
-
-                pto.record_wait_pair("MATMUL", "STORE_ACC", event_id=0)
                 svOut = pto.slice_view(
                     tile_view_out,
                     source=tvOut,
@@ -167,7 +160,6 @@ def build_kernel(
                     sizes=[cTileM, cTileN],
                 )
                 pto.store(cTile, svOut)
-                pto.record_wait_pair("STORE_ACC", "MATMUL", event_id=0)
 
     return RunTMATMULSplitK
 

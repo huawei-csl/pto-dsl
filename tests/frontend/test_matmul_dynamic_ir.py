@@ -1,6 +1,6 @@
 from mlir.dialects import arith, func, pto as _pto, scf
 from mlir.dialects.arith import CmpIPredicate
-from mlir.dialects.pto import EVENT_ID0, TLOAD, TMATMUL, TMOV_M2L, TSTORE_ACC
+from mlir.dialects.pto import TLOAD
 from mlir.ir import Context, F32Type, IndexType, InsertionPoint, IntegerType, Location, Module
 from ptodsl import to_ir_module
 from ptodsl import pto, tile
@@ -134,14 +134,10 @@ def build_pythonic(
                     with pto.if_context(isBias):
                         pto.load(svBias, biasDataTile)
 
-                    pto.record_wait_pair("LOAD", "MOV_M2L", event_id=0)
-
                     tile.mov(aMatTile, aTile)
                     tile.mov(bMatTile, bTile)
                     with pto.if_context(isBias):
                         tile.mov(biasDataTile, biasTile)
-
-                    pto.record_wait_pair("MOV_M2L", "MATMUL", event_id=0)
                     is_i0 = s.eq(i, c0)
 
                     def _first_iter():
@@ -156,9 +152,6 @@ def build_pythonic(
                         _first_iter,
                         lambda: tile.matmul_acc(cTile, aTile, bTile, cTile),
                     )
-                    pto.record_wait_pair("MATMUL", "LOAD", event_id=0)
-
-                pto.record_wait_pair("MATMUL", "STORE_ACC", event_id=0)
                 svOut = pto.slice_view(
                     tile_view_out,
                     source=tvOut,
@@ -166,7 +159,6 @@ def build_pythonic(
                     sizes=[cTileM, cTileN],
                 )
                 pto.store(cTile, svOut)
-                pto.record_wait_pair("STORE_ACC", "MATMUL", event_id=0)
 
     return RunTMATMULSplitK
 
@@ -321,9 +313,6 @@ def build_verbose(
                             pto.TLoadOp(None, svBias, biasDataTile)
                             scf.YieldOp([])
 
-                        pto.record_event(TLOAD, TMOV_M2L, EVENT_ID0)
-                        pto.wait_event(TLOAD, TMOV_M2L, EVENT_ID0)
-
                         pto.TMovOp(None, aMatTile, aTile)
                         pto.TMovOp(None, bMatTile, bTile)
 
@@ -331,9 +320,6 @@ def build_verbose(
                         with InsertionPoint(if_mov_bias.then_block):
                             pto.TMovOp(None, biasDataTile, biasTile)
                             scf.YieldOp([])
-
-                        pto.record_event(TMOV_M2L, TMATMUL, EVENT_ID0)
-                        pto.wait_event(TMOV_M2L, TMATMUL, EVENT_ID0)
 
                         is_i0 = arith.CmpIOp(CmpIPredicate.eq, i, c0).result
                         if_i0 = scf.IfOp(is_i0, [], hasElse=True)
@@ -350,18 +336,12 @@ def build_verbose(
                             pto.TMatmulAccOp(None, cTile, aTile, bTile, cTile)
                             scf.YieldOp([])
 
-                        pto.record_event(TMATMUL, TLOAD, EVENT_ID0)
-                        pto.wait_event(TMATMUL, TLOAD, EVENT_ID0)
                         scf.YieldOp([])
 
-                    pto.record_event(TMATMUL, TSTORE_ACC, EVENT_ID0)
-                    pto.wait_event(TMATMUL, TSTORE_ACC, EVENT_ID0)
                     svOut = pto.PartitionViewOp(
                         tile_view_out, tvOut, offsets=[row_off, c0], sizes=[cTileM, cTileN]
                     ).result
                     pto.TStoreOp(None, cTile, svOut)
-                    pto.record_event(TSTORE_ACC, TMATMUL, EVENT_ID0)
-                    pto.wait_event(TSTORE_ACC, TMATMUL, EVENT_ID0)
                     scf.YieldOp([])
 
             func.ReturnOp([])

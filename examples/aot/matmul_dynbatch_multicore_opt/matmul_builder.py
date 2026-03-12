@@ -102,7 +102,6 @@ def build(
             # B is shared across batches: load once GM->L1->L0B.
             svB = pto.slice_view(tile_view_b, source=tvB, offsets=[c0, c0], sizes=[cK, cTileN])
             pto.load(svB, bMatTile)
-            pto.record_wait_pair("LOAD", "MOV_M2L", event_id=0)
             tile.mov(bMatTile, bTile)
 
             for b_idx in pto.range(b_start, b_end, c1):
@@ -120,16 +119,9 @@ def build(
                 )
 
                 pto.load(svA, aMatTile)
-                pto.record_wait_pair("LOAD", "MOV_M2L", event_id=0)
-
                 tile.mov(aMatTile, aTile)
-                pto.record_wait_pair("MOV_M2L", "MATMUL", event_id=0)
                 tile.matmul(aTile, bTile, cTile)
-                pto.record_wait_pair("MATMUL", "LOAD", event_id=0)
-
-                pto.record_wait_pair("MATMUL", "STORE_ACC", event_id=0)
                 pto.store(cTile, svOut)
-                pto.record_wait_pair("STORE_ACC", "MATMUL", event_id=0)
 
     return RunTMATMULSplitK
 

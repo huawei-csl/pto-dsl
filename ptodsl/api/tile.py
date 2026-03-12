@@ -12,8 +12,16 @@ def add(lhs, rhs, out):
     _pto.TAddOp(lhs, rhs, out)
 
 
+def adds(src, scalar, out):
+    _pto.TAddSOp(src, _unwrap(scalar), out)
+
+
 def sub(lhs, rhs, out):
     _pto.TSubOp(lhs, rhs, out)
+
+
+def subs(src, scalar, out):
+    _pto.TSubSOp(src, _unwrap(scalar), out)
 
 
 def div(lhs, rhs, out):
@@ -22,6 +30,10 @@ def div(lhs, rhs, out):
 
 def mul(lhs, rhs, out):
     _pto.TMulOp(lhs, rhs, out)
+
+
+def muls(src, scalar, out):
+    _pto.TMulSOp(src, _unwrap(scalar), out)
 
 
 def or_(lhs, rhs, out):
@@ -42,6 +54,10 @@ def gather(src, out, indices=None, *, mask_pattern=None):
         _pto.TGatherOp(src, out, maskPattern=mask)
     else:
         _pto.TGatherOp(src, out, indices=indices)
+
+
+def scatter(src, indices, out):
+    _pto.TScatterOp(src, indices, out)
 
 
 def exp(inp, out):
@@ -70,6 +86,11 @@ def rsqrt(inp, out):
 
 def reciprocal(inp, out):
     _pto.TRecipOp(inp, out)
+
+
+def cvt(src, dst, *, round_mode="ROUND"):
+    rmode = _pto.RoundModeAttr.get(getattr(_pto.RoundMode, round_mode))
+    _pto.TCvtOp(src, dst, rmode=rmode)
 
 
 def matmul(lhs, rhs, out):
@@ -128,6 +149,10 @@ def col_expand(src, dst):
     _pto.TColExpandOp(src=src, dst=dst)
 
 
+def expands(scalar, dst):
+    _pto.TExpandsOp(_unwrap(scalar), dst)
+
+
 def subset(source, offsets, sizes):
     offset_vals = [_unwrap(v) for v in offsets]
     return _pto.subset(source, offset_vals, sizes)
@@ -140,11 +165,15 @@ def print(source):
 __all__ = [
     "mov",
     "add",
+    "adds",
     "sub",
+    "subs",
     "div",
     "mul",
+    "muls",
     "or_",
     "gather",
+    "scatter",
     "exp",
     "log",
     "relu",
@@ -152,6 +181,7 @@ __all__ = [
     "sqrt",
     "rsqrt",
     "reciprocal",
+    "cvt",
     "matmul",
     "matmul_bias",
     "matmul_acc",
@@ -166,5 +196,6 @@ __all__ = [
     "col_max",
     "col_prod",
     "col_expand",
+    "expands",
     "subset",
 ]

@@ -58,9 +58,6 @@ def build():
             b_l0 = [pto.alloc_tile(tile_buf_b_l0_256), pto.alloc_tile(tile_buf_b_l0_256)]
             c_l0 = pto.alloc_tile(tile_buf_c_256)
 
-            pto.record_event("MATMUL", "MOV_M2L", event_id=[0, 1])
-            pto.record_event("MOV_M2L", "LOAD", event_id=[0, 1, 2, 3])
-
             for li in pto.range(bid, core_loop, num_blocks):
                 m_idx, n_idx = swizzle_nz(li, m_loop, n_loop, c_swizzle, c_swizzle_m1, c1, c2)
                 m_offset = m_idx * c128
@@ -71,7 +68,7 @@ def build():
 
                 not_first_tile = li != bid
                 with pto.if_context(not_first_tile):
-                    pto.wait_event("STORE_ACC", "MATMUL", event_id=0)
+                    pto.barrier("MATMUL")
 
                 sv_a0 = pto.slice_view(
                     tile_view_a,
@@ -79,9 +76,7 @@ def build():
                     offsets=[m_offset, c0],
                     sizes=[const(M_TILE), c_kd],
                 )
-                pto.wait_event("MOV_M2L", "LOAD", event_id=0)
                 pto.load(sv_a0, a_l1[0])
-                pto.record_event("LOAD", "MOV_M2L", event_id=0)
 
                 for k_idx in pto.range(c0, k_dtile_num, c1):
                     k_offset = k_idx * c_kd
@@ -99,9 +94,7 @@ def build():
                                 sizes=[c_kt, c_nt],
                             )
 
-                            pto.wait_event("MOV_M2L", "LOAD", event_id=b_evt)
                             pto.load(sv_b, b_l1[h])
-                            pto.record_event("LOAD", "MOV_M2L", event_id=b_evt)
 
                             for quarter in range(4):
                                 phase = h * 4 + quarter
@@ -109,24 +102,9 @@ def build():
                                 a_col = const(phase * K_QTILE)
                                 b_row = const(quarter * K_QTILE)
 
-                                pto.wait_event("MATMUL", "MOV_M2L", event_id=ping)
-                                if phase == 0:
-                                    pto.wait_event("LOAD", "MOV_M2L", event_id=curr_id)
-
                                 tile.extract(a_curr, c0, a_col, a_l0[ping])
-                                if phase == 7:
-                                    pto.record_event("MOV_M2L", "LOAD", event_id=curr_id)
-
-                                if quarter == 0:
-                                    pto.wait_event("LOAD", "MOV_M2L", event_id=b_evt)
 
                                 tile.extract(b_l1[h], b_row, c0, b_l0[ping])
-                                pto.record_event("MOV_M2L", "MATMUL", event_id=0)
-
-                                if quarter == 3:
-                                    pto.record_event("MOV_M2L", "LOAD", event_id=b_evt)
-
-                                pto.wait_event("MOV_M2L", "MATMUL", event_id=0)
                                 if phase == 0:
                                     pto.cond(
                                         is_first_k_tile,
@@ -136,8 +114,6 @@ def build():
                                 else:
                                     tile.matmul_acc(c_l0, a_l0[ping], b_l0[ping], c_l0)
 
-                                pto.record_event("MATMUL", "MOV_M2L", event_id=ping)
-
                         with pto.if_context(k_idx + c1 < k_dtile_num):
                             sv_a_next = pto.slice_view(
                                 tile_view_a,
@@ -145,9 +121,7 @@ def build():
                                 offsets=[m_offset, k_offset + c_kd],
                                 sizes=[const(M_TILE), c_kd],
                             )
-                            pto.wait_event("MOV_M2L", "LOAD", event_id=next_id)
                             pto.load(sv_a_next, a_next)
-                            pto.record_event("LOAD", "MOV_M2L", event_id=next_id)
 
                     is_curr0 = (k_idx % c2) == c0
                     with pto.if_context(is_curr0, has_else=True) as branch:
@@ -161,18 +135,7 @@ def build():
                     offsets=[m_offset, n_offset],
                     sizes=[const(M_TILE), c_nt],
                 )
-                pto.record_wait_pair("MATMUL", "STORE_ACC", event_id=0)
                 pto.store(c_l0, sv_c)
-
-                with pto.if_context(li + num_blocks < core_loop):
-                    pto.record_event("STORE_ACC", "MATMUL", event_id=0)
-
-            pto.wait_event("MOV_M2L", "LOAD", event_id=3)
-            pto.wait_event("MOV_M2L", "LOAD", event_id=2)
-            pto.wait_event("MOV_M2L", "LOAD", event_id=1)
-            pto.wait_event("MOV_M2L", "LOAD", event_id=0)
-            pto.wait_event("MATMUL", "MOV_M2L", event_id=0)
-            pto.wait_event("MATMUL", "MOV_M2L", event_id=1)
 
     return matmul_kernel_ABt
 
