@@ -17,6 +17,8 @@
 - [Appendix A: PTO-DSL syntax note](#appendix-a-pto-dsl-syntax-note)
 - [Appendix B: Using NPU profiler](#appendix-b-using-npu-profiler)
 
+**To reproduce all results shown in this guide**, see commands in [README.md](./README.md)
+
 # Motivation
 
 This guide is the NPU version of "step-by-step Matmul optimization", a popular article style for Nvidia GPUs (e.g. [for A100](https://siboehm.com/articles/22/CUDA-MMM) and [for H100](https://cudaforfun.substack.com/p/outperforming-cublas-on-h100-a-worklog)), but never written for our NPUs before.
@@ -24,8 +26,6 @@ This guide is the NPU version of "step-by-step Matmul optimization", a popular a
 I intentionally keep the code samples **minimum, hackable, from-scatch, without magical templates and wrappers**, to make it easy to follow than the more advanced "Matmul optimization practices" [in catlass](https://gitcode.com/cann/catlass/blob/master/docs/contents/advanced/matmul_template_summary.md) or [in AscendC](https://www.hiascend.com/document/detail/zh/canncommercial/850/opdevg/Ascendcopdevg/atlas_ascendc_best_practices_10_10006.html) (which hide all optimization tricks behind templates and wrappers)
 
 We will compare our custom kernel's performance to `torch.matmul` that invokes [aclnnMatmul](https://www.hiascend.com/document/detail/zh/canncommercial/850/API/aolapi/context/ops-nn/aclnnMatmul.md) (our "cuBLAS" for NPU), internally implemented by [many thousands of lines of AscendC](https://gitcode.com/cann/ops-nn/tree/v8.5.0/matmul/mat_mul_v3/op_kernel). We show step-by-step to how match the performance of such carefully-optimized library, using **only ~100 lines of Python DSL**.
-
-**To reproduce all results shown in this guide**, see commands in [README.md](./README.md)
 
 # Step 0: NPU programming crash course for CUDA/triton programmers
 
