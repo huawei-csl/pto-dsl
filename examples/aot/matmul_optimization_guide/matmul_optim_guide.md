@@ -232,7 +232,7 @@ The last 10% performance gap can be squeezed-out by manual software pipelining [
 
 ![image info](./fig/flops_step4_manual_pipeline.png)
 
-Even with manual sync, the code just increases from ~100 lines to ~150 lines of Python, still much shorter than library code! How manually arrange the sync flags is out of scope for this guide. We are [investigating the compile pass](https://github.com/zhangstevenunity/PTOAS/issues/226) so that the compiler-inserted sync can eventually reach manual performance.
+Even with manual sync, the code just increases from ~100 lines to ~150 lines of Python, still much shorter than library code! How to manually arrange the sync flags is out of scope for this guide. We are [investigating the compile pass](https://github.com/zhangstevenunity/PTOAS/issues/226) so that the compiler-inserted sync can eventually reach manual performance.
 
 # Appendix A: PTO-DSL syntax note
 
