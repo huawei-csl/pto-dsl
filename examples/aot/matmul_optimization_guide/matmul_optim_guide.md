@@ -87,15 +87,15 @@ Why choose this particular tile size:
 See [step1_baseline_numpy_sim.py](./step1_baseline_numpy_sim.py) for the full "numpy emulation code" that explains the algorithm logic. It's the most basic "split-MN matmul" where each core outputs its own `C_tile = C[i1:i2,j1:j2]`. We leave Split-K and Stream-K matmuls for future posts. The key code components are:
 - The top-level loop `for li in range(core_loop):` comes from our "persistent kernel" requirement explained in [Typical kernel launch syntax](#typical-kernel-launch-syntax). Instead of having two-level "row and column loops", we bundle them together into a single-level `core_loop = n_loop * m_loop`, where each iteration can be independently assigned to a different core, and completes its own `c_tile` calculation. 
 - Then only need to accumulate over the inner K-dimension:
-    - The second-level loop `for k_idx in range(k_dtile_num)` is for "GM - L1 level" iterations. Once the current tile on `L1` are fully consumed by matmul thus no longer needed, load the next tile from GM
-    - The third-level loop `for phase in range(8):` is for "L1 - L0 level" iterations. Once the current tile on `L0` are fully consumed by matmul thus no longer needed, load the next tile from L1.
-    - Notice that the third-level loop can be **statically unrolled** because we have a fixed ratio between L1:L0 tile sizes. Because L0 size is smaller than L1 size, more than one "L0 level iterations" is required to match each "L1 level iteration".
+    - The second-level loop `for k_idx in range(k_dtile_num)` is for "GM - L1 level" iterations. Once the current tile on `L1` are fully consumed by matmul thus no longer needed, load the next tile from `GM`
+    - The third-level loop `for phase in range(8):` is for "L1 - L0 level" iterations. Once the current tile on `L0` are fully consumed by matmul thus no longer needed, load the next tile from `L1`.
+    - Notice that the third-level loop can be **statically unrolled** because we have a fixed ratio between `L1`:`L0` tile sizes. Because `L0` size is smaller than `L1` size, more than one "L0 level iterations" is required to match each "L1 level iteration".
 
 Then, we just translate this numpy emulation code into equivalent PTO-DSL code [step1_baseline.py](./step1_baseline.py) and [common_utils.py]([common_utils.py]). The PTO code logic largely follows the numpy emulation, just using NPU-specific data movement and compute APIs:
-- Use `pto.load` ([TLOAD](https://github.com/PTO-ISA/pto-isa/blob/5de2d24d53e8cf39dec5fc11f997d1e74fa7190c/docs/isa/TLOAD.md)) for GM->L1 load
-- Use `tile.extract `([TEXTRACT](https://github.com/PTO-ISA/pto-isa/blob/5de2d24d53e8cf39dec5fc11f997d1e74fa7190c/docs/isa/TEXTRACT.md)) for L1->L0 load
+- Use `pto.load` ([TLOAD](https://github.com/PTO-ISA/pto-isa/blob/5de2d24d53e8cf39dec5fc11f997d1e74fa7190c/docs/isa/TLOAD.md)) for `GM`->`L1` load
+- Use `tile.extract `([TEXTRACT](https://github.com/PTO-ISA/pto-isa/blob/5de2d24d53e8cf39dec5fc11f997d1e74fa7190c/docs/isa/TEXTRACT.md)) for `L1`->`L0A`, `L1`->`L0B` loads
 - Use `tile.matmul`/`tile.matmul_acc` ([TMATMUL](/https://github.com/PTO-ISA/pto-isa/blob/5de2d24d53e8cf39dec5fc11f997d1e74fa7190c/docs/isa/TMATMUL_ACC.md)/[TMATMUL_ACC](https://github.com/PTO-ISA/pto-isa/blob/5de2d24d53e8cf39dec5fc11f997d1e74fa7190c/docs/isa/TMATMUL_ACC.md)) for compute on L0
-- Use `pto.store` ([TSTORE](https://github.com/PTO-ISA/pto-isa/blob/5de2d24d53e8cf39dec5fc11f997d1e74fa7190c/docs/isa/TSTORE.md)) for L0C->GM store
+- Use `pto.store` ([TSTORE](https://github.com/PTO-ISA/pto-isa/blob/5de2d24d53e8cf39dec5fc11f997d1e74fa7190c/docs/isa/TSTORE.md)) for `L0C`->`GM` store
 - Use native Python `for i in range()` for statically unrolled loop, and `for i in pto.range()` for run-time dynamic loop. Similar to `if`/`else` branching.
 
 More DSL-specific syntax details explained in [Appendix A: PTO-DSL syntax note](#appendix-a-pto-dsl-syntax-note)
