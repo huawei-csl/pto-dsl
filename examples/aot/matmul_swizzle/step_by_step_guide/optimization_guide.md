@@ -134,26 +134,33 @@ python ./step1_baseline_numpy_sim.py
 - **Phase loop (build-time unrolled in ptodsl)**
   - NumPy: `for phase in range(8)`
   - ptodsl: same Python loop, used for static unrolling in IR build
-- **First-accumulate logic**
-  - NumPy: `if phase == 0 and is_first_k_tile: c_tile = prod else: c_tile += prod`
-  - ptodsl: `if phase == 0` + `pto.if_context(is_first_k_tile, has_else=True)` with `matmul` / `matmul_acc`
+- **Tile allocation style (explicit, one-time)**
+  - NumPy: allocates `a_l1`, `b_l1`, `a_l0`, `b_l0`, `c_tile` once before the main compute loop using `np.empty(...)`
+  - ptodsl: allocates tile buffers once per program scope via `pto.alloc_tile(...)`
+- **Per-iteration tile load style**
+  - NumPy: uses in-place writes (for example `a_l1[:, :] = ...`) to emulate tile memory reuse
+  - ptodsl: uses `tile.load(...)` into already-allocated tile buffers
+- **Accumulation form**
+  - NumPy: resets accumulator by `c_tile.fill(0.0)` for each output tile, then always does `c_tile += ...`
+  - ptodsl: uses `matmul` for first partial and `matmul_acc` for the rest; mathematically equivalent to zero-init + accumulate
 
-### Why `b_l0.T` is needed (and how it maps to ptodsl)
+### Why no `b_l0.T` is needed now (and how it maps to ptodsl)
 
-In this tutorial, `b` is stored as shape `[n, k]`, while `a` is `[m, k]`.
+In this tutorial, `b` is stored as shape `[n, k]`, while `a` is `[m, k]`.  
+The simulator stores `b_l1` as `[K_TILE, N_FULL]` (transposed once on load), then extracts `b_l0` as `[K_QTILE, N_FULL]`.
 
 - NumPy quarter tile:
   - `a_l0` shape is `[M_TILE, K_QTILE]`
-  - `b_l0` shape is `[N_FULL, K_QTILE]`
+  - `b_l0` shape is `[K_QTILE, N_FULL]`
 - To compute output tile `[M_TILE, N_FULL]`, we need:
   - `[M_TILE, K_QTILE] @ [K_QTILE, N_FULL]`
-  - therefore NumPy uses `a_l0 @ b_l0.T`
+  - therefore NumPy now uses `a_l0 @ b_l0` directly (no extra transpose at matmul time)
 
 In ptodsl, this transpose handling is embedded by the tensor/view layout settings and tile ops:
 - `tv_b` is created with `layout="DN"` in `step1_baseline.py`
 - `tile.extract(...)` and `tile.matmul(...)` then consume B in the expected orientation for GEMM
 
-So `b_l0.T` in NumPy is the explicit equivalent of what ptodsl layout + tile pipeline already encodes implicitly.
+So the one-time transpose at `b_l1` load in NumPy is the explicit equivalent of what ptodsl layout + tile pipeline already encode implicitly.
 
 ### Why accumulate in `float32`
 
@@ -161,7 +168,13 @@ The original kernel metadata sets:
 - input dtype: `float16`
 - accumulator dtype: `float32`
 
-That is why the NumPy simulation casts tile loads to `float32` and keeps `c_tile`/`c` as `float32`. This mirrors:
+That is why the NumPy simulation keeps tile buffers (`a_l1`, `b_l1`, `a_l0`, `b_l0`) in `float16`, keeps `c_tile`/`c` in `float32`, and casts to `float32` only right before matmul:
+
+```python
+c_tile += a_l0.astype(np.float32) @ b_l0.astype(np.float32)
+```
+
+This mirrors:
 - `acc_dtype = pto.float32`
 - `tile_buf_c` using `acc_dtype`
 

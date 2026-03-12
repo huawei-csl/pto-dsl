@@ -8,8 +8,8 @@ N_FULL = 256
 
 
 def _print_tile_memory(name, arr):
-    mib = arr.nbytes / (1024**2)
-    print(f"[tile-mem] {name}: shape={arr.shape}, dtype={arr.dtype}, bytes={arr.nbytes} ({mib:.3f} MiB)")
+    kib = arr.nbytes / 1024
+    print(f"[tile-mem] {name}: shape={arr.shape}, dtype={arr.dtype}, bytes={arr.nbytes} ({kib:.1f} KiB)")
 
 
 def step1_numpy_sim(a, b):
@@ -35,10 +35,15 @@ def step1_numpy_sim(a, b):
 
     # Explicit tile-buffer allocation (mirrors pto.alloc_tile in step1_baseline.py).
     # Keep shapes fixed to tutorial constants for easy hardware-memory cross-checks.
+    # a_l1: M_TILE * K_DTILE * sizeof(float16) = 128 * 512 * 2 = 131072 B = 128 KiB
     a_l1 = np.empty((M_TILE, K_DTILE), dtype=np.float16)
+    # b_l1: K_TILE * N_FULL * sizeof(float16) = 256 * 256 * 2 = 131072 B = 128 KiB
     b_l1 = np.empty((K_TILE, N_FULL), dtype=np.float16)
+    # a_l0: M_TILE * K_QTILE * sizeof(float16) = 128 * 64 * 2 = 16384 B = 16 KiB
     a_l0 = np.empty((M_TILE, K_QTILE), dtype=np.float16)
+    # b_l0: K_QTILE * N_FULL * sizeof(float16) = 64 * 256 * 2 = 32768 B = 32 KiB
     b_l0 = np.empty((K_QTILE, N_FULL), dtype=np.float16)
+    # c_tile: M_TILE * N_FULL * sizeof(float32) = 128 * 256 * 4 = 131072 B = 128 KiB
     c_tile = np.empty((M_TILE, N_FULL), dtype=np.float32)
 
     _print_tile_memory("a_l1", a_l1)
@@ -79,6 +84,10 @@ def step1_numpy_sim(a, b):
                 a_l0[:, :] = a_l1[:, a_col : a_col + K_QTILE]
                 b_l0[:, :] = b_l1[b_row : b_row + K_QTILE, :]
 
+                # Emulated tile matmul instruction:
+                #   lhs a_l0: [M_TILE, K_QTILE] = [128, 64], fp16 source
+                #   rhs b_l0: [K_QTILE, N_FULL] = [64, 256], fp16 source
+                #   out c_tile: [M_TILE, N_FULL] = [128, 256], fp32 accumulate
                 # Keep tile storage in fp16; cast only right at matmul for fp16->fp32 accumulate.
                 c_tile += a_l0.astype(np.float32) @ b_l0.astype(np.float32)
 
