@@ -20,31 +20,31 @@ def build_meta_data():
         tv_2d = pto.TensorType(rank=2, dtype=dtype)
 
         tile_view_a = pto.SubTensorType(shape=[M_TILE, K_DTILE], dtype=dtype)
-        tile_view_b_256 = pto.SubTensorType(shape=[K_TILE, N_FULL], dtype=dtype)
-        tile_view_c_256 = pto.SubTensorType(shape=[M_TILE, N_FULL], dtype=dtype)
+        tile_view_b = pto.SubTensorType(shape=[K_TILE, N_FULL], dtype=dtype)
+        tile_view_c = pto.SubTensorType(shape=[M_TILE, N_FULL], dtype=dtype)
 
         b_l1_cfg = pto.TileBufConfig(blayout="RowMajor", slayout="ColMajor", s_fractal_size=512)
 
         tile_buf_a_l1 = pto.TileBufType(shape=[M_TILE, K_DTILE], dtype=dtype, memory_space="MAT")
-        tile_buf_b_l1_256 = pto.TileBufType(
+        tile_buf_b_l1 = pto.TileBufType(
             shape=[K_TILE, N_FULL], dtype=dtype, memory_space="MAT", config=b_l1_cfg
         )
         tile_buf_a_l0 = pto.TileBufType(shape=[M_TILE, K_QTILE], dtype=dtype, memory_space="LEFT")
-        tile_buf_b_l0_256 = pto.TileBufType(shape=[K_QTILE, N_FULL], dtype=dtype, memory_space="RIGHT")
-        tile_buf_c_256 = pto.TileBufType(shape=[M_TILE, N_FULL], dtype=acc_dtype, memory_space="ACC")
+        tile_buf_b_l0 = pto.TileBufType(shape=[K_QTILE, N_FULL], dtype=dtype, memory_space="RIGHT")
+        tile_buf_c = pto.TileBufType(shape=[M_TILE, N_FULL], dtype=acc_dtype, memory_space="ACC")
 
         return {
             "ptr_type": ptr_type,
             "i32": i32,
             "tv_2d": tv_2d,
             "tile_view_a": tile_view_a,
-            "tile_view_b_256": tile_view_b_256,
-            "tile_view_c_256": tile_view_c_256,
+            "tile_view_b": tile_view_b,
+            "tile_view_c": tile_view_c,
             "tile_buf_a_l1": tile_buf_a_l1,
-            "tile_buf_b_l1_256": tile_buf_b_l1_256,
+            "tile_buf_b_l1": tile_buf_b_l1,
             "tile_buf_a_l0": tile_buf_a_l0,
-            "tile_buf_b_l0_256": tile_buf_b_l0_256,
-            "tile_buf_c_256": tile_buf_c_256,
+            "tile_buf_b_l0": tile_buf_b_l0,
+            "tile_buf_c": tile_buf_c,
         }
 
     return meta_data

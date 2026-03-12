@@ -53,10 +53,10 @@ def build():
             tv_c = pto.as_tensor(tv_2d, ptr=c_ptr, shape=[m_total, n_total], strides=[n_total, c1])
 
             a_l1 = [pto.alloc_tile(tile_buf_a_l1), pto.alloc_tile(tile_buf_a_l1)]
-            b_l1 = [pto.alloc_tile(tile_buf_b_l1_256), pto.alloc_tile(tile_buf_b_l1_256)]
+            b_l1 = [pto.alloc_tile(tile_buf_b_l1), pto.alloc_tile(tile_buf_b_l1)]
             a_l0 = [pto.alloc_tile(tile_buf_a_l0), pto.alloc_tile(tile_buf_a_l0)]
-            b_l0 = [pto.alloc_tile(tile_buf_b_l0_256), pto.alloc_tile(tile_buf_b_l0_256)]
-            c_l0 = pto.alloc_tile(tile_buf_c_256)
+            b_l0 = [pto.alloc_tile(tile_buf_b_l0), pto.alloc_tile(tile_buf_b_l0)]
+            c_l0 = pto.alloc_tile(tile_buf_c)
 
             pto.record_event("MATMUL", "MOV_M2L", event_id=[0, 1])
             pto.record_event("MOV_M2L", "LOAD", event_id=[0, 1, 2, 3])
@@ -93,7 +93,7 @@ def build():
                             b_evt = 2 + h
                             h_off = const(h * K_TILE)
                             sv_b = pto.slice_view(
-                                tile_view_b_256,
+                                tile_view_b,
                                 source=tv_b,
                                 offsets=[k_offset + h_off, n_offset],
                                 sizes=[c_kt, c_nt],
@@ -156,7 +156,7 @@ def build():
                         run_loop_k(1, 0, a_l1[1], a_l1[0])
 
                 sv_c = pto.slice_view(
-                    tile_view_c_256,
+                    tile_view_c,
                     source=tv_c,
                     offsets=[m_offset, n_offset],
                     sizes=[const(M_TILE), c_nt],

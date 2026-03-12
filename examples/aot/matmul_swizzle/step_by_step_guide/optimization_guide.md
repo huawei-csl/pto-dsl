@@ -86,7 +86,7 @@ for li in pto.range(bid, core_loop, num_blocks):
 
 ```python
 a_l1 = pto.alloc_tile(tile_buf_a_l1)
-b_l1 = pto.alloc_tile(tile_buf_b_l1_256)
+b_l1 = pto.alloc_tile(tile_buf_b_l1)
 ...
 pto.load(sv_a0, a_l1)
 ...
@@ -163,7 +163,7 @@ The original kernel metadata sets:
 
 That is why the NumPy simulation casts tile loads to `float32` and keeps `c_tile`/`c` as `float32`. This mirrors:
 - `acc_dtype = pto.float32`
-- `tile_buf_c_256` using `acc_dtype`
+- `tile_buf_c` using `acc_dtype`
 
 Using float32 accumulation is important for numerical stability across many partial products (especially large K).
 
@@ -185,7 +185,7 @@ File: `step2_doublebuffer.py`
 
 ```python
 a_l1 = [pto.alloc_tile(tile_buf_a_l1), pto.alloc_tile(tile_buf_a_l1)]
-b_l1 = [pto.alloc_tile(tile_buf_b_l1_256), pto.alloc_tile(tile_buf_b_l1_256)]
+b_l1 = [pto.alloc_tile(tile_buf_b_l1), pto.alloc_tile(tile_buf_b_l1)]
 ...
 is_curr0 = (k_idx % c2) == c0
 with pto.if_context(is_curr0, has_else=True) as branch:
