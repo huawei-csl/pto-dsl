@@ -72,11 +72,11 @@ l1_size=524288  # 512 KiB
 ```
 
 Consider the classic [tiled matrix multiplication](https://en.wikipedia.org/wiki/Loop_nest_optimization#Example:_matrix_multiplication) -- a general-shape matmul `C = A @ B` is implemented by tile-level operations over `A_tile = A[i1:i2,k1:k2]`, `B_tile = B[k1:k2,j1:j2]`, `C_tile = C[i1:i2,j1:j2]`, so that each tile fits into SRAM. Given the above SRAM info, we choose the tile sizes as:
-- [128 x 512] for `A_tile` on L1, taking 128 KiB (fp16)
-- [256 x 256] for `B_tile` on L1, taking 128 KiB (fp16)
-- [128 x 64] for `A_tile` on L0A, taking 16 KiB (fp16)
-- [64 x 256] for `B_tile` on L0B, taking 32 KiB (fp16)
-- [128 x 256] for `B_tile` on L0C, taking 128 KiB (fp32 accmulation)
+- `[128 x 512]` for `A_tile` on `L1`, taking 128 KiB (fp16)
+- `[256 x 256]` for `B_tile` on `L1`, taking 128 KiB (fp16)
+- `[128 x 64]` for `A_tile` on `L0A`, taking 16 KiB (fp16)
+- `[64 x 256]` for `B_tile` on `L0B`, taking 32 KiB (fp16)
+- `[128 x 256]` for `B_tile` on `L0C`, taking 128 KiB (fp32 accmulation)
 - The Cube unit performs [`TMATMUL`](https://gitcode.com/cann/pto-isa/blob/master/docs/isa/TMATMUL.md?init=initTree) instruction taking of size `(M, N, K) = (128, 256, 64)`, taking `L0A` and `L0B` as input and `L0C` as output.
 
 Why choose this particular tile size:
