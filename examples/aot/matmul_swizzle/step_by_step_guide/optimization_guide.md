@@ -109,12 +109,12 @@ It is easy to reason about and debug. Every later step should preserve this nume
 
 ### NumPy simulation of Step1 (algorithm teaching version)
 
-The full code is in `step1_numpy_sim.py`.
+The full code is in `step1_baseline_numpy_sim.py`.
 
 Run it directly:
 
 ```bash
-python ./step1_numpy_sim.py
+python ./step1_baseline_numpy_sim.py
 ```
 
 ### Line-by-line mapping to `step1_baseline.py`
