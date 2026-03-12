@@ -44,6 +44,10 @@ def gather(src, out, indices=None, *, mask_pattern=None):
         _pto.TGatherOp(src, out, indices=indices)
 
 
+def scatter(src, indices, out):
+    _pto.TScatterOp(src, indices, out)
+
+
 def exp(inp, out):
     _pto.TExpOp(inp, out)
 
@@ -70,6 +74,11 @@ def rsqrt(inp, out):
 
 def reciprocal(inp, out):
     _pto.TRecipOp(inp, out)
+
+
+def cvt(src, dst, *, round_mode="ROUND"):
+    rmode = _pto.RoundModeAttr.get(getattr(_pto.RoundMode, round_mode))
+    _pto.TCvtOp(src, dst, rmode=rmode)
 
 
 def matmul(lhs, rhs, out):
@@ -106,18 +115,6 @@ def row_prod(src, tmp, dst):
 
 def row_expand(src, dst):
     _pto.TRowExpandOp(src=src, dst=dst)
-
-
-def row_expand_sub(src0, src1, dst):
-    _pto.TRowExpandSubOp(src0=src0, src1=src1, dst=dst)
-
-
-def row_expand_div(src0, src1, dst):
-    _pto.TRowExpandDivOp(src0=src0, src1=src1, dst=dst)
-
-
-def row_expand_mul(src0, src1, dst):
-    _pto.TRowExpandMulOp(src0=src0, src1=src1, dst=dst)
 
 
 def col_sum(src, tmp, dst, is_binary=True):
@@ -157,6 +154,7 @@ __all__ = [
     "mul",
     "or_",
     "gather",
+    "scatter",
     "exp",
     "log",
     "relu",
@@ -164,6 +162,7 @@ __all__ = [
     "sqrt",
     "rsqrt",
     "reciprocal",
+    "cvt",
     "matmul",
     "matmul_bias",
     "matmul_acc",
@@ -173,9 +172,6 @@ __all__ = [
     "row_max",
     "row_prod",
     "row_expand",
-    "row_expand_sub",
-    "row_expand_div",
-    "row_expand_mul",
     "col_sum",
     "col_min",
     "col_max",
