@@ -96,7 +96,7 @@ Then, we just translate this numpy emulation code into equivalent PTO-DSL code [
 - Use `tile.extract `([TEXTRACT](https://github.com/PTO-ISA/pto-isa/blob/5de2d24d53e8cf39dec5fc11f997d1e74fa7190c/docs/isa/TEXTRACT.md)) for `L1`->`L0A`, `L1`->`L0B` loads
 - Use `tile.matmul`/`tile.matmul_acc` ([TMATMUL](/https://github.com/PTO-ISA/pto-isa/blob/5de2d24d53e8cf39dec5fc11f997d1e74fa7190c/docs/isa/TMATMUL_ACC.md)/[TMATMUL_ACC](https://github.com/PTO-ISA/pto-isa/blob/5de2d24d53e8cf39dec5fc11f997d1e74fa7190c/docs/isa/TMATMUL_ACC.md)) for compute on L0
 - Use `pto.store` ([TSTORE](https://github.com/PTO-ISA/pto-isa/blob/5de2d24d53e8cf39dec5fc11f997d1e74fa7190c/docs/isa/TSTORE.md)) for `L0C`->`GM` store
-- Use native Python `for i in range()` for statically unrolled loop, and `for i in pto.range()` for run-time dynamic loop. Similar to `if`/`else` branching.
+- Use native Python `for i in range()` for statically unrolled loop, and `for i in pto.range()` for run-time dynamic loop. Similarly for `if`/`else` branching.
 
 More DSL-specific syntax details explained in [Appendix A: PTO-DSL syntax note](#appendix-a-pto-dsl-syntax-note)
 
