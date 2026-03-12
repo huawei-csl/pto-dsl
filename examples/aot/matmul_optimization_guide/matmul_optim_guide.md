@@ -295,23 +295,13 @@ In plain words:
 - first, Python decides which code shape to generate for each unrolled `phase`
 - inside that shape, ptodsl inserts dynamic control flow for runtime conditions
 
-
 # Appendix B: Using NPU profiler
 
+How to find kernel name for the `--kernel-name=` arg: first run `msprof op` without `--kernel-name=` arg, then it will print the kernel name.
 
-How to find kernel name, first run `msprof op` without `--kernel-name=` arg
+See [full offical doc for msProf](https://www.hiascend.com/document/detail/zh/canncommercial/850/devaids/optool/atlasopdev_16_0082.html)
 
-```bash
-
-```
-
-then it will print:
-
-```
-```
-
-
-UI download links, originally from https://www.hiascend.com/developer/download/community/result?module=sto
+For the UI to inspect profiler trace, download by:
 
 ```bash
 # Windows x86
@@ -326,5 +316,4 @@ wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/MindStudio/MindStudio%2
 wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/MindStudio/MindStudio%208.3.0/MindStudio-Insight_8.3.0_linux-x86_64.zip
 ```
 
-
-
+Those links are obtained from https://www.hiascend.com/developer/download/community/result?module=sto
