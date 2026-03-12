@@ -7,6 +7,11 @@ K_DTILE = 512
 N_FULL = 256
 
 
+def _print_tile_memory(name, arr):
+    mib = arr.nbytes / (1024**2)
+    print(f"[tile-mem] {name}: shape={arr.shape}, dtype={arr.dtype}, bytes={arr.nbytes} ({mib:.3f} MiB)")
+
+
 def step1_numpy_sim(a, b):
     """
     a: [m, k] float16/float32
@@ -28,6 +33,20 @@ def step1_numpy_sim(a, b):
 
     c = np.zeros((m_total, n_total), dtype=np.float32)
 
+    # Explicit tile-buffer allocation (mirrors pto.alloc_tile in step1_baseline.py).
+    # Keep shapes fixed to tutorial constants for easy hardware-memory cross-checks.
+    a_l1 = np.empty((M_TILE, K_DTILE), dtype=np.float16)
+    b_l1 = np.empty((K_TILE, N_FULL), dtype=np.float16)
+    a_l0 = np.empty((M_TILE, K_QTILE), dtype=np.float16)
+    b_l0 = np.empty((K_QTILE, N_FULL), dtype=np.float16)
+    c_tile = np.empty((M_TILE, N_FULL), dtype=np.float32)
+
+    _print_tile_memory("a_l1", a_l1)
+    _print_tile_memory("b_l1", b_l1)
+    _print_tile_memory("a_l0", a_l0)
+    _print_tile_memory("b_l0", b_l0)
+    _print_tile_memory("c_tile", c_tile)
+
     # Corresponds to: for li in pto.range(...)
     for li in range(core_loop):
         # Corresponds to: m_idx = li // n_loop; n_idx = li % n_loop
@@ -36,18 +55,14 @@ def step1_numpy_sim(a, b):
         m_offset = m_idx * M_TILE
         n_offset = n_idx * N_FULL
 
-        # Corresponds to tile accumulator c_l0
-        c_tile = np.zeros((M_TILE, N_FULL), dtype=np.float32)
-
-        # Corresponds to: load A tile once before k_idx loop
-        a_l1 = a[m_offset : m_offset + M_TILE, 0:K_DTILE].astype(np.float32)
+        # Corresponds to tile accumulator c_l0 (reused buffer, reset per output tile).
+        c_tile.fill(0.0)
 
         for k_idx in range(k_dtile_num):
             k_offset = k_idx * K_DTILE
-            is_first_k_tile = k_idx == 0
 
-            # prefetch A tile for current k chunk (equivalent to pto.load)
-            a_l1 = a[m_offset : m_offset + M_TILE, k_offset : k_offset + K_DTILE].astype(np.float32)
+            # Prefetch A tile for current K chunk (equivalent to pto.load into a_l1).
+            a_l1[:, :] = a[m_offset : m_offset + M_TILE, k_offset : k_offset + K_DTILE]
 
             # Corresponds to: for phase in range(8)
             for phase in range(8):
@@ -55,22 +70,17 @@ def step1_numpy_sim(a, b):
                 if phase % 4 == 0:
                     b_half = phase // 4
                     h_off = b_half * K_TILE
-                    b_l1 = b[n_offset : n_offset + N_FULL, k_offset + h_off : k_offset + h_off + K_TILE].astype(
-                        np.float32
-                    )
+                    # b_l1 layout is [K_TILE, N_FULL], matching tile_buf_b_l1.
+                    b_l1[:, :] = b[n_offset : n_offset + N_FULL, k_offset + h_off : k_offset + h_off + K_TILE].T
 
                 # Corresponds to extract A/B quarter tiles
                 a_col = phase * K_QTILE
                 b_row = (phase % 4) * K_QTILE
-                a_l0 = a_l1[:, a_col : a_col + K_QTILE]
-                b_l0 = b_l1[:, b_row : b_row + K_QTILE]  # [N_FULL, K_QTILE]
+                a_l0[:, :] = a_l1[:, a_col : a_col + K_QTILE]
+                b_l0[:, :] = b_l1[b_row : b_row + K_QTILE, :]
 
-                # Corresponds to matmul vs matmul_acc
-                prod = a_l0 @ b_l0.T
-                if phase == 0 and is_first_k_tile:
-                    c_tile = prod
-                else:
-                    c_tile += prod
+                # Keep tile storage in fp16; cast only right at matmul for fp16->fp32 accumulate.
+                c_tile += a_l0.astype(np.float32) @ b_l0.astype(np.float32)
 
         c[m_offset : m_offset + M_TILE, n_offset : n_offset + N_FULL] = c_tile
 
