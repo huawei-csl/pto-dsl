@@ -5,13 +5,13 @@ Usage:
 bash ./compile.sh
 
 # Run correctness on all steps (default)
-python ./run_simple_matmul.py
+python ./run_matmul.py
 
 # Or run one specific tutorial step
-python ./run_simple_matmul.py --variant step1-baseline
-python ./run_simple_matmul.py --variant step2-doublebuffer
-python ./run_simple_matmul.py --variant step3-swizzle
-python ./run_simple_matmul.py --variant step4-manual-pipelining
+python ./run_matmul.py --variant step1-baseline
+python ./run_matmul.py --variant step2-doublebuffer
+python ./run_matmul.py --variant step3-swizzle
+python ./run_matmul.py --variant step4-manual-pipelining
 
 # Stepwise benchmark comparisons:
 # Step1: double-buffer vs single-buffer (both non-swizzle, auto-sync)
