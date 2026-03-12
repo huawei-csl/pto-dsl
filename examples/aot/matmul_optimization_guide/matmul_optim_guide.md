@@ -196,7 +196,7 @@ l2_size=100663296  # 96 MiB
 # Step 3: "Swizzling" for L2 cache reuse
 
 Swizzling improves L2 cache use across multi-cores. We borrow this figure [from triton matmul](https://triton-lang.org/main/getting-started/tutorials/03-matrix-multiplication.html#l2-cache-optimizations):
-![Grouped vs row-major ordering (from Triton)](https://triton-lang.org/main/_images/grouped_vs_row_major_ordering.png)
+<img src="https://triton-lang.org/main/_images/grouped_vs_row_major_ordering.png" alt="Grouped vs row-major ordering (from Triton)" width="70%" />
 
 [step3_swizzle.py](./step3_swizzle.py) takes one of the swizzle scheme [from catlass](https://gitcode.com/cann/catlass/blob/v1.4.0/include/catlass/gemm/block/block_swizzle.hpp), while keeping the rest of code unchanged. [step3_swizzle_numpy_sim.py](./step3_swizzle_numpy_sim.py) explains the swizzle scheme intuitively.
 
