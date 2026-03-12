@@ -18,6 +18,8 @@ SHAPES_NK = [
 ]
 N_WARMUP = 5
 N_REPEAT = 20
+PLOT_SHAPES_NK = [(4096, 4096), (16384, 16384)]
+DEFAULT_PLOT_DIR = Path("outputs") / "plots"
 
 
 def torch_to_ctypes(tensor):
@@ -83,6 +85,80 @@ def _time_us(fn, a_list, b_list, warmup, repeat):
     return start.elapsed_time(end) * 1000.0 / repeat
 
 
+def _maybe_plot(rows, plot_dir):
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        print("matplotlib not installed; skipping plot generation.")
+        return
+
+    style_candidates = ("seaborn-v0_8-whitegrid", "seaborn-whitegrid")
+    for style_name in style_candidates:
+        try:
+            plt.style.use(style_name)
+            break
+        except OSError:
+            continue
+
+    plt.rcParams["figure.facecolor"] = "white"
+    plt.rcParams["axes.facecolor"] = "white"
+    plot_dir.mkdir(parents=True, exist_ok=True)
+
+    step_defs = [
+        ("step1", "single_auto_noswizzle_tflops", "Step1 Kernel", "flops_step1_vs_torch_matmul.png"),
+        ("step2", "double_auto_noswizzle_tflops", "Step2 Kernel", "flops_step2_vs_torch_matmul.png"),
+        ("step3", "double_auto_swizzle_tflops", "Step3 Kernel", "flops_step3_vs_torch_matmul.png"),
+        ("step4", "double_manual_swizzle_tflops", "Step4 Kernel", "flops_step4_vs_torch_matmul.png"),
+    ]
+
+    for _, custom_key, custom_label, out_name in step_defs:
+        fig, axes = plt.subplots(1, 2, figsize=(12, 5), sharey=True)
+        for ax, (n, k) in zip(axes, PLOT_SHAPES_NK):
+            chunk = [r for r in rows if r["n"] == n and r["k"] == k]
+            if not chunk:
+                ax.set_title(f"TFLOPS vs M (N={n}, K={k})")
+                ax.text(0.5, 0.5, "No data", transform=ax.transAxes, ha="center", va="center")
+                ax.set_xlabel("M")
+                ax.set_ylabel("TFLOPS")
+                ax.grid(alpha=0.25)
+                continue
+
+            chunk = sorted(chunk, key=lambda r: r["m"])
+            m_values = [r["m"] for r in chunk]
+            matmul_tflops = [r["torch_matmul_tflops"] for r in chunk]
+            custom_tflops = [r[custom_key] for r in chunk]
+
+            ax.plot(
+                m_values,
+                matmul_tflops,
+                marker="x",
+                linestyle="--",
+                color="#111111",
+                label="torch.matmul",
+            )
+            ax.plot(
+                m_values,
+                custom_tflops,
+                marker="o",
+                linestyle="-",
+                color="#1f77b4",
+                label=custom_label,
+            )
+            ax.set_title(f"TFLOPS vs M (N={n}, K={k})")
+            ax.set_xlabel("M")
+            ax.set_ylabel("TFLOPS")
+            ax.set_xlim(left=0)
+            ax.set_ylim(bottom=0)
+            ax.grid(alpha=0.25)
+            ax.legend(fontsize=8)
+
+        plt.tight_layout()
+        out = plot_dir / out_name
+        plt.savefig(out, dpi=160)
+        plt.close(fig)
+        print(f"Saved plot: {out}")
+
+
 def _parse_args():
     parser = argparse.ArgumentParser(
         description="Stepwise performance benchmark for buffering, swizzle, and manual sync."
@@ -129,6 +205,12 @@ def _parse_args():
         default=N_REPEAT,
         help=f"Timed iterations (default: {N_REPEAT}).",
     )
+    parser.add_argument(
+        "--plot-dir",
+        type=str,
+        default=str(DEFAULT_PLOT_DIR),
+        help=f"Plot output directory (default: {DEFAULT_PLOT_DIR}).",
+    )
     return parser.parse_args()
 
 
@@ -165,6 +247,9 @@ def main():
         raise FileNotFoundError(
             f"Single-buffer auto-sync non-swizzle library not found: {single_auto_noswizzle_lib}"
         )
+    plot_dir = Path(args.plot_dir)
+    if not plot_dir.is_absolute():
+        plot_dir = base_dir / plot_dir
 
     device = get_test_device()
     torch.npu.set_device(device)
@@ -179,6 +264,7 @@ def main():
     ratios_step1_double_vs_single_noswizzle = []
     ratios_step2_swizzle_vs_noswizzle = []
     ratios_step3_manual_vs_auto_swizzle = []
+    plot_rows = []
     print(f"double-buffer auto-sync swizzle lib:      {double_auto_swizzle_lib}")
     print(f"double-buffer auto-sync non-swizzle lib:  {double_auto_noswizzle_lib}")
     print(f"double-buffer manual-sync swizzle lib:    {double_manual_swizzle_lib}")
@@ -204,12 +290,20 @@ def main():
             single_auto_noswizzle_us = _time_us(
                 single_auto_noswizzle_mm, a_list, b_list, args.warmup, args.repeat
             )
+            torch_matmul_us = _time_us(
+                lambda a, b: torch.matmul(a, b.transpose(0, 1)),
+                a_list,
+                b_list,
+                args.warmup,
+                args.repeat,
+            )
 
             flops = 2.0 * m * n * k
             double_auto_swizzle_tflops = flops / double_auto_swizzle_us / 1e6
             double_auto_noswizzle_tflops = flops / double_auto_noswizzle_us / 1e6
             double_manual_swizzle_tflops = flops / double_manual_swizzle_us / 1e6
             single_auto_noswizzle_tflops = flops / single_auto_noswizzle_us / 1e6
+            torch_matmul_tflops = flops / torch_matmul_us / 1e6
 
             # Step 1: buffering effect (double-buffer vs single-buffer, both non-swizzle auto-sync).
             step1_double_vs_single = double_auto_noswizzle_tflops / single_auto_noswizzle_tflops
@@ -221,6 +315,18 @@ def main():
             ratios_step1_double_vs_single_noswizzle.append(step1_double_vs_single)
             ratios_step2_swizzle_vs_noswizzle.append(step2_swizzle_vs_noswizzle)
             ratios_step3_manual_vs_auto_swizzle.append(step3_manual_vs_auto)
+            plot_rows.append(
+                {
+                    "m": m,
+                    "n": n,
+                    "k": k,
+                    "torch_matmul_tflops": torch_matmul_tflops,
+                    "single_auto_noswizzle_tflops": single_auto_noswizzle_tflops,
+                    "double_auto_noswizzle_tflops": double_auto_noswizzle_tflops,
+                    "double_auto_swizzle_tflops": double_auto_swizzle_tflops,
+                    "double_manual_swizzle_tflops": double_manual_swizzle_tflops,
+                }
+            )
 
             print(
                 f"(M,N,K)=({m},{n},{k}) "
@@ -228,6 +334,7 @@ def main():
                 f"double_noswizzle_auto={double_auto_noswizzle_tflops:.3f}TF, "
                 f"double_swizzle_auto={double_auto_swizzle_tflops:.3f}TF, "
                 f"double_swizzle_manual={double_manual_swizzle_tflops:.3f}TF, "
+                f"torch_matmul={torch_matmul_tflops:.3f}TF, "
                 f"step1_ratio(double_noswizzle_auto/single_noswizzle)={step1_double_vs_single:.3f}x, "
                 f"step2_ratio(double_swizzle_auto/double_noswizzle_auto)={step2_swizzle_vs_noswizzle:.3f}x, "
                 f"step3_ratio(double_swizzle_manual/double_swizzle_auto)={step3_manual_vs_auto:.3f}x"
@@ -257,6 +364,8 @@ def main():
     print(f"avg FLOP ratio(double_swizzle_manual/double_swizzle_auto): {avg_step3:.3f}x")
     print(f"min FLOP ratio(double_swizzle_manual/double_swizzle_auto): {min_step3:.3f}x")
     print(f"max FLOP ratio(double_swizzle_manual/double_swizzle_auto): {max_step3:.3f}x")
+
+    _maybe_plot(plot_rows, plot_dir)
 
 
 if __name__ == "__main__":
