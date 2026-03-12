@@ -10,12 +10,12 @@
 - [Step 0: NPU programming crash course for CUDA/triton programmers](#step-0-npu-programming-crash-course-for-cudatriton-programmers)
   - [Typical kernel launch syntax](#typical-kernel-launch-syntax)
   - [Auto vs manual software pipelining](#auto-vs-manual-software-pipelining)
-- [Step 1: functionally-correct naive version](#step-1-functionally-correct-naive-version)
-- [Step 2: double buffering](#step-2-double-buffering)
+- [Step 1: Functionally-correct naive version](#step-1-functionally-correct-naive-version)
+- [Step 2: Double buffering](#step-2-double-buffering)
 - [Step 3: "Swizzling" for L2 cache reuse](#step-3-swizzling-for-l2-cache-reuse)
-- [Step 4: (optional) manual software pipelining](#step-4-optional-manual-software-pipelining)
+- [Step 4: (optional) Manual software pipelining](#step-4-optional-manual-software-pipelining)
 - [Appendix A: PTO-DSL syntax note](#appendix-a-pto-dsl-syntax-note)
-- [Appendix B: Using msprof](#appendix-b-using-msprof)
+- [Appendix B: Using NPU profiler](#appendix-b-using-npu-profiler)
 
 # Motivation
 
@@ -49,7 +49,7 @@ Our NPU uses on-chip [scratchpad memory](https://en.wikipedia.org/wiki/Scratchpa
 
 To solve this headache, [PTO-DSL](https://github.com/huawei-csl/pto-dsl) offers automatic synchronization, internally achieved by the [InsertSync](https://github.com/zhangstevenunity/PTOAS/tree/8eb9e23fa95e18c3db789e0a171a98df07a8a846/lib/PTO/Transforms/InsertSync) compile pass based on the [PTO MLIR dialect](https://github.com/zhangstevenunity/PTOAS/blob/8eb9e23fa95e18c3db789e0a171a98df07a8a846/docs/PTO_IR_manual.md). The kernel code still looks "sequential" (in pipelining dimension), similar to writing Triton code or CuTile code.
 
-# Step 1: functionally-correct naive version
+# Step 1: Functionally-correct naive version
 
 According to our [NPU hardware architecture](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850/opdevg/Ascendcopdevg/atlas_ascendc_10_0008.html), an Matmul operation requires such movement across memory hierarchy:
 - `GM` (global memory) -> `L1` -> `L0` (`L0A` or `L0B` for left- or right- operands) -> `Cube core` -> `L0C` -> `GM` 
@@ -104,7 +104,7 @@ This simple 80-line PTO kernel produces numerically correct result on NPU, but t
 
 ![image info](./fig/flops_step1_baseline.py)
 
-# Step 2: double buffering
+# Step 2: Double buffering
 
 Profiling our previous kernel with `msprof op simulator`:
 
@@ -115,7 +115,7 @@ msprof op simulator --aic-metrics=PipeUtilization \
     python ./run_matmul.py --variant step1-baseline
 ```
 
-(see [Appendix B: Using msprof](#appendix-b-using-msprof) for more profiler usage details)
+(see [Appendix B: Using NPU profiler](#appendix-b-using-npu-profiler) for more profiler usage details)
 
 We see that the Cube core is idle for 50% of time:
 
@@ -216,7 +216,7 @@ Now the FLOPs is much improved, getting ~90% of the `torch.matmul`
 
 ![image info](./fig/flops_step3_swizzle.py)
 
-# Step 4: (optional) manual software pipelining
+# Step 4: (optional) Manual software pipelining
 
 The last 10% performance gap can be squeezed-out by manual software pipelining [./step4_manual_pipelining.py](./step4_manual_pipelining.py).
 
@@ -294,7 +294,7 @@ In plain words:
 - inside that shape, ptodsl inserts dynamic control flow for runtime conditions
 
 
-# Appendix B: Using msprof
+# Appendix B: Using NPU profiler
 
 
 How to find kernel name, first run `msprof op` without `--kernel-name=` arg
