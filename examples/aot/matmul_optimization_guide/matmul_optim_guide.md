@@ -226,7 +226,9 @@ Manually arranging synchronization is out of scope for this guide. We are [inves
 
 # Appendix A: PTO-DSL syntax note
 
-Python native control-flows are evaluated at build-time, while control-flows in `pto` namespace becomes [MLIR structured control flow](https://mlir.llvm.org/docs/Dialects/SCFDialect/) in the IR module.
+Python native control-flows are evaluated at build-time, while control-flows in `pto` namespace becomes [MLIR structured control flow](https://mlir.llvm.org/docs/Dialects/SCFDialect/) in the IR module. We are NOT using Python AST parsing or AST rewrite at the current version of pto-dsl, thus all Python-native constructs (not just control-flow, but also Python class, iterator, ...) are just executed like normal Python code, unlike other pure-AST or hybrid AST+tracing frontends that [might or might not rewrite native `if`/`range` as IR builder](https://github.com/Dao-AILab/quack/blob/v0.3.2/docs/dsl_control_flow.rst)
+
+Common cases:
 
 - **Python `for ... in range(...)`**
   - runs when generating the IR (build-time)
