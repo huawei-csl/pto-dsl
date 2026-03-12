@@ -278,50 +278,38 @@ Interpretation:
 
 ---
 
-## 6) Step4 Manual Pipelining: explicit software schedule
+## 6) Step4 Manual Pipelining: PTOAS-owned sync insertion
 
 File: `step4_manual_pipelining.py`
 
 ### Algorithm delta from Step3
 
 - Keep swizzled traversal and double-buffer dataflow.
-- Switch from autosync-style source to explicit event orchestration:
-  - `record_event(...)`
-  - `wait_event(...)`
-  - `record_wait_pair(...)`
+- Keep the PTO-DSL source free of explicit event management.
+- Let `ptoas --enable-insert-sync` insert the required pipeline sync.
 
 ### Important code
 
 ```python
-pto.record_event("MATMUL", "MOV_M2L", event_id=[0, 1])
-pto.record_event("MOV_M2L", "LOAD", event_id=[0, 1, 2, 3])
-```
-
-```python
-pto.wait_event("MOV_M2L", "LOAD", event_id=b_evt)
 pto.load(sv_b, b_l1[h])
-pto.record_event("LOAD", "MOV_M2L", event_id=b_evt)
-```
-
-```python
-pto.wait_event("MOV_M2L", "MATMUL", event_id=0)
 ...
-pto.record_wait_pair("MATMUL", "STORE_ACC", event_id=0)
+tile.matmul_acc(c_l0, a_l0[ping], b_l0[ping], c_l0)
 pto.store(c_l0, sv_c)
 ```
 
 ### Why this can help
 
-Manual scheduling gives tighter control over producer-consumer ordering and overlap. It often improves tail behavior and removes conservative compiler sync points.
+This keeps the kernel source simpler and makes synchronization policy a PTOAS
+responsibility. That is the contract used by the current 910B migration flow,
+including the active seed kernels in `pto-kernels`.
 
 Tiny timeline sketch (conceptual):
 
 ```text
-Step4 (manual pipeline with explicit events)
+Step4 (source-level pipeline, sync inserted by PTOAS)
 time ---->
-LOAD ----record----> MOV_M2L ----record----> MATMUL ----record----> STORE
-   ^                      |                        |                    |
-   |------ wait ----------+------ wait -----------+------ wait --------+
+LOAD --------------------> MOV_M2L ----------------> MATMUL ----------> STORE
+           \________________ PTOAS inserts sync edges _________________/
 ```
 
 ---

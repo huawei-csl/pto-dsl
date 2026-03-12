@@ -218,10 +218,7 @@ def fast_hadamard_manualsync(
                             tb_row, [c0, n_half], [1, HALF_ELEMENTS_PER_TILE]
                         )
 
-                        pto.wait_event("VEC", "LOAD", event_id=event_id)
-                        pto.wait_event("STORE_VEC", "VEC", event_id=event_id)
                         pto.load(sv_row, tb_row)
-                        pto.record_wait_pair("LOAD", "VEC", event_id=event_id)
 
                         for _ in pto.range(c0, log2_n, c1):
                             tile.gather(tb_row, tb_even, mask_pattern="P0101")
@@ -231,16 +228,7 @@ def fast_hadamard_manualsync(
                             tile.sub(tb_even, tb_odd, tb_second)
                             pto.barrier("VEC")
 
-                        pto.record_wait_pair(
-                            "VEC", "STORE_VEC", event_id=event_id
-                        )
                         pto.store(tb_row, sv_row)
-                        pto.record_event("STORE_VEC", "VEC", event_id=event_id)
-                        pto.record_event("VEC", "LOAD", event_id=event_id)
-
-                for event_id in (0, 1):
-                    pto.record_event("VEC", "LOAD", event_id=event_id)
-                    pto.record_event("STORE_VEC", "VEC", event_id=event_id)
 
                 for chunk_i in pto.range(c0, num_chunks, c1):
                     sample_done = chunk_i * samples_per_load
@@ -258,23 +246,9 @@ def fast_hadamard_manualsync(
                         with branch.else_context():
                             process_rows(tb_row_1, tb_even_1, tb_odd_1, 1, gm_offset, cur_samples)
 
-                for event_id in (0, 1):
-                    pto.wait_event("VEC", "LOAD", event_id=event_id)
-                    pto.wait_event("STORE_VEC", "VEC", event_id=event_id)
-
-
 
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--manual-sync",
-        action="store_true",
-        help="Emit explicit record/wait events instead of relying on --enable-insert-sync.",
-    )
-    args = parser.parse_args()
-    if args.manual_sync:
-        module = fast_hadamard_manualsync
-    else:
-        module = fast_hadamard_autosync
-    print(module)
+    _ = parser.parse_args()
+    print(fast_hadamard_autosync)

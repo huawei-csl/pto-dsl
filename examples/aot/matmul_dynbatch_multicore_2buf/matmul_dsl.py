@@ -28,24 +28,6 @@ def build(M=128, K=128, N=128):
 
     const = s.const
 
-
-    # Until we have set_dyn_flag with event_id as SSA values
-    # event_id can be dynamic SSA value
-    # https://github.com/zhangstevenunity/PTOAS/pull/176
-    def record_event(src, dst, event_id):
-        pto.cond(
-            event_id == const(0),
-            lambda: pto.record_event(src, dst, event_id=0),
-            lambda: pto.record_event(src, dst, event_id=1)
-        )
-     
-    def wait_event(src, dst, event_id):
-        pto.cond(
-            event_id == const(0),
-            lambda: pto.wait_event(src, dst, event_id=0),
-            lambda: pto.wait_event(src, dst, event_id=1)
-        )   
-
     @to_ir_module(meta_data=meta_data)
     def RunTMATMULSplitK(
         out_ptr: "ptr_type",
@@ -90,7 +72,6 @@ def build(M=128, K=128, N=128):
             # Put B in L0B
             svB = pto.slice_view(tile_view_b, source=tvB, offsets=[c0, c0], sizes=[cK, cN])
             pto.load(svB, bMatTile)
-            pto.record_wait_pair("LOAD", "MOV_M2L", event_id=0)
             tile.mov(bMatTile, bTile)
             # TODO: wait here so we can use full l1 memory later for A.
 
@@ -103,15 +84,6 @@ def build(M=128, K=128, N=128):
                 lambda: pto.load(svA, aMatTiles[0]),
                 lambda: pto.load(svA, aMatTiles[1]),
             )
-            record_event("LOAD", "MOV_M2L", event_id=curr)
-            
-            # TODO: fix wait events if batch size is 1/2
-            # signal to LOAD that L1 can be overwritten
-            pto.record_event("MOV_M2L", "LOAD", event_id=[0, 1])
-            # signal to MOV that L0 can be overwritten
-            pto.record_event("MATMUL", "MOV_M2L", event_id=[0, 1])
-            # signal to MATMUL that it can overwrite L0C
-            pto.record_event("STORE_ACC", "MATMUL", event_id=[0, 1])
 
             for b_idx in pto.range(b_start, b_end, c1):
                 curr = b_idx % c2
@@ -119,52 +91,36 @@ def build(M=128, K=128, N=128):
                 svC = pto.slice_view(tile_view_c, source=tvC, offsets=[b_idx, c0, c0], sizes=[c1, cM, cN])
 
                 ########## Load tile A for iteration i+1 from GM -> L1
-                wait_event("MOV_M2L", "LOAD", event_id=curr)
                 with pto.if_context(b_idx + c1 < b_end):
                     pto.cond(
                         curr == c1,
                         lambda: pto.load(svA, aMatTiles[0]),
                         lambda: pto.load(svA, aMatTiles[1])
                     )
-                    record_event("LOAD", "MOV_M2L", event_id=curr)
 
 
                 ########## Move A1 and A2 into L0A
-                wait_event("LOAD", "MOV_M2L", event_id=c1 - curr)
-                wait_event("MATMUL", "MOV_M2L", event_id=curr)
                 pto.cond(
                     curr == c0,
                     lambda: tile.mov(aMatTiles[0], aTiles[0]),
                     lambda: tile.mov(aMatTiles[1], aTiles[1])
                 )
-                with pto.if_context(b_idx + c2 < b_end):
-                    record_event("MOV_M2L", "LOAD", event_id=curr)
-                record_event("MOV_M2L", "MATMUL", event_id=curr)
 
 
                 ########## Perform matmul
-                wait_event("MOV_M2L", "MATMUL", event_id=curr)
-                wait_event("STORE_ACC", "MATMUL", event_id=curr)
                 pto.cond(
                     curr == c0,
                     lambda: tile.matmul(aTiles[0], bTile, cTiles[0]),
                     lambda: tile.matmul(aTiles[1], bTile, cTiles[1]),
                 )
-                record_event("MATMUL", "STORE_ACC", event_id=curr)
-                with pto.if_context(b_idx + c2 < b_end):
-                    record_event("MATMUL", "MOV_M2L", event_id=curr)
 
 
                 ######### Store
-                wait_event("MATMUL", "STORE_ACC", event_id=curr)
                 pto.cond(
                     curr == c0,
                     lambda: pto.store(cTiles[0], svC),
                     lambda: pto.store(cTiles[1], svC),
                 )
-                with pto.if_context(b_idx + c2 < b_end):
-                    record_event("STORE_ACC", "MATMUL", event_id=curr)
-                
                 pto.barrier('LOAD')
 
 

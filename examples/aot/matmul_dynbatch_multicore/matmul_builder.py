@@ -115,14 +115,10 @@ def build(
                     with pto.if_context(isBias):
                         pto.load(svBias, biasDataTile)
 
-                    pto.record_wait_pair("LOAD", "MOV_M2L", event_id=0)
-
                     tile.mov(aMatTile, aTile)
                     tile.mov(bMatTile, bTile)
                     with pto.if_context(isBias):
                         tile.mov(biasDataTile, biasTile)
-
-                    pto.record_wait_pair("MOV_M2L", "MATMUL", event_id=0)
 
                     is_i0 = s.eq(i, c0)
 
@@ -139,12 +135,8 @@ def build(
                         lambda: tile.matmul_acc(cTile, aTile, bTile, cTile),
                     )
 
-                    pto.record_wait_pair("MATMUL", "LOAD", event_id=0)
-
-                pto.record_wait_pair("MATMUL", "STORE_ACC", event_id=0)
                 svOut = pto.slice_view(tile_view_out, source=tvOut, offsets=[row_off, c0], sizes=[cTileM, cTileN])
                 pto.store(cTile, svOut)
-                pto.record_wait_pair("STORE_ACC", "MATMUL", event_id=0)
 
     return RunTMATMULSplitK
 

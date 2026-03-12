@@ -14,7 +14,7 @@ from .pto_general import (
     vector_section,
     print,
 )
-from .synchronization import barrier, record_event, record_wait_pair, wait_event
+from .synchronization import barrier
 from .type_def import (
     PtrType,
     SubTensorType,
@@ -53,8 +53,5 @@ __all__ = [
     "load",
     "store",
     "print",
-    "record_event",
-    "wait_event",
-    "record_wait_pair",
     "barrier",
 ]
