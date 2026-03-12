@@ -1,3 +1,5 @@
+See [matmul_optim_guide.md](./matmul_optim_guide.md) for a step-by-step algorithm walkthrough.
+
 Usage:
 
 ```bash
@@ -19,5 +21,3 @@ python ./run_matmul.py --variant step4-manual-pipelining
 # Step3: manual-sync vs auto-sync (both double-buffer, swizzle)
 python ./bench_matmul.py
 ```
-
-See `optimization_guide.md` for full step-by-step build and benchmark commands.
