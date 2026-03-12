@@ -1,4 +1,4 @@
-from ptodsl import pto, tile, to_ir_module
+from ptodsl import pto, to_ir_module
 from ptodsl import scalar as s
 
 const = s.const
@@ -11,8 +11,8 @@ def meta_data():
     tensor_type = pto.TensorType(rank=1, dtype=dtype)
     tile_length = 8192  # >=16 KB DMA gets high BW util
     subtensor_type = pto.SubTensorType(shape=[1, tile_length], dtype=dtype)
-    tile_cfg = pto.TileBufConfig()
-    tile_type = pto.TileBufType(
+    tile_cfg = pto.TileConfig()
+    tile_type = pto.TileType(
         shape=[1, tile_length],
         valid_shape=[1, tile_length],
         dtype=dtype,
@@ -91,7 +91,7 @@ def vec_add_1d_dynamic(
 
                     pto.load(sv0, tb0)
                     pto.load(sv1, tb1)
-                    tile.add(tb0, tb1, tb2)
+                    pto.add(tb0, tb1, tb2)
                     pto.store(tb2, sv2)
 
 

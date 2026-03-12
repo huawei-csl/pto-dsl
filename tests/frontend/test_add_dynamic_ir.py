@@ -2,10 +2,9 @@ from mlir.ir import Context, F32Type, InsertionPoint, IntegerType, Location, Mod
 from mlir.ir import IndexType
 from mlir.dialects import arith, func, pto as _pto, scf
 
-from ptodsl import pto, tile, to_ir_module
-from ptodsl import scalar as s
+from ptodsl import pto, to_ir_module
 
-const = s.const
+const = pto.const
 
 
 def meta_data():
@@ -15,8 +14,8 @@ def meta_data():
     tensor_type = pto.TensorType(rank=1, dtype=dtype)
     tile_length = 1024
     subtensor_type = pto.SubTensorType(shape=[1, tile_length], dtype=dtype)
-    tile_cfg = pto.TileBufConfig()
-    tile_type = pto.TileBufType(
+    tile_cfg = pto.TileConfig()
+    tile_type = pto.TileType(
         shape=[1, tile_length],
         valid_shape=[1, tile_length],
         dtype=dtype,
@@ -50,12 +49,12 @@ def vec_add_1d_dynamic(
     vid = cidmul + sub_bid
     num_blocks = pto.get_block_num()
 
-    vid_idx = s.index_cast(vid)
-    num_cores = s.index_cast(num_blocks)
-    total_elements = s.index_cast(argN)
+    vid_idx = pto.index_cast(vid)
+    num_cores = pto.index_cast(num_blocks)
+    total_elements = pto.index_cast(argN)
 
-    num_tiles_global = s.ceil_div(total_elements, c_tile)
-    num_tiles_per_core = s.ceil_div(num_tiles_global, num_cores)
+    num_tiles_global = pto.ceil_div(total_elements, c_tile)
+    num_tiles_per_core = pto.ceil_div(num_tiles_global, num_cores)
     tile_offset_this_core = vid_idx * num_tiles_per_core
 
     with pto.vector_section():
@@ -72,7 +71,7 @@ def vec_add_1d_dynamic(
             need_truncate = tiles_end_this_core > num_tiles_global
             remaining_tiles = num_tiles_global - tile_offset_this_core
 
-            tiles_to_process = s.select(
+            tiles_to_process = pto.select(
                 need_truncate, remaining_tiles, num_tiles_per_core
             )
             elements_to_process = tiles_to_process * c_tile
@@ -94,7 +93,7 @@ def vec_add_1d_dynamic(
 
                     pto.load(sv0, tb0)
                     pto.load(sv1, tb1)
-                    tile.add(tb0, tb1, tb2)
+                    pto.add(tb0, tb1, tb2)
                     pto.store(tb2, sv2)
 
 
@@ -116,8 +115,8 @@ def build_verbose():
         bl = _pto.BLayoutAttr.get(_pto.BLayout.RowMajor)
         sl = _pto.SLayoutAttr.get(_pto.SLayout.NoneBox)
         pd = _pto.PadValueAttr.get(_pto.PadValue.Null)
-        cfg = _pto.TileBufConfigAttr.get(bl, sl, 512, pd)
-        tile_buf = _pto.TileBufType.get([1, tile_length], f32, vec, [1, tile_length], cfg)
+        cfg = _pto.TileConfigAttr.get(bl, sl, 512, pd)
+        tile_buf = _pto.TileType.get([1, tile_length], f32, vec, [1, tile_length], cfg)
         fn_ty = func.FunctionType.get([ptr_f32, ptr_f32, ptr_f32, i32], [])
 
         with InsertionPoint(module.body):

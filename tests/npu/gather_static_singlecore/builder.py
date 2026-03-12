@@ -1,4 +1,4 @@
-from ptodsl import pto, tile, to_ir_module
+from ptodsl import pto, to_ir_module
 from ptodsl import scalar as s
 
 const = s.const
@@ -18,7 +18,7 @@ def meta_data(src_dtype=None, rows=32, cols=32):
         src_dtype = _DTYPE_MAP[src_dtype]()
 
     i32 = pto.int32
-    tile_cfg = pto.TileBufConfig()
+    tile_cfg = pto.TileConfig()
 
     return {
         "ptr_src": pto.PtrType(src_dtype),
@@ -27,14 +27,14 @@ def meta_data(src_dtype=None, rows=32, cols=32):
         "tv2_i32": pto.TensorType(rank=2, dtype=i32),
         "tile_view_src": pto.SubTensorType(shape=[rows, cols], dtype=src_dtype),
         "tile_view_i32": pto.SubTensorType(shape=[rows, cols], dtype=i32),
-        "tile_buf_src": pto.TileBufType(
+        "tile_buf_src": pto.TileType(
             shape=[rows, cols],
             valid_shape=[rows, cols],
             dtype=src_dtype,
             memory_space="VEC",
             config=tile_cfg,
         ),
-        "tile_buf_i32": pto.TileBufType(
+        "tile_buf_i32": pto.TileType(
             shape=[rows, cols],
             valid_shape=[rows, cols],
             dtype=i32,
@@ -90,8 +90,8 @@ def build_gather_kernel(
             pto.load(sv0, tb0)
             pto.load(sv1, tb1)
 
-            tile.gather(tb0, tb2, tb1)  # index-gather: tb2[i,j] = tb0[tb1[i,j]]
-            tile.gather(
+            pto.gather(tb0, tb2, tb1)  # index-gather: tb2[i,j] = tb0[tb1[i,j]]
+            pto.gather(
                 tb2, tb3, mask_pattern=mask_pattern
             )  # mask-gather with configurable pattern
 

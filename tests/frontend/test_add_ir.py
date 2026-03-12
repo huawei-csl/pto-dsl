@@ -1,10 +1,9 @@
 from mlir.ir import Context, Location, Module, InsertionPoint, IntegerType
 from mlir.ir import F32Type, IndexType
 from ptodsl import to_ir_module
-from ptodsl import pto, tile
-from ptodsl import scalar as s
+from ptodsl import pto
 
-const = s.const
+const = pto.const
 
 
 def meta_data():
@@ -13,8 +12,8 @@ def meta_data():
     ptr_type = pto.PtrType(dtype)
     tensor_type = pto.TensorType(rank=2, dtype=dtype)
     subtensor_type = pto.SubTensorType(shape=[32, 32], dtype=dtype)
-    tile_cfg = pto.TileBufConfig()
-    tile_type = pto.TileBufType(
+    tile_cfg = pto.TileConfig()
+    tile_type = pto.TileType(
         shape=[32, 32], valid_shape=[-1, -1], dtype=dtype, memory_space="VEC", config=tile_cfg
     )
     return {
@@ -44,14 +43,14 @@ def vec_add_2d_static(
     cidmul = cid * sub_bnum
     vid = cidmul + sub_bid
 
-    v_row_idx = s.index_cast(arg_vrow_i32)
-    v_col_idx = s.index_cast(arg_vcol_i32)
+    v_row_idx = pto.index_cast(arg_vrow_i32)
+    v_col_idx = pto.index_cast(arg_vcol_i32)
 
     tv0 = pto.as_tensor(tensor_type, ptr=arg0, shape=[c1280, c32], strides=[c32, c1])
     tv1 = pto.as_tensor(tensor_type, ptr=arg1, shape=[c1280, c32], strides=[c32, c1])
     tv2 = pto.as_tensor(tensor_type, ptr=arg2, shape=[c1280, c32], strides=[c32, c1])
 
-    vid_idx = s.index_cast(vid)
+    vid_idx = pto.index_cast(vid)
     offset_row = vid_idx * c32
     sv0 = pto.slice_view(subtensor_type, source=tv0, offsets=[offset_row, c0], sizes=[c32, c32])
     sv1 = pto.slice_view(subtensor_type, source=tv1, offsets=[offset_row, c0], sizes=[c32, c32])
@@ -64,7 +63,7 @@ def vec_add_2d_static(
 
         pto.load(sv0, tb0)
         pto.load(sv1, tb1)
-        tile.add(tb0, tb1, tb2)
+        pto.add(tb0, tb1, tb2)
         pto.store(tb2, sv2)
 
 
@@ -87,9 +86,9 @@ def build():
         sl = _pto.SLayoutAttr.get(_pto.SLayout.NoneBox)
         pd = _pto.PadValueAttr.get(_pto.PadValue.Null)
 
-        cfg = _pto.TileBufConfigAttr.get(bl, sl, 512, pd)
+        cfg = _pto.TileConfigAttr.get(bl, sl, 512, pd)
 
-        tile_buf_dynamic = _pto.TileBufType.get([32, 32], f32, vec, [-1, -1], cfg)
+        tile_buf_dynamic = _pto.TileType.get([32, 32], f32, vec, [-1, -1], cfg)
         fn_ty = func.FunctionType.get([ptr_f32, ptr_f32, ptr_f32, i32, i32], [])
 
         with InsertionPoint(m.body):

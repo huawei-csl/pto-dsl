@@ -1,4 +1,4 @@
-from ptodsl import pto, tile, to_ir_module
+from ptodsl import pto, to_ir_module
 from ptodsl import scalar as s
 
 const = s.const
@@ -17,8 +17,8 @@ def meta_data_row(dtype="fp32"):
     tensor_type = pto.TensorType(rank=1, dtype=pto_dtype)
     subtensor_in = pto.SubTensorType(shape=[1, elements_per_tile], dtype=pto_dtype)
 
-    tile_cfg = pto.TileBufConfig()
-    tile_type = pto.TileBufType(
+    tile_cfg = pto.TileConfig()
+    tile_type = pto.TileType(
         shape=[1, elements_per_tile],
         valid_shape=[1, -1],
         dtype=pto_dtype,
@@ -49,9 +49,9 @@ def meta_data_col(dtype="fp32"):
     subtensor_in = pto.SubTensorType(shape=[tile_rows, tile_cols], dtype=pto_dtype)
     subtensor_out = pto.SubTensorType(shape=[1, tile_cols], dtype=pto_dtype)
 
-    tile_cfg = pto.TileBufConfig()
+    tile_cfg = pto.TileConfig()
 
-    tile_type = pto.TileBufType(
+    tile_type = pto.TileType(
         shape=[tile_rows, tile_cols],
         valid_shape=[-1, -1],
         dtype=pto_dtype,
@@ -59,7 +59,7 @@ def meta_data_col(dtype="fp32"):
         config=tile_cfg,
     )
 
-    tile_out_type = pto.TileBufType(
+    tile_out_type = pto.TileType(
         shape=[1, tile_cols],
         valid_shape=[1, -1],
         dtype=pto_dtype,
@@ -82,24 +82,24 @@ def meta_data_col(dtype="fp32"):
 
 
 _ROW_REDUCE_OPS = {
-    "sum": tile.row_sum,
-    "min": tile.row_min,
-    "max": tile.row_max,
-    "prod": tile.row_prod,
+    "sum": pto.row_sum,
+    "min": pto.row_min,
+    "max": pto.row_max,
+    "prod": pto.row_prod,
 }
 
 _COL_REDUCE_OPS = {
-    "sum": tile.col_sum,
-    "min": lambda src, tmp, dst: tile.col_min(src, dst),
-    "max": lambda src, tmp, dst: tile.col_max(src, dst),
-    "prod": tile.col_prod,
+    "sum": pto.col_sum,
+    "min": lambda src, tmp, dst: pto.col_min(src, dst),
+    "max": lambda src, tmp, dst: pto.col_max(src, dst),
+    "prod": pto.col_prod,
 }
 
 _COL_COMBINE_OPS = {
-    "sum": tile.add,
-    "min": tile.min,
-    "max": tile.max,
-    "prod": tile.mul,
+    "sum": pto.add,
+    "min": pto.min,
+    "max": pto.max,
+    "prod": pto.mul,
 }
 
 

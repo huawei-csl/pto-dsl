@@ -1,4 +1,4 @@
-from ptodsl import pto, tile, to_ir_module
+from ptodsl import pto, to_ir_module
 from ptodsl import scalar as s
 
 
@@ -11,9 +11,9 @@ def build():
         ptr_type = pto.PtrType(dtype)
         tensor_type = pto.TensorType(rank=1, dtype=dtype)
         subtensor_type = pto.SubTensorType(shape=[tile_w], dtype=dtype)
-        tile_cfg = pto.TileBufConfig()
+        tile_cfg = pto.TileConfig()
         # Dynamic valid shape so we can mask partial tiles via valid_row/valid_col.
-        tile_type = pto.TileBufType(
+        tile_type = pto.TileType(
             shape=[1, tile_w],
             valid_shape=[-1, -1],
             dtype=dtype,
@@ -82,7 +82,7 @@ def build():
                 )
 
                 pto.load(sv0, tb0)
-                tile.relu(tb0, tb1)
+                pto.relu(tb0, tb1)
                 pto.store(tb1, sv1)
 
     return sync_kernel_dyn

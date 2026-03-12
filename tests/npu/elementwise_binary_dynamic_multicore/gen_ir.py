@@ -8,17 +8,17 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from ptodsl import tile
+from ptodsl import pto
 from binary_builder import build_binary_kernels
 
 _OPS = {
-    "add": tile.add,
-    "sub": tile.sub,
-    "mul": tile.mul,
-    "div": tile.div,
-    "or": tile.or_,
-    "max": tile.max,
-    "min": tile.min,
+    "add": pto.add,
+    "sub": pto.sub,
+    "mul": pto.mul,
+    "div": pto.div,
+    "or": pto.or_,
+    "max": pto.max,
+    "min": pto.min,
 }
 
 if __name__ == "__main__":

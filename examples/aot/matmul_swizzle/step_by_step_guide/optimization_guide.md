@@ -77,7 +77,7 @@ File: `step1_baseline.py`
 ### Important code
 
 ```python
-for li in pto.range(bid, core_loop, num_blocks):
+for li in range(bid, core_loop, num_blocks):
     m_idx = li // n_loop
     n_idx = li % n_loop
     m_offset = m_idx * c128
@@ -96,11 +96,11 @@ pto.load(sv_b, b_l1)
 ```python
 if phase == 0:
     with pto.if_context(is_first_k_tile, has_else=True) as branch:
-        tile.matmul(a_l0, b_l0, c_l0)
+        pto.matmul(a_l0, b_l0, c_l0)
     with branch.else_context():
-        tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)
+        pto.matmul_acc(c_l0, a_l0, b_l0, c_l0)
 else:
-    tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)
+    pto.matmul_acc(c_l0, a_l0, b_l0, c_l0)
 ```
 
 ### Why this is the baseline
@@ -124,13 +124,13 @@ python ./step1_numpy_sim.py
   - ptodsl: same scalar setup in `step1_baseline.py`
 - **Core tile traversal**
   - NumPy: `for li in range(core_loop)`
-  - ptodsl: `for li in pto.range(bid, core_loop, num_blocks)`
+  - ptodsl: `for li in range(bid, core_loop, num_blocks)`
 - **Tile index mapping**
   - NumPy: `m_idx = li // n_loop`, `n_idx = li % n_loop`
   - ptodsl: same formulas
 - **K loop**
   - NumPy: `for k_idx in range(k_dtile_num)`
-  - ptodsl: `for k_idx in pto.range(c0, k_dtile_num, c1)`
+  - ptodsl: `for k_idx in range(c0, k_dtile_num, c1)`
 - **Phase loop (build-time unrolled in ptodsl)**
   - NumPy: `for phase in range(8)`
   - ptodsl: same Python loop, used for static unrolling in IR build
@@ -151,7 +151,7 @@ In this tutorial, `b` is stored as shape `[n, k]`, while `a` is `[m, k]`.
 
 In ptodsl, this transpose handling is embedded by the tensor/view layout settings and tile ops:
 - `tv_b` is created with `layout="DN"` in `step1_baseline.py`
-- `tile.extract(...)` and `tile.matmul(...)` then consume B in the expected orientation for GEMM
+- `pto.extract(...)` and `pto.matmul(...)` then consume B in the expected orientation for GEMM
 
 So `b_l0.T` in NumPy is the explicit equivalent of what ptodsl layout + tile pipeline already encodes implicitly.
 
@@ -197,7 +197,7 @@ with branch.else_context():
 ```python
 def run_loop_k(a_curr, a_next):
     ...
-    tile.extract(a_curr, c0, a_col, a_l0[ping])
+    pto.extract(a_curr, c0, a_col, a_l0[ping])
     ...
     with pto.if_context(k_idx + c1 < k_dtile_num):
         ...
@@ -293,7 +293,7 @@ File: `step4_manual_pipelining.py`
 ```python
 pto.load(sv_b, b_l1[h])
 ...
-tile.matmul_acc(c_l0, a_l0[ping], b_l0[ping], c_l0)
+pto.matmul_acc(c_l0, a_l0[ping], b_l0[ping], c_l0)
 pto.store(c_l0, sv_c)
 ```
 
@@ -406,7 +406,7 @@ They look similar, but they execute at different times.
 - **Python `for ... in range(...)`**
   - runs when generating the IR (build-time)
   - usually acts like compile-time metaprogramming/unrolling
-- **`for ... in pto.range(...)`**
+- **`for ... in range(...)`**
   - emits an MLIR `scf.for` loop
   - executes dynamically at kernel run-time
 - **Python `if condition:`**
@@ -416,16 +416,16 @@ They look similar, but they execute at different times.
   - emits runtime `scf.if`
   - condition is evaluated when kernel runs
 
-### Example 1: `pto.range` (runtime loop in IR)
+### Example 1: `range` (runtime loop in IR)
 
 From `step1_baseline.py`:
 
 ```python
-for li in pto.range(bid, core_loop, num_blocks):
+for li in range(bid, core_loop, num_blocks):
     ...
 ```
 
-This is **not** Python iteration over integers. In ptodsl, `pto.range` is an IR-builder primitive (see `control_flow.py`) that constructs `scf.ForOp` and yields an induction variable value.
+This is **not** Python iteration over integers. In ptodsl, `range` is an IR-builder primitive (see `control_flow.py`) that constructs `scf.ForOp` and yields an induction variable value.
 
 Practical effect:
 - loop trip count depends on runtime values like `bid`, `core_loop`, `num_blocks`
@@ -453,11 +453,11 @@ From `step1_baseline.py`:
 ```python
 if phase == 0:
     with pto.if_context(is_first_k_tile, has_else=True) as branch:
-        tile.matmul(a_l0, b_l0, c_l0)
+        pto.matmul(a_l0, b_l0, c_l0)
     with branch.else_context():
-        tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)
+        pto.matmul_acc(c_l0, a_l0, b_l0, c_l0)
 else:
-    tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)
+    pto.matmul_acc(c_l0, a_l0, b_l0, c_l0)
 ```
 
 How to read this correctly:
@@ -474,4 +474,4 @@ When in doubt, ask:
 1. Is this condition/index a Python value (`int`, `bool`)?
    - then it is build-time.
 2. Is this a ptodsl scalar/value (`s.*`, kernel arg-derived)?
-   - then use ptodsl control flow (`pto.range`, `pto.if_context`, `pto.cond`) for runtime behavior.
+   - then use Python syntax or explicit ptodsl control flow (`range`, `pto.if_context`, `pto.cond`) for runtime behavior.

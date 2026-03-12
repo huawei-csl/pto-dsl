@@ -1,6 +1,6 @@
 import argparse
 
-from ptodsl import pto, tile, to_ir_module
+from ptodsl import pto, to_ir_module
 from ptodsl import scalar as s
 
 from common_utils import (
@@ -102,17 +102,17 @@ def build():
                                 a_col = const(phase * K_QTILE)
                                 b_row = const(quarter * K_QTILE)
 
-                                tile.extract(a_curr, c0, a_col, a_l0[ping])
+                                pto.extract(a_curr, c0, a_col, a_l0[ping])
 
-                                tile.extract(b_l1[h], b_row, c0, b_l0[ping])
+                                pto.extract(b_l1[h], b_row, c0, b_l0[ping])
                                 if phase == 0:
                                     pto.cond(
                                         is_first_k_tile,
-                                        lambda: tile.matmul(a_l0[ping], b_l0[ping], c_l0),
-                                        lambda: tile.matmul_acc(c_l0, a_l0[ping], b_l0[ping], c_l0),
+                                        lambda: pto.matmul(a_l0[ping], b_l0[ping], c_l0),
+                                        lambda: pto.matmul_acc(c_l0, a_l0[ping], b_l0[ping], c_l0),
                                     )
                                 else:
-                                    tile.matmul_acc(c_l0, a_l0[ping], b_l0[ping], c_l0)
+                                    pto.matmul_acc(c_l0, a_l0[ping], b_l0[ping], c_l0)
 
                         with pto.if_context(k_idx + c1 < k_dtile_num):
                             sv_a_next = pto.slice_view(

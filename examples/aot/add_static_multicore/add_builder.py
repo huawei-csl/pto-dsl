@@ -1,4 +1,4 @@
-from ptodsl import pto, tile, to_ir_module
+from ptodsl import pto, to_ir_module
 from ptodsl import scalar as s
 
 const = s.const
@@ -11,9 +11,9 @@ def meta_data():
     ptr_type = pto.PtrType(dtype)
     tensor_type = pto.TensorType(rank=2, dtype=dtype)
     subtensor_type = pto.SubTensorType(shape=[32, 32], dtype=dtype)  # TODO: omit shape https://github.com/zhangstevenunity/PTOAS/issues/31
-    tile_cfg = pto.TileBufConfig()
-    # defaults to pto.TileBufConfig(blayout="RowMajor", slayout="NoneBox", s_fractal_size=512, pad="Null")
-    tile_type = pto.TileBufType(
+    tile_cfg = pto.TileConfig()
+    # defaults to pto.TileConfig(blayout="RowMajor", slayout="NoneBox", s_fractal_size=512, pad="Null")
+    tile_type = pto.TileType(
         shape=[32, 32], valid_shape=[-1, -1], dtype=dtype, memory_space="VEC", config=tile_cfg)
     return {
         "ptr_type": ptr_type,
@@ -63,7 +63,7 @@ def vec_add_kernel_2d_dynamic(
 
         pto.load(sv0, tb0)
         pto.load(sv1, tb1)
-        tile.add(tb0, tb1, tb2)
+        pto.add(tb0, tb1, tb2)
         pto.store(tb2, sv2)
 
     # `default `return None` maps to `func.ReturnOp([])`

@@ -1,4 +1,4 @@
-from ptodsl import pto, tile, to_ir_module
+from ptodsl import pto, to_ir_module
 from ptodsl import scalar as s
 
 const = s.const
@@ -15,8 +15,8 @@ def meta_data():
     tensor_type = pto.TensorType(rank=1, dtype=dtype)
     subtensor_type = pto.SubTensorType(shape=[1, ELEMENTS_PER_TILE], dtype=dtype)
 
-    tile_cfg = pto.TileBufConfig()
-    tile_type = pto.TileBufType(
+    tile_cfg = pto.TileConfig()
+    tile_type = pto.TileType(
         shape=[1, ELEMENTS_PER_TILE],
         valid_shape=[1, -1],
         dtype=dtype,
@@ -140,24 +140,24 @@ def build_geglu(fn_name="geglu_fp16"):
 
                             # Derive constants from data (no scalar-tile broadcast needed):
                             #   a - a = 0  =>  exp(0) = 1.0
-                            tile.sub(tb_a, tb_a, tb_tmp2)  # tmp2 = 0.0
-                            tile.exp(tb_tmp2, tb_ones)  # ones = 1.0
+                            pto.sub(tb_a, tb_a, tb_tmp2)  # tmp2 = 0.0
+                            pto.exp(tb_tmp2, tb_ones)  # ones = 1.0
 
                             # tanh(a) = (exp(2a) - 1) / (exp(2a) + 1)
-                            tile.add(tb_a, tb_a, tb_tmp1)  # tmp1 = 2a
-                            tile.exp(tb_tmp1, tb_tmp1)  # tmp1 = exp(2a)
-                            tile.sub(tb_tmp1, tb_ones, tb_tmp2)  # tmp2 = exp(2a) - 1
-                            tile.add(tb_tmp1, tb_ones, tb_tmp1)  # tmp1 = exp(2a) + 1
-                            tile.div(tb_tmp2, tb_tmp1, tb_tmp2)  # tmp2 = tanh(a)
+                            pto.add(tb_a, tb_a, tb_tmp1)  # tmp1 = 2a
+                            pto.exp(tb_tmp1, tb_tmp1)  # tmp1 = exp(2a)
+                            pto.sub(tb_tmp1, tb_ones, tb_tmp2)  # tmp2 = exp(2a) - 1
+                            pto.add(tb_tmp1, tb_ones, tb_tmp1)  # tmp1 = exp(2a) + 1
+                            pto.div(tb_tmp2, tb_tmp1, tb_tmp2)  # tmp2 = tanh(a)
 
                             # gelu_approx(a) = a * (1 + tanh(a)) / 2
-                            tile.add(tb_ones, tb_tmp2, tb_tmp1)  # tmp1 = 1 + tanh(a)
-                            tile.mul(tb_a, tb_tmp1, tb_tmp1)  # tmp1 = a * (1 + tanh(a))
-                            tile.add(tb_ones, tb_ones, tb_tmp2)  # tmp2 = 2.0
-                            tile.div(tb_tmp1, tb_tmp2, tb_tmp1)  # tmp1 = gelu_approx(a)
+                            pto.add(tb_ones, tb_tmp2, tb_tmp1)  # tmp1 = 1 + tanh(a)
+                            pto.mul(tb_a, tb_tmp1, tb_tmp1)  # tmp1 = a * (1 + tanh(a))
+                            pto.add(tb_ones, tb_ones, tb_tmp2)  # tmp2 = 2.0
+                            pto.div(tb_tmp1, tb_tmp2, tb_tmp1)  # tmp1 = gelu_approx(a)
 
                             # GEGLU: c = gelu_approx(a) * b
-                            tile.mul(tb_tmp1, tb_b, tb_tmp1)  # tmp1 = c
+                            pto.mul(tb_tmp1, tb_b, tb_tmp1)  # tmp1 = c
                             pto.store(tb_tmp1, sv_c)
 
     _ = fn_name

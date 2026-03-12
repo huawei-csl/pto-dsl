@@ -1,3 +1,3 @@
-from . import pto, scalar, tile
+from . import pto, scalar
 
-__all__ = ["pto", "scalar", "tile"]
+__all__ = ["pto", "scalar"]

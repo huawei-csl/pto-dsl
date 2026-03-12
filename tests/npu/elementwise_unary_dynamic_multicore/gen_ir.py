@@ -8,17 +8,17 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from ptodsl import tile
+from ptodsl import pto
 from unary_builder import build_unary_kernel
 
 _OPS = {
-    "rsqrt": tile.rsqrt,
-    "sqrt": tile.sqrt,
-    "exp": tile.exp,
-    "log": tile.log,
-    "relu": tile.relu,
-    "abs": tile.abs,
-    "reciprocal": tile.reciprocal,
+    "rsqrt": pto.rsqrt,
+    "sqrt": pto.sqrt,
+    "exp": pto.exp,
+    "log": pto.log,
+    "relu": pto.relu,
+    "abs": pto.abs,
+    "reciprocal": pto.reciprocal,
 }
 
 if __name__ == "__main__":

@@ -3,8 +3,7 @@ from mlir.dialects.arith import CmpIPredicate
 from mlir.dialects.pto import TLOAD
 from mlir.ir import Context, F32Type, IndexType, InsertionPoint, IntegerType, Location, Module
 from ptodsl import to_ir_module
-from ptodsl import pto, tile
-from ptodsl import scalar as s
+from ptodsl import pto
 
 
 def _idx_const(v: int):
@@ -35,13 +34,13 @@ def build_pythonic(
         tile_view_out = pto.SubTensorType(shape=[M, N], dtype=dtype)
         tile_view_bias = pto.SubTensorType(shape=[1, N], dtype=dtype)
 
-        tile_buf_aMat = pto.TileBufType(shape=[M, BASEK], dtype=dtype, memory_space="MAT")
-        tile_buf_bMat = pto.TileBufType(shape=[BASEK, N], dtype=dtype, memory_space="MAT")
-        tile_buf_biasData = pto.TileBufType(shape=[1, N], dtype=dtype, memory_space="MAT")
-        tile_buf_aTile = pto.TileBufType(shape=[M, BASEK], dtype=dtype, memory_space="LEFT")
-        tile_buf_bTile = pto.TileBufType(shape=[BASEK, N], dtype=dtype, memory_space="RIGHT")
-        tile_buf_cTile = pto.TileBufType(shape=[M, N], dtype=dtype, memory_space="ACC")
-        tile_buf_biasTile = pto.TileBufType(shape=[1, N], dtype=dtype, memory_space="BIAS")
+        tile_buf_aMat = pto.TileType(shape=[M, BASEK], dtype=dtype, memory_space="MAT")
+        tile_buf_bMat = pto.TileType(shape=[BASEK, N], dtype=dtype, memory_space="MAT")
+        tile_buf_biasData = pto.TileType(shape=[1, N], dtype=dtype, memory_space="MAT")
+        tile_buf_aTile = pto.TileType(shape=[M, BASEK], dtype=dtype, memory_space="LEFT")
+        tile_buf_bTile = pto.TileType(shape=[BASEK, N], dtype=dtype, memory_space="RIGHT")
+        tile_buf_cTile = pto.TileType(shape=[M, N], dtype=dtype, memory_space="ACC")
+        tile_buf_biasTile = pto.TileType(shape=[1, N], dtype=dtype, memory_space="BIAS")
 
         return {
             "ptr_type": ptr_dtype,
@@ -61,7 +60,7 @@ def build_pythonic(
             "tile_buf_biasTile": tile_buf_biasTile,
         }
 
-    const = s.const
+    const = pto.const
 
     @to_ir_module(meta_data=meta_data)
     def RunTMATMULSplitK(
@@ -83,15 +82,15 @@ def build_pythonic(
             cTileM = const(M)
             cTileN = const(N)
 
-            batch = s.index_cast(batch_i32)
+            batch = pto.index_cast(batch_i32)
             cBM = batch * cM
 
-            num_blocks = s.index_cast(pto.get_block_num())
-            batches_per_core = s.ceil_div(batch, num_blocks)
-            bid = s.index_cast(pto.get_block_idx())
+            num_blocks = pto.index_cast(pto.get_block_num())
+            batches_per_core = pto.ceil_div(batch, num_blocks)
+            bid = pto.index_cast(pto.get_block_idx())
             b_start = bid * batches_per_core
             b_end_unclamped = b_start + batches_per_core
-            b_end = s.min_u(b_end_unclamped, batch)
+            b_end = pto.min_u(b_end_unclamped, batch)
 
             tvA = pto.as_tensor(tensor_type, ptr=a_ptr, shape=[cBM, cK], strides=[cK, c1])
             tvB = pto.as_tensor(tensor_type, ptr=b_ptr, shape=[cK, cN], strides=[cN, c1])
@@ -134,23 +133,23 @@ def build_pythonic(
                     with pto.if_context(isBias):
                         pto.load(svBias, biasDataTile)
 
-                    tile.mov(aMatTile, aTile)
-                    tile.mov(bMatTile, bTile)
+                    pto.mov(aMatTile, aTile)
+                    pto.mov(bMatTile, bTile)
                     with pto.if_context(isBias):
-                        tile.mov(biasDataTile, biasTile)
-                    is_i0 = s.eq(i, c0)
+                        pto.mov(biasDataTile, biasTile)
+                    is_i0 = i == c0
 
                     def _first_iter():
                         pto.cond(
                             isBias,
-                            lambda: tile.matmul_bias(aTile, bTile, biasTile, cTile),
-                            lambda: tile.matmul(aTile, bTile, cTile),
+                            lambda: pto.matmul_bias(aTile, bTile, biasTile, cTile),
+                            lambda: pto.matmul(aTile, bTile, cTile),
                         )
 
                     pto.cond(
                         is_i0,
                         _first_iter,
-                        lambda: tile.matmul_acc(cTile, aTile, bTile, cTile),
+                        lambda: pto.matmul_acc(cTile, aTile, bTile, cTile),
                     )
                 svOut = pto.slice_view(
                     tile_view_out,
@@ -198,50 +197,50 @@ def build_verbose(
         acc = pto.AddressSpaceAttr.get(pto.AddressSpace.ACC)
         bias = pto.AddressSpaceAttr.get(pto.AddressSpace.BIAS)
 
-        cfg_mat = pto.TileBufConfigAttr.get(
+        cfg_mat = pto.TileConfigAttr.get(
             pto.BLayoutAttr.get(pto.BLayout.ColMajor),
             pto.SLayoutAttr.get(pto.SLayout.RowMajor),
             pto.TileConfig.fractalABSize,
             pto.PadValueAttr.get(pto.PadValue.Null),
         )
-        cfg_mat_bias = pto.TileBufConfigAttr.get(
+        cfg_mat_bias = pto.TileConfigAttr.get(
             pto.BLayoutAttr.get(pto.BLayout.RowMajor),
             pto.SLayoutAttr.get(pto.SLayout.NoneBox),
             pto.TileConfig.fractalABSize,
             pto.PadValueAttr.get(pto.PadValue.Null),
         )
-        cfg_left = pto.TileBufConfigAttr.get(
+        cfg_left = pto.TileConfigAttr.get(
             pto.BLayoutAttr.get(pto.BLayout.RowMajor),
             pto.SLayoutAttr.get(pto.SLayout.RowMajor),
             pto.TileConfig.fractalABSize,
             pto.PadValueAttr.get(pto.PadValue.Null),
         )
-        cfg_right = pto.TileBufConfigAttr.get(
+        cfg_right = pto.TileConfigAttr.get(
             pto.BLayoutAttr.get(pto.BLayout.RowMajor),
             pto.SLayoutAttr.get(pto.SLayout.ColMajor),
             pto.TileConfig.fractalABSize,
             pto.PadValueAttr.get(pto.PadValue.Null),
         )
-        cfg_acc = pto.TileBufConfigAttr.get(
+        cfg_acc = pto.TileConfigAttr.get(
             pto.BLayoutAttr.get(pto.BLayout.ColMajor),
             pto.SLayoutAttr.get(pto.SLayout.RowMajor),
             pto.TileConfig.fractalCSize,
             pto.PadValueAttr.get(pto.PadValue.Null),
         )
-        cfg_bias = pto.TileBufConfigAttr.get(
+        cfg_bias = pto.TileConfigAttr.get(
             pto.BLayoutAttr.get(pto.BLayout.RowMajor),
             pto.SLayoutAttr.get(pto.SLayout.NoneBox),
             pto.TileConfig.fractalABSize,
             pto.PadValueAttr.get(pto.PadValue.Null),
         )
 
-        tile_buf_aMat = pto.TileBufType.get([M, BASEK], dtype, mat, [M, BASEK], cfg_mat)
-        tile_buf_bMat = pto.TileBufType.get([BASEK, N], dtype, mat, [BASEK, N], cfg_mat)
-        tile_buf_biasData = pto.TileBufType.get([1, N], dtype, mat, [1, N], cfg_mat_bias)
-        tile_buf_aTile = pto.TileBufType.get([M, BASEK], dtype, left, [M, BASEK], cfg_left)
-        tile_buf_bTile = pto.TileBufType.get([BASEK, N], dtype, right, [BASEK, N], cfg_right)
-        tile_buf_cTile = pto.TileBufType.get([M, N], dtype, acc, [M, N], cfg_acc)
-        tile_buf_biasTile = pto.TileBufType.get([1, N], dtype, bias, [1, N], cfg_bias)
+        tile_buf_aMat = pto.TileType.get([M, BASEK], dtype, mat, [M, BASEK], cfg_mat)
+        tile_buf_bMat = pto.TileType.get([BASEK, N], dtype, mat, [BASEK, N], cfg_mat)
+        tile_buf_biasData = pto.TileType.get([1, N], dtype, mat, [1, N], cfg_mat_bias)
+        tile_buf_aTile = pto.TileType.get([M, BASEK], dtype, left, [M, BASEK], cfg_left)
+        tile_buf_bTile = pto.TileType.get([BASEK, N], dtype, right, [BASEK, N], cfg_right)
+        tile_buf_cTile = pto.TileType.get([M, N], dtype, acc, [M, N], cfg_acc)
+        tile_buf_biasTile = pto.TileType.get([1, N], dtype, bias, [1, N], cfg_bias)
 
         fn_ty = func.FunctionType.get([ptr_dtype, ptr_dtype, ptr_dtype, ptr_dtype, i1, i32], [])
         with InsertionPoint(module.body):

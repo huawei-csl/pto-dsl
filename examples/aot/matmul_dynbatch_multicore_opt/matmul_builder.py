@@ -1,6 +1,6 @@
 # adapted from https://github.com/zhangstevenunity/PTOAS/blob/a301aa43b388d9b2e1ba0db8773b3a719e8c445b/test/samples/MatMul/tmatmulk.py
 
-from ptodsl import pto, tile, to_ir_module
+from ptodsl import pto, to_ir_module
 from ptodsl import scalar as s
 
 
@@ -26,11 +26,11 @@ def build(
         tile_view_b = pto.SubTensorType(shape=[K, N], dtype=dtype)
         tile_view_out = pto.SubTensorType(shape=[M, N], dtype=dtype)
 
-        tile_buf_aMat = pto.TileBufType(shape=[M, K], dtype=dtype, memory_space="MAT")
-        tile_buf_bMat = pto.TileBufType(shape=[K, N], dtype=dtype, memory_space="MAT")
-        tile_buf_aTile = pto.TileBufType(shape=[M, K], dtype=dtype, memory_space="LEFT")
-        tile_buf_bTile = pto.TileBufType(shape=[K, N], dtype=dtype, memory_space="RIGHT")
-        tile_buf_cTile = pto.TileBufType(shape=[M, N], dtype=dtype, memory_space="ACC")
+        tile_buf_aMat = pto.TileType(shape=[M, K], dtype=dtype, memory_space="MAT")
+        tile_buf_bMat = pto.TileType(shape=[K, N], dtype=dtype, memory_space="MAT")
+        tile_buf_aTile = pto.TileType(shape=[M, K], dtype=dtype, memory_space="LEFT")
+        tile_buf_bTile = pto.TileType(shape=[K, N], dtype=dtype, memory_space="RIGHT")
+        tile_buf_cTile = pto.TileType(shape=[M, N], dtype=dtype, memory_space="ACC")
 
         return {
             "ptr_type": ptr_type,
@@ -102,7 +102,7 @@ def build(
             # B is shared across batches: load once GM->L1->L0B.
             svB = pto.slice_view(tile_view_b, source=tvB, offsets=[c0, c0], sizes=[cK, cTileN])
             pto.load(svB, bMatTile)
-            tile.mov(bMatTile, bTile)
+            pto.mov(bMatTile, bTile)
 
             for b_idx in pto.range(b_start, b_end, c1):
                 svA = pto.slice_view(
@@ -119,8 +119,8 @@ def build(
                 )
 
                 pto.load(svA, aMatTile)
-                tile.mov(aMatTile, aTile)
-                tile.matmul(aTile, bTile, cTile)
+                pto.mov(aMatTile, aTile)
+                pto.matmul(aTile, bTile, cTile)
                 pto.store(cTile, svOut)
 
     return RunTMATMULSplitK

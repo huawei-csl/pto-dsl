@@ -1,4 +1,4 @@
-from ptodsl import pto, tile, to_ir_module
+from ptodsl import pto, to_ir_module
 from ptodsl import scalar as s
 
 const = s.const
@@ -27,15 +27,15 @@ def meta_data(dtype=None, tile_length=32):
     subtensor_type = pto.SubTensorType(shape=[1, tile_length], dtype=dtype)
     subtensor_i32 = pto.SubTensorType(shape=[1, tile_length], dtype=i32)
 
-    tile_cfg = pto.TileBufConfig()
-    tile_type = pto.TileBufType(
+    tile_cfg = pto.TileConfig()
+    tile_type = pto.TileType(
         shape=[1, tile_length],
         valid_shape=[1, tile_length],
         dtype=dtype,
         memory_space="VEC",
         config=tile_cfg,
     )
-    tile_i32 = pto.TileBufType(
+    tile_i32 = pto.TileType(
         shape=[1, tile_length],
         valid_shape=[1, tile_length],
         dtype=i32,
@@ -150,9 +150,9 @@ def build_gather_kernel(
                         pto.load(sv1, tb_idx)
 
                         # gather within tile by indices
-                        tile.gather(tb_src, tb_tmp, tb_idx)
+                        pto.gather(tb_src, tb_tmp, tb_idx)
 
-                        tile.gather(tb_tmp, tb_out, mask_pattern=mask_pattern)
+                        pto.gather(tb_tmp, tb_out, mask_pattern=mask_pattern)
 
                         sv2 = pto.slice_view(
                             subtensor_type,

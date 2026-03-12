@@ -1,4 +1,4 @@
-from ptodsl import jit, pto, tile
+from ptodsl import jit, pto
 from ptodsl import scalar as s
 import torch
 import torch_npu
@@ -14,8 +14,8 @@ def meta_data():
     tensor_type = pto.TensorType(rank=2, dtype=dtype)
 
     subtensor_type = pto.SubTensorType(shape=[1, 1024], dtype=dtype) 
-    tile_type = pto.TileBufType(
-        shape=[1, 1024], valid_shape=[-1, -1], dtype=dtype, memory_space="VEC", config=pto.TileBufConfig())
+    tile_type = pto.TileType(
+        shape=[1, 1024], valid_shape=[-1, -1], dtype=dtype, memory_space="VEC", config=pto.TileConfig())
 
     return {
         "ptr_type": ptr_type,
@@ -59,7 +59,7 @@ def vec_add_kernel(
 
         pto.load(sv0, tb0)
         pto.load(sv1, tb1)
-        tile.add(tb0, tb1, tb2)
+        pto.add(tb0, tb1, tb2)
         pto.store(tb2, sv2)
 
 

@@ -17,8 +17,8 @@ def meta_data(dtype="float32"):
     tensor_type = pto.TensorType(rank=1, dtype=pto_dtype)
     subtensor_type = pto.SubTensorType(shape=[1, elements_per_tile], dtype=pto_dtype)
 
-    tile_cfg = pto.TileBufConfig()
-    tile_type = pto.TileBufType(
+    tile_cfg = pto.TileConfig()
+    tile_type = pto.TileType(
         shape=[1, elements_per_tile],
         valid_shape=[1, -1],
         dtype=pto_dtype,

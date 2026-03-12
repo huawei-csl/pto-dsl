@@ -1,5 +1,43 @@
 from mlir.dialects import arith
-from mlir.ir import F16Type, F32Type, IndexType, IntegerType
+from mlir.ir import IndexType, Type
+
+
+_DTYPE_SPELLINGS = {
+    "bool": "i1",
+    "int8": "i8",
+    "uint8": "ui8",
+    "int16": "i16",
+    "uint16": "ui16",
+    "int32": "i32",
+    "uint32": "ui32",
+    "int64": "i64",
+    "uint64": "ui64",
+    "float16": "f16",
+    "bfloat16": "bf16",
+    "float32": "f32",
+    "float8_e4m3fn": "f8E4M3FN",
+    "float8_e5m2": "f8E5M2",
+}
+
+
+def _is_float_type(ty):
+    text = str(ty)
+    return text.startswith("f") or text == "bf16"
+
+
+def _binary_op(lhs, rhs, int_ctor, float_ctor):
+    lhs = _unwrap(lhs)
+    rhs = _unwrap(rhs)
+    ctor = float_ctor if _is_float_type(lhs.type) else int_ctor
+    return Value(ctor(lhs, rhs).result)
+
+
+def _cmp_op(lhs, rhs, int_predicate, float_predicate):
+    lhs = _unwrap(lhs)
+    rhs = _unwrap(rhs)
+    if _is_float_type(lhs.type):
+        return Value(arith.CmpFOp(float_predicate, lhs, rhs).result)
+    return Value(arith.CmpIOp(int_predicate, lhs, rhs).result)
 
 
 def _unwrap(value):
@@ -9,28 +47,32 @@ def _unwrap(value):
 
 
 class Value:
-    # TODO: generalize to more comprehensive wrappers like
-    # https://github.com/makslevental/mlir-python-extras/blob/0.0.8.2/mlir/extras/dialects/ext/arith.py
     def __init__(self, raw):
         self.raw = raw
 
+    def __bool__(self):
+        raise TypeError(
+            "PTODSL values cannot drive Python control flow directly. "
+            "Use Python syntax inside @to_ir_module so the AST frontend can lower it to scf."
+        )
+
     def __mul__(self, other):
-        return Value(arith.MulIOp(_unwrap(self), _unwrap(other)).result)
+        return _binary_op(self, other, arith.MulIOp, arith.MulFOp)
 
     def __rmul__(self, other):
-        return Value(arith.MulIOp(_unwrap(other), _unwrap(self)).result)
+        return _binary_op(other, self, arith.MulIOp, arith.MulFOp)
 
     def __add__(self, other):
-        return Value(arith.AddIOp(_unwrap(self), _unwrap(other)).result)
+        return _binary_op(self, other, arith.AddIOp, arith.AddFOp)
 
     def __radd__(self, other):
-        return Value(arith.AddIOp(_unwrap(other), _unwrap(self)).result)
+        return _binary_op(other, self, arith.AddIOp, arith.AddFOp)
 
     def __sub__(self, other):
-        return Value(arith.SubIOp(_unwrap(self), _unwrap(other)).result)
+        return _binary_op(self, other, arith.SubIOp, arith.SubFOp)
 
     def __rsub__(self, other):
-        return Value(arith.SubIOp(_unwrap(other), _unwrap(self)).result)
+        return _binary_op(other, self, arith.SubIOp, arith.SubFOp)
 
     def __floordiv__(self, other):
         return Value(arith.DivSIOp(_unwrap(self), _unwrap(other)).result)
@@ -50,27 +92,43 @@ class Value:
     def __rmod__(self, other):
         return Value(arith.RemSIOp(_unwrap(other), _unwrap(self)).result)
 
-    @staticmethod
-    def _cmp(lhs, rhs, predicate):
-        return Value(arith.CmpIOp(predicate, _unwrap(lhs), _unwrap(rhs)).result)
-
     def __lt__(self, other):
-        return Value._cmp(self, other, arith.CmpIPredicate.slt)
+        return _cmp_op(self, other, arith.CmpIPredicate.slt, arith.CmpFPredicate.OLT)
 
     def __gt__(self, other):
-        return Value._cmp(self, other, arith.CmpIPredicate.sgt)
+        return _cmp_op(self, other, arith.CmpIPredicate.sgt, arith.CmpFPredicate.OGT)
 
     def __le__(self, other):
-        return Value._cmp(self, other, arith.CmpIPredicate.sle)
+        return _cmp_op(self, other, arith.CmpIPredicate.sle, arith.CmpFPredicate.OLE)
 
     def __ge__(self, other):
-        return Value._cmp(self, other, arith.CmpIPredicate.sge)
+        return _cmp_op(self, other, arith.CmpIPredicate.sge, arith.CmpFPredicate.OGE)
 
     def __eq__(self, other):
-        return Value._cmp(self, other, arith.CmpIPredicate.eq)
+        return _cmp_op(self, other, arith.CmpIPredicate.eq, arith.CmpFPredicate.OEQ)
 
     def __ne__(self, other):
-        return Value._cmp(self, other, arith.CmpIPredicate.ne)
+        return _cmp_op(self, other, arith.CmpIPredicate.ne, arith.CmpFPredicate.ONE)
+
+    def __neg__(self):
+        zero = const(0.0 if _is_float_type(self.type) else 0, dtype=self.type)
+        return zero - self
+
+    def __and__(self, other):
+        return Value(arith.AndIOp(_unwrap(self), _unwrap(other)).result)
+
+    def __rand__(self, other):
+        return Value(arith.AndIOp(_unwrap(other), _unwrap(self)).result)
+
+    def __or__(self, other):
+        return Value(arith.OrIOp(_unwrap(self), _unwrap(other)).result)
+
+    def __ror__(self, other):
+        return Value(arith.OrIOp(_unwrap(other), _unwrap(self)).result)
+
+    def __invert__(self):
+        one = const(1, dtype=self.type)
+        return Value(arith.XOrIOp(_unwrap(self), _unwrap(one)).result)
 
     def __getattr__(self, item):
         return getattr(self.raw, item)
@@ -83,18 +141,8 @@ def wrap_value(value):
 
 
 def __getattr__(name):
-    # TODO: add more builtin dtype aliases (for example float16/bfloat16/int8/int64)
-    # when they are validated against PTO type support.
-    if name == "bool":
-        return IntegerType.get_signless(1)
-    if name == "float32":
-        return F32Type.get()
-    if name == "float16":
-        return F16Type.get()
-    if name == "int32":
-        return IntegerType.get_signless(32)
-    if name == "int16":
-        return IntegerType.get_signless(16)
+    if name in _DTYPE_SPELLINGS:
+        return Type.parse(_DTYPE_SPELLINGS[name])
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 
@@ -129,19 +177,19 @@ def min_u(a, b):
 
 
 def eq(a, b):
-    return Value(arith.CmpIOp(arith.CmpIPredicate.eq, _unwrap(a), _unwrap(b)).result)
+    return _cmp_op(a, b, arith.CmpIPredicate.eq, arith.CmpFPredicate.OEQ)
 
 
 def lt(a, b):
-    return Value(arith.CmpIOp(arith.CmpIPredicate.slt, _unwrap(a), _unwrap(b)).result)
+    return _cmp_op(a, b, arith.CmpIPredicate.slt, arith.CmpFPredicate.OLT)
 
 
 def gt(a, b):
-    return Value(arith.CmpIOp(arith.CmpIPredicate.sgt, _unwrap(a), _unwrap(b)).result)
+    return _cmp_op(a, b, arith.CmpIPredicate.sgt, arith.CmpFPredicate.OGT)
 
 
 def ge(a, b):
-    return Value(arith.CmpIOp(arith.CmpIPredicate.sge, _unwrap(a), _unwrap(b)).result)
+    return _cmp_op(a, b, arith.CmpIPredicate.sge, arith.CmpFPredicate.OGE)
 
 
 def select(cond, true_val, false_val):
@@ -163,4 +211,18 @@ __all__ = [
     "gt",
     "ge",
     "select",
+    "bool",
+    "int8",
+    "uint8",
+    "int16",
+    "uint16",
+    "int32",
+    "uint32",
+    "int64",
+    "uint64",
+    "float16",
+    "bfloat16",
+    "float32",
+    "float8_e4m3fn",
+    "float8_e5m2",
 ]

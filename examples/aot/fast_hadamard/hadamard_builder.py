@@ -1,4 +1,4 @@
-from ptodsl import pto, tile, to_ir_module
+from ptodsl import pto, to_ir_module
 from ptodsl import scalar as s
 
 const = s.const
@@ -16,15 +16,15 @@ def meta_data():
     subtensor_full = pto.SubTensorType(shape=[1, ELEMENTS_PER_TILE], dtype=dtype)
     subtensor_half = pto.SubTensorType(shape=[1, HALF_ELEMENTS_PER_TILE], dtype=dtype)
 
-    tile_cfg = pto.TileBufConfig()
-    tile_full = pto.TileBufType(
+    tile_cfg = pto.TileConfig()
+    tile_full = pto.TileType(
         shape=[1, ELEMENTS_PER_TILE],
         valid_shape=[1, -1],
         dtype=dtype,
         memory_space="VEC",
         config=tile_cfg,
     )
-    tile_half = pto.TileBufType(
+    tile_half = pto.TileType(
         shape=[1, HALF_ELEMENTS_PER_TILE],
         valid_shape=[1, -1],
         dtype=dtype,
@@ -110,15 +110,15 @@ def fast_hadamard_autosync(
                         )
                         # Alias row halves inside UB row tile (no GM round-trip
                         # per Hadamard iteration).
-                        tb_first = tile.subset(tb_row, [c0, c0], [1, HALF_ELEMENTS_PER_TILE])
-                        tb_second = tile.subset(tb_row, [c0, n_half], [1, HALF_ELEMENTS_PER_TILE])
+                        tb_first = pto.subset(tb_row, [c0, c0], [1, HALF_ELEMENTS_PER_TILE])
+                        tb_second = pto.subset(tb_row, [c0, n_half], [1, HALF_ELEMENTS_PER_TILE])
 
                         pto.load(sv_row, tb_row)
                         for _ in pto.range(c0, log2_n, c1):
-                            tile.gather(tb_row, tb_even, mask_pattern="P0101")
-                            tile.gather(tb_row, tb_odd, mask_pattern="P1010")
-                            tile.add(tb_even, tb_odd, tb_first)
-                            tile.sub(tb_even, tb_odd, tb_second)
+                            pto.gather(tb_row, tb_even, mask_pattern="P0101")
+                            pto.gather(tb_row, tb_odd, mask_pattern="P1010")
+                            pto.add(tb_even, tb_odd, tb_first)
+                            pto.sub(tb_even, tb_odd, tb_second)
                         pto.store(tb_row, sv_row)
 
                 for chunk_i in pto.range(c0, num_chunks, c1):
@@ -211,21 +211,21 @@ def fast_hadamard_manualsync(
                         )
                         # Alias row halves inside UB row tile (no GM round-trip
                         # per Hadamard iteration).
-                        tb_first = tile.subset(
+                        tb_first = pto.subset(
                             tb_row, [c0, c0], [1, HALF_ELEMENTS_PER_TILE]
                         )
-                        tb_second = tile.subset(
+                        tb_second = pto.subset(
                             tb_row, [c0, n_half], [1, HALF_ELEMENTS_PER_TILE]
                         )
 
                         pto.load(sv_row, tb_row)
 
                         for _ in pto.range(c0, log2_n, c1):
-                            tile.gather(tb_row, tb_even, mask_pattern="P0101")
-                            tile.gather(tb_row, tb_odd, mask_pattern="P1010")
+                            pto.gather(tb_row, tb_even, mask_pattern="P0101")
+                            pto.gather(tb_row, tb_odd, mask_pattern="P1010")
                             pto.barrier("VEC")
-                            tile.add(tb_even, tb_odd, tb_first)
-                            tile.sub(tb_even, tb_odd, tb_second)
+                            pto.add(tb_even, tb_odd, tb_first)
+                            pto.sub(tb_even, tb_odd, tb_second)
                             pto.barrier("VEC")
 
                         pto.store(tb_row, sv_row)

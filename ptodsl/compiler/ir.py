@@ -4,6 +4,7 @@ from mlir.dialects import func, pto as _pto
 from mlir.ir import Context, InsertionPoint, Location, Module
 
 from ..api.scalar import wrap_value
+from .ast_lowering import lower_function
 
 
 def _resolve_meta(meta_fn):
@@ -54,22 +55,6 @@ def _has_func_return(block):
     return last_name == "func.return"
 
 
-def _inject_globals(fn, values):
-    old = {}
-    for name, value in values.items():
-        old[name] = fn.__globals__.get(name, None)
-        fn.__globals__[name] = value
-    return old
-
-
-def _restore_globals(fn, old, injected_names):
-    for name in injected_names:
-        if old[name] is None and name in fn.__globals__:
-            del fn.__globals__[name]
-        else:
-            fn.__globals__[name] = old[name]
-
-
 def to_ir_module(*, meta_data):
     def decorator(fn):
         sig = inspect.signature(fn)
@@ -88,14 +73,9 @@ def to_ir_module(*, meta_data):
 
             with InsertionPoint(entry):
                 wrapped_args = [wrap_value(arg) for arg in entry.arguments]
-                injected = set(meta_map.keys())
-                old_globals = _inject_globals(fn, meta_map)
-                try:
-                    fn(*wrapped_args)
-                finally:
-                    _restore_globals(fn, old_globals, injected)
+                _, terminated = lower_function(fn, wrapped_args, meta_map)
 
-                if not ret_types and not _has_func_return(entry):
+                if not ret_types and not terminated and not _has_func_return(entry):
                     func.ReturnOp([])
 
             module.operation.verify()

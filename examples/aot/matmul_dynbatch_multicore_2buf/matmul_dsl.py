@@ -1,6 +1,6 @@
 from mlir.ir import IntegerType
 
-from ptodsl import pto, tile, to_ir_module
+from ptodsl import pto, to_ir_module
 from ptodsl import scalar as s
 
 
@@ -18,11 +18,11 @@ def build(M=128, K=128, N=128):
         tile_view_a = pto.SubTensorType(shape=[M, K], dtype=dtype)
         tile_view_b = pto.SubTensorType(shape=[K, N], dtype=dtype)
         tile_view_c = pto.SubTensorType(shape=[M, N], dtype=dtype)
-        tile_buf_aMat = pto.TileBufType(shape=[M, K], dtype=dtype, memory_space="MAT")
-        tile_buf_bMat = pto.TileBufType(shape=[K, N], dtype=dtype, memory_space="MAT")
-        tile_buf_aTile = pto.TileBufType(shape=[M, K], dtype=dtype, memory_space="LEFT")
-        tile_buf_bTile = pto.TileBufType(shape=[K, N], dtype=dtype, memory_space="RIGHT")
-        tile_buf_cTile = pto.TileBufType(shape=[M, N], dtype=dtype_acc_tile, memory_space="ACC")
+        tile_buf_aMat = pto.TileType(shape=[M, K], dtype=dtype, memory_space="MAT")
+        tile_buf_bMat = pto.TileType(shape=[K, N], dtype=dtype, memory_space="MAT")
+        tile_buf_aTile = pto.TileType(shape=[M, K], dtype=dtype, memory_space="LEFT")
+        tile_buf_bTile = pto.TileType(shape=[K, N], dtype=dtype, memory_space="RIGHT")
+        tile_buf_cTile = pto.TileType(shape=[M, N], dtype=dtype_acc_tile, memory_space="ACC")
         # TODO: Get rid of this?
         return locals()
 
@@ -72,7 +72,7 @@ def build(M=128, K=128, N=128):
             # Put B in L0B
             svB = pto.slice_view(tile_view_b, source=tvB, offsets=[c0, c0], sizes=[cK, cN])
             pto.load(svB, bMatTile)
-            tile.mov(bMatTile, bTile)
+            pto.mov(bMatTile, bTile)
             # TODO: wait here so we can use full l1 memory later for A.
 
 
@@ -102,16 +102,16 @@ def build(M=128, K=128, N=128):
                 ########## Move A1 and A2 into L0A
                 pto.cond(
                     curr == c0,
-                    lambda: tile.mov(aMatTiles[0], aTiles[0]),
-                    lambda: tile.mov(aMatTiles[1], aTiles[1])
+                    lambda: pto.mov(aMatTiles[0], aTiles[0]),
+                    lambda: pto.mov(aMatTiles[1], aTiles[1])
                 )
 
 
                 ########## Perform matmul
                 pto.cond(
                     curr == c0,
-                    lambda: tile.matmul(aTiles[0], bTile, cTiles[0]),
-                    lambda: tile.matmul(aTiles[1], bTile, cTiles[1]),
+                    lambda: pto.matmul(aTiles[0], bTile, cTiles[0]),
+                    lambda: pto.matmul(aTiles[1], bTile, cTiles[1]),
                 )
 
 

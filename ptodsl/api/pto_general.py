@@ -66,6 +66,17 @@ def cube_section():
         yield
 
 
+class _SectionNamespace:
+    def vector(self):
+        return vector_section()
+
+    def cube(self):
+        return cube_section()
+
+
+section = _SectionNamespace()
+
+
 def alloc_tile(tile_type, *, addr=None, valid_row=None, valid_col=None):
     kwargs = {}
     if addr is not None:
@@ -108,6 +119,7 @@ __all__ = [
     "get_block_num",
     "as_tensor",
     "slice_view",
+    "section",
     "vector_section",
     "cube_section",
     "alloc_tile",

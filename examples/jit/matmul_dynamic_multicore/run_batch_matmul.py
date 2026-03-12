@@ -1,6 +1,6 @@
 from mlir.ir import IntegerType
 
-from ptodsl import jit, pto, tile
+from ptodsl import jit, pto
 from ptodsl import scalar as s
 import torch
 import torch_npu
@@ -34,14 +34,14 @@ def build_kernel(
         tile_view_out = pto.SubTensorType(shape=[M, N], dtype=dtype)
         tile_view_bias = pto.SubTensorType(shape=[1, N], dtype=dtype)
 
-        tile_buf_aMat = pto.TileBufType(shape=[M, BASEK], dtype=dtype, memory_space="MAT")
-        tile_buf_bMat = pto.TileBufType(shape=[BASEK, N], dtype=dtype, memory_space="MAT")
-        tile_buf_biasData = pto.TileBufType(shape=[1, N], dtype=dtype, memory_space="MAT")
+        tile_buf_aMat = pto.TileType(shape=[M, BASEK], dtype=dtype, memory_space="MAT")
+        tile_buf_bMat = pto.TileType(shape=[BASEK, N], dtype=dtype, memory_space="MAT")
+        tile_buf_biasData = pto.TileType(shape=[1, N], dtype=dtype, memory_space="MAT")
 
-        tile_buf_aTile = pto.TileBufType(shape=[M, BASEK], dtype=dtype, memory_space="LEFT")
-        tile_buf_bTile = pto.TileBufType(shape=[BASEK, N], dtype=dtype, memory_space="RIGHT")
-        tile_buf_cTile = pto.TileBufType(shape=[M, N], dtype=dtype, memory_space="ACC")
-        tile_buf_biasTile = pto.TileBufType(shape=[1, N], dtype=dtype, memory_space="BIAS")
+        tile_buf_aTile = pto.TileType(shape=[M, BASEK], dtype=dtype, memory_space="LEFT")
+        tile_buf_bTile = pto.TileType(shape=[BASEK, N], dtype=dtype, memory_space="RIGHT")
+        tile_buf_cTile = pto.TileType(shape=[M, N], dtype=dtype, memory_space="ACC")
+        tile_buf_biasTile = pto.TileType(shape=[1, N], dtype=dtype, memory_space="BIAS")
 
         return {
             "ptr_type": ptr_dtype,
@@ -133,24 +133,24 @@ def build_kernel(
                     with pto.if_context(isBias):
                         pto.load(svBias, biasDataTile)
 
-                    tile.mov(aMatTile, aTile)
-                    tile.mov(bMatTile, bTile)
+                    pto.mov(aMatTile, aTile)
+                    pto.mov(bMatTile, bTile)
                     with pto.if_context(isBias):
-                        tile.mov(biasDataTile, biasTile)
+                        pto.mov(biasDataTile, biasTile)
 
                     is_i0 = s.eq(i, c0)
 
                     def _first_iter():
                         pto.cond(
                             isBias,
-                            lambda: tile.matmul_bias(aTile, bTile, biasTile, cTile),
-                            lambda: tile.matmul(aTile, bTile, cTile),
+                            lambda: pto.matmul_bias(aTile, bTile, biasTile, cTile),
+                            lambda: pto.matmul(aTile, bTile, cTile),
                         )
 
                     pto.cond(
                         is_i0,
                         _first_iter,
-                        lambda: tile.matmul_acc(cTile, aTile, bTile, cTile),
+                        lambda: pto.matmul_acc(cTile, aTile, bTile, cTile),
                     )
 
                 svOut = pto.slice_view(
