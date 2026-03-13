@@ -206,7 +206,7 @@ With just this 10-line swizzle function, the FLOPs are much improved, reaching ~
 
 ![image info](./fig/flops_step3_swizzle.png)
 
-To confirm the L2 cache effect, by profiling with `msprof op`:
+To confirm the L2 cache effect, profile cache hit with `msprof op`:
 
 ```bash
 msprof op \
