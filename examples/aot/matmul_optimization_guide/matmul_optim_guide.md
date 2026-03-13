@@ -244,7 +244,7 @@ The current [PTO-DSL package](https://github.com/huawei-csl/pto-dsl/tree/3f0860b
 
 To keep the framework simple during rapid development, we are NOT using Python AST parsing or AST rewriting. Thus, all Python-native constructs (`if`/`for` control flows, Python classes, iterators, etc.) execute like normal Python code. This is unlike other pure-AST (the case for Triton & CuTile) or hybrid AST+tracing (the case for Tilelang & CuteDSL) frontends that *might or might not* rewrite native `if`/`range` as special IR builders (e.g. see the [complex rules for CuteDSL](https://github.com/Dao-AILab/quack/blob/v0.3.2/docs/dsl_control_flow.rst)). The current PTO-DSL frontend is pure Python tracing, most like JAX's approach.
 
-**Users should keep in mind:** run-time dynamic control flows are only available in the `pto` namespace such as `pto.range` (which creates [MLIR structured control flow](https://mlir.llvm.org/docs/Dialects/SCFDialect/) in the IR module), while Python native control flows evaluated at build time.
+**Users should keep in mind:** run-time dynamic control flows are only available in the `pto` namespace such as `pto.range` (which creates [MLIR structured control flow](https://mlir.llvm.org/docs/Dialects/SCFDialect/) in the IR module), while Python native control flows are evaluated at build time.
 
 Common cases:
 
