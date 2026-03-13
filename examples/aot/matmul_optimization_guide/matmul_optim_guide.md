@@ -121,7 +121,7 @@ We see that the Cube core is idle for 50% of the time:
 
 ![image info](./fig/pipeline_N1024_baseline.png)
 
-Double buffering overlaps compute and L1->L0 transfer:
+Double buffering overlaps compute and data transfer:
 
 ![image info](./fig/pipeline_N1024_doublebuf.png)
 
@@ -200,7 +200,8 @@ Swizzling improves L2 cache reuse across multiple cores. We borrow this figure [
 
 To read this figure, assume 9 cores computing a subset `C` matrix in the first iteration (the yellow area, each number 0 ~ 8 marks the core id). In the naive "row-major ordering", the full matrix B (assume larger than L2 cache!) needs to be loaded from global memory; while in the "grouped ordering", the data traffic w.r.t. global memory is much less. 
 
-[step3_swizzle.py](./step3_swizzle.py) incorporates a 10-line swizzling function `swizzle_nz`, while keeping the rest of the code same as step2. [step3_swizzle_numpy_sim.py](./step3_swizzle_numpy_sim.py) explains the swizzle scheme intuitively. The swizzle algorithm is one of the algorithms [from catlass](https://gitcode.com/cann/catlass/blob/v1.4.0/include/catlass/gemm/block/block_swizzle.hpp), which also [has a nice explanation](https://gitcode.com/cann/catlass/blob/v1.4.0/docs/contents/advanced/swizzle_explanation.md) (for GPU experts -- such index remapping is analogous to [the "scheduler" in DeepGEMM](https://github.com/deepseek-ai/DeepGEMM/blob/v2.1.1/deep_gemm/include/deep_gemm/common/scheduler.cuh), which alters data assignment and loop order for each SM)
+[step3_swizzle.py](./step3_swizzle.py) incorporates a 10-line swizzling function `swizzle_nz`, while keeping the rest of the code same as step2. [step3_swizzle_numpy_sim.py](./step3_swizzle_numpy_sim.py) explains the swizzle scheme intuitively. The swizzle algorithm is one of the algorithms [from catlass](https://gitcode.com/cann/catlass/blob/v1.4.0/include/catlass/gemm/block/block_swizzle.hpp), which also [has a nice explanation](https://gitcode.com/cann/catlass/blob/v1.4.0/docs/contents/advanced/swizzle_explanation.md)
+(for GPU experts -- such index remapping is analogous to [the "scheduler" in DeepGEMM](https://github.com/deepseek-ai/DeepGEMM/blob/v2.1.1/deep_gemm/include/deep_gemm/common/scheduler.cuh), which alters data assignment and loop order for each SM)
 
 With just this 10-line swizzle function, the FLOPs are much improved, reaching ~90% of `torch.matmul`!
 
@@ -239,12 +240,16 @@ Even with manual sync, the code only increases from ~100 lines to ~150 lines of 
 
 # Appendix A: PTO-DSL syntax note
 
-Python native control flow is evaluated at build time, while control flow in the `pto` namespace becomes [MLIR structured control flow](https://mlir.llvm.org/docs/Dialects/SCFDialect/) in the IR module. In the current version of PTO-DSL, we are NOT using Python AST parsing or AST rewriting, so all Python-native constructs (not just control flow, but also Python classes, iterators, etc.) execute like normal Python code, unlike other pure-AST or hybrid AST+tracing frontends that [might or might not rewrite native `if`/`range` as IR builders](https://github.com/Dao-AILab/quack/blob/v0.3.2/docs/dsl_control_flow.rst).
+The current [PTO-DSL package](https://github.com/huawei-csl/pto-dsl/tree/3f0860b1e750f2c4d26a93c6501a212b60196863/ptodsl) is just a very thin wrapper over the [MLIR Python bindings](https://mlir.llvm.org/docs/Bindings/Python/) of PTO dialect. The entire package has **only ~1000 lines of Python** (you can check by `cd ptodsl && find . -name "*.py" | xargs wc -l`).
+
+To keep the framework simple during rapid development, we are NOT using Python AST parsing or AST rewriting. Thus, all Python-native constructs (`if`/`for` control flows, Python classes, iterators, etc.) execute like normal Python code. This is unlike other pure-AST (the case for Triton & CuTile) or hybrid AST+tracing (the case for Tilelang & CuteDSL) frontends that *might or might not* rewrite native `if`/`range` as special IR builders (e.g. see the [complex rules for CuteDSL](https://github.com/Dao-AILab/quack/blob/v0.3.2/docs/dsl_control_flow.rst)). The current PTO-DSL frontend is pure Python tracing, most like JAX's approach.
+
+**Users should keep in mind:** run-time dynamic control flows are only available in the `pto` namespace such as `pto.range` (which creates [MLIR structured control flow](https://mlir.llvm.org/docs/Dialects/SCFDialect/) in the IR module), while Python native control flows evaluated at build time.
 
 Common cases:
 
 - **Python `for ... in range(...)`**
-  - runs when generating the IR (build-time)
+  - runs before generating the IR (build-time)
   - usually acts like compile-time metaprogramming/unrolling
 - **`for ... in pto.range(...)`**
   - emits an MLIR `scf.for` loop
