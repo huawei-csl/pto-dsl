@@ -202,7 +202,11 @@ To read this figure, assume 9 cores computing a subset `C` matrix in the first i
 
 [step3_swizzle.py](./step3_swizzle.py) incorporates a 10-line swizzling function `swizzle_nz`, while keeping the rest of the code same as step2. [step3_swizzle_numpy_sim.py](./step3_swizzle_numpy_sim.py) explains the swizzle scheme intuitively. The swizzle algorithm is one of the algorithms [from catlass](https://gitcode.com/cann/catlass/blob/v1.4.0/include/catlass/gemm/block/block_swizzle.hpp), which also [has a nice explanation](https://gitcode.com/cann/catlass/blob/v1.4.0/docs/contents/advanced/swizzle_explanation.md) (for GPU experts -- such index remapping is analogous to [the "scheduler" in DeepGEMM](https://github.com/deepseek-ai/DeepGEMM/blob/v2.1.1/deep_gemm/include/deep_gemm/common/scheduler.cuh), which alters data assignment and loop order for each SM)
 
-Profiling with `msprof op`:
+With just this 10-line swizzle function, the FLOPs are much improved, reaching ~90% of `torch.matmul`!
+
+![image info](./fig/flops_step3_swizzle.png)
+
+To confirm the L2 cache effect, by profiling with `msprof op`:
 
 ```bash
 msprof op \
@@ -224,9 +228,6 @@ With swizzling, the 16384x16384 case now gets a high (93.72%) L2 hit rate:
 
 <img src="./fig/cachehit_N16384_swizzle.png" alt="cachehit_N16384_swizzle" width="70%" />
 
-Now the FLOPs are much improved, reaching ~90% of `torch.matmul`.
-
-![image info](./fig/flops_step3_swizzle.png)
 
 # Step 4: (optional) Manual software pipelining
 
