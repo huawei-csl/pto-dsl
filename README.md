@@ -14,14 +14,24 @@ PTO-DSL provides a programming abstraction similar to [cuTile](https://docs.nvid
 **Compare to other kernel programming frameworks** (e.g. [tilelang-ascend](https://github.com/tile-ai/tilelang-ascend), [triton-ascend](https://gitcode.com/Ascend/triton-ascend), and [catlass](https://gitcode.com/cann/catlass)):
 - PTO-DSL aims for **low-level, explicit, NPU-native primitives** that can match the performance of **programming in [hardware intrinsics](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850/API/cceintrinsicapi/cceapi_0001.html)**, filling the gap of a [CuteDSL](https://docs.nvidia.com/cutlass/latest/media/docs/pythonDSL/overview.html)-like low-level Python programming for NPU.
 
-## Environment
-
-See [docker](./docker)
-
 ## Installation
 
+Recommend using [Docker-ascend](https://gitcode.com/Ascend/mind-cluster). See [docker](./docker) directory to build all dependencies.
+
+Then, install this lightweight DSL package itself:
+
 ```bash
-pip install -e ./ptodsl
+# install
+pip install "git+https://github.com/huawei-csl/pto-dsl.git"
+
+# or stable tag
+pip install "git+https://github.com/huawei-csl/pto-dsl.git@<tag>"
+```
+
+For in-place development:
+
+```bash
+pip install -e .
 ```
 
 ## Usage

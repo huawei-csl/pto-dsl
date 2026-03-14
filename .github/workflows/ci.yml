@@ -89,9 +89,9 @@ jobs:
       - name: Install ptodsl (${{ matrix.install-mode }})
         run: |
           if [ "${{ matrix.install-mode }}" = "standard" ]; then
-            pip install ./ptodsl
+            pip install .
           else
-            pip install -e ./ptodsl
+            pip install -e .
           fi
 
       - name: Run frontend tests
