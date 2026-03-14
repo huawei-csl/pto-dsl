@@ -142,9 +142,7 @@ def build_row_reduce(kind="sum", dtype="fp32"):
             tv_x = pto.as_tensor(
                 tensor_type, ptr=x_ptr, shape=[total_elems], strides=[c1]
             )
-            tv_y = pto.as_tensor(
-                tensor_type, ptr=y_ptr, shape=[batch], strides=[c1]
-            )
+            tv_y = pto.as_tensor(tensor_type, ptr=y_ptr, shape=[batch], strides=[c1])
 
             with pto.if_context(num_rows > c0):
                 tb_x = pto.alloc_tile(tile_type, valid_col=n_cols)
@@ -244,9 +242,7 @@ def build_col_reduce(kind="sum", dtype="fp32"):
                         tile_type, valid_row=c1, valid_col=cols_this
                     )
                 else:
-                    tb_acc = pto.alloc_tile(
-                        tile_out_type, valid_col=cols_this
-                    )
+                    tb_acc = pto.alloc_tile(tile_out_type, valid_col=cols_this)
 
                 sv_x0 = pto.slice_view(
                     subtensor_in,
@@ -275,9 +271,7 @@ def build_col_reduce(kind="sum", dtype="fp32"):
                             tile_type, valid_row=c1, valid_col=cols_this
                         )
                     else:
-                        tb_part = pto.alloc_tile(
-                            tile_out_type, valid_col=cols_this
-                        )
+                        tb_part = pto.alloc_tile(tile_out_type, valid_col=cols_this)
 
                     sv_x = pto.slice_view(
                         subtensor_in,

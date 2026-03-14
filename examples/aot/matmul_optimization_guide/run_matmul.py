@@ -45,7 +45,7 @@ def load_lib(lib_path):
         ctypes.c_void_p,
         ctypes.c_int,
         ctypes.c_int,
-        ctypes.c_int
+        ctypes.c_int,
     ]
     lib.call_kernel.restype = None
 
@@ -81,7 +81,7 @@ def load_lib(lib_path):
             torch_to_ctypes(c),
             m,
             n,
-            k
+            k,
         )
         return c
 
@@ -89,11 +89,7 @@ def load_lib(lib_path):
 
 
 def run_case(matmul_abt, a, b, c_ref, *, block_dim):
-    c = matmul_abt(
-        a,
-        b,
-        block_dim=block_dim
-    )
+    c = matmul_abt(a, b, block_dim=block_dim)
     torch.npu.synchronize()
     return CaseResult(
         m=int(a.shape[0]),
@@ -156,13 +152,7 @@ def test_matmul():
 
                 shape_worst = None
                 for block_dim in BLOCK_DIM_LIST:
-                    result = run_case(
-                        matmul_abt,
-                        a,
-                        b,
-                        c_ref,
-                        block_dim=block_dim
-                    )
+                    result = run_case(matmul_abt, a, b, c_ref, block_dim=block_dim)
                     checked_cases += 1
 
                     if (

@@ -85,13 +85,22 @@ def vec_add_1d_dynamic(
                     offset_global = tile_offset_global * c_tile
 
                     sv0 = pto.slice_view(
-                        subtensor_type, source=tv0, offsets=[offset_global], sizes=[c_tile]
+                        subtensor_type,
+                        source=tv0,
+                        offsets=[offset_global],
+                        sizes=[c_tile],
                     )
                     sv1 = pto.slice_view(
-                        subtensor_type, source=tv1, offsets=[offset_global], sizes=[c_tile]
+                        subtensor_type,
+                        source=tv1,
+                        offsets=[offset_global],
+                        sizes=[c_tile],
                     )
                     sv2 = pto.slice_view(
-                        subtensor_type, source=tv2, offsets=[offset_global], sizes=[c_tile]
+                        subtensor_type,
+                        source=tv2,
+                        offsets=[offset_global],
+                        sizes=[c_tile],
                     )
 
                     pto.load(sv0, tb0)
@@ -109,7 +118,14 @@ def test_add():
     tile_size = 1024
     # Keep shapes aligned to tile size, but vary tile counts so they are not
     # required to be multiples of `num_cores`.
-    tile_counts = [1, 7, num_cores - 1, num_cores + 3, 2 * num_cores + 7, 5 * num_cores - 5]
+    tile_counts = [
+        1,
+        7,
+        num_cores - 1,
+        num_cores + 3,
+        2 * num_cores + 7,
+        5 * num_cores - 5,
+    ]
     shape_list = [tile_size * tiles for tiles in tile_counts]
 
     torch.manual_seed(0)

@@ -48,7 +48,9 @@ def do_bench(
 
     torch_npu.npu.synchronize()
     factor = {"s": 1e-3, "ms": 1e0, "us": 1e3, "ns": 1e6}[unit]
-    times = [factor * start.elapsed_time(end) for start, end in zip(start_events, end_events)]
+    times = [
+        factor * start.elapsed_time(end) for start, end in zip(start_events, end_events)
+    ]
     if aggregation == "mean":
         return sum(times) / len(times)
     return times

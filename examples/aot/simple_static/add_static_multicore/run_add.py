@@ -9,12 +9,7 @@ def torch_to_ctypes(tensor):
 
 
 def lib_to_func(lib):
-    def add_func(
-        x,
-        y,
-        z,
-        stream_ptr=None
-        ):
+    def add_func(x, y, z, stream_ptr=None):
 
         vrow, vcol = 32, 32  # local tile shape hard-coded as the kernel
 
@@ -26,8 +21,10 @@ def lib_to_func(lib):
             torch_to_ctypes(x),
             torch_to_ctypes(y),
             torch_to_ctypes(z),
-            vrow, vcol
+            vrow,
+            vcol,
         )
+
     return add_func
 
 
@@ -52,6 +49,7 @@ def test_add():
     z_ref = x + y
     torch.testing.assert_close(z, z_ref)
     print("result equal!")
+
 
 if __name__ == "__main__":
     test_add()

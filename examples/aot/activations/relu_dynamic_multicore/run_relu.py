@@ -35,7 +35,7 @@ def load_lib(lib_path, block_dim, check_type=True):
 
     def relu_func(x, y, n, block_dim=block_dim, stream_ptr=None):
         if stream_ptr is None:
-            stream_ptr=  torch.npu.current_stream()._as_parameter_
+            stream_ptr = torch.npu.current_stream()._as_parameter_
 
         lib.call_kernel(
             block_dim,
@@ -54,13 +54,12 @@ def test_relu(verbose=True):
     torch.npu.set_device(device)
     dtype = torch.float32
 
-
     # allocate a bigger buffer than the actual number of elements to test the padding behavior
     shape = [1, 2 * 128]
     for BLOCK_DIM in range(1, 21):
         relu_kernel = load_lib("relu_lib.so", block_dim=BLOCK_DIM)
-        print(BLOCK_DIM) 
-        for num_elements in [3,7,13,97,143, 2*128]:
+        print(BLOCK_DIM)
+        for num_elements in [3, 7, 13, 97, 143, 2 * 128]:
             x = torch.rand(shape, device=device, dtype=dtype) - 0.5
             y = torch.full(shape, -10, device=device, dtype=dtype)
             relu_kernel(x, y, n=num_elements)
@@ -73,17 +72,22 @@ def test_relu(verbose=True):
                 step = 1
                 for i in range(0, shape[0]):
                     for j in range(0, shape[1], step):
-                        if correct[i, j:j+step].all():
-                            print('X', end='')
+                        if correct[i, j : j + step].all():
+                            print("X", end="")
                         else:
-                            print('.', end='')
+                            print(".", end="")
                         if j == num_elements - 1:
-                            print('|', end='')
-                    print('|')
+                            print("|", end="")
+                    print("|")
 
-            torch.testing.assert_close(y.flatten()[:num_elements], y_ref.flatten()[:num_elements])
+            torch.testing.assert_close(
+                y.flatten()[:num_elements], y_ref.flatten()[:num_elements]
+            )
             # Make sure we didn't write past the end of the buffer
-            torch.testing.assert_close(y.flatten()[num_elements:], torch.full_like(y.flatten()[num_elements:], -10))
+            torch.testing.assert_close(
+                y.flatten()[num_elements:],
+                torch.full_like(y.flatten()[num_elements:], -10),
+            )
             print(f"RELU test pass for shape {shape}! using {BLOCK_DIM} cores")
 
 

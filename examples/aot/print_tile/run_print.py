@@ -9,12 +9,7 @@ def torch_to_ctypes(tensor):
 
 
 def lib_to_func(lib):
-    def add_func(
-        x,
-        y,
-        z,
-        stream_ptr=None
-        ):
+    def add_func(x, y, z, stream_ptr=None):
 
         vrow, vcol = 32, 32  # local tile shape hard-coded as the kernel
 
@@ -26,8 +21,10 @@ def lib_to_func(lib):
             torch_to_ctypes(x),
             torch_to_ctypes(y),
             torch_to_ctypes(z),
-            vrow, vcol
+            vrow,
+            vcol,
         )
+
     return add_func
 
 
@@ -42,12 +39,13 @@ def test_add():
     shape = [1280, 32]  # tensor shape hard-coded as the kernel
     torch.manual_seed(0)
     dtype = torch.float32
-    x = torch.arange(shape[0]*shape[1], device=device, dtype=dtype).reshape(shape)
-    y = torch.arange(shape[0]*shape[1], device=device, dtype=dtype).reshape(shape)
+    x = torch.arange(shape[0] * shape[1], device=device, dtype=dtype).reshape(shape)
+    y = torch.arange(shape[0] * shape[1], device=device, dtype=dtype).reshape(shape)
     z = torch.empty(shape, device=device, dtype=dtype)
 
     add_func(x, y, z)
     torch.npu.synchronize()
+
 
 if __name__ == "__main__":
     test_add()

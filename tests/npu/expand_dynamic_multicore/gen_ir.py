@@ -19,8 +19,8 @@ from expand_builder import (
 )
 
 _BUILDERS = {
-    "colexpand":     build_col_expand,
-    "rowexpand":     build_row_expand,
+    "colexpand": build_col_expand,
+    "rowexpand": build_row_expand,
     "rowexpand_mul": build_row_expand_mul,
     "rowexpand_sub": build_row_expand_sub,
     "rowexpand_div": build_row_expand_div,

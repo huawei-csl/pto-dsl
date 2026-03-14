@@ -108,10 +108,30 @@ def _maybe_plot(rows, plot_dir):
     legend_scale = 2.0
 
     step_defs = [
-        ("step1", "single_auto_noswizzle_tflops", "Step1 Kernel", "flops_step1_baseline.png"),
-        ("step2", "double_auto_noswizzle_tflops", "Step2 Kernel", "flops_step2_doublebuf.png"),
-        ("step3", "double_auto_swizzle_tflops", "Step3 Kernel", "flops_step3_swizzle.png"),
-        ("step4", "double_manual_swizzle_tflops", "Step4 Kernel", "flops_step4_manual_pipeline.png"),
+        (
+            "step1",
+            "single_auto_noswizzle_tflops",
+            "Step1 Kernel",
+            "flops_step1_baseline.png",
+        ),
+        (
+            "step2",
+            "double_auto_noswizzle_tflops",
+            "Step2 Kernel",
+            "flops_step2_doublebuf.png",
+        ),
+        (
+            "step3",
+            "double_auto_swizzle_tflops",
+            "Step3 Kernel",
+            "flops_step3_swizzle.png",
+        ),
+        (
+            "step4",
+            "double_manual_swizzle_tflops",
+            "Step4 Kernel",
+            "flops_step4_manual_pipeline.png",
+        ),
     ]
 
     for _, custom_key, custom_label, out_name in step_defs:
@@ -121,8 +141,18 @@ def _maybe_plot(rows, plot_dir):
             base_label_size = ax.xaxis.label.get_size()
             chunk = [r for r in rows if r["n"] == n and r["k"] == k]
             if not chunk:
-                ax.set_title(f"TFLOPS vs M (N={n}, K={k})", fontsize=base_title_size * title_scale)
-                ax.text(0.5, 0.5, "No data", transform=ax.transAxes, ha="center", va="center")
+                ax.set_title(
+                    f"TFLOPS vs M (N={n}, K={k})",
+                    fontsize=base_title_size * title_scale,
+                )
+                ax.text(
+                    0.5,
+                    0.5,
+                    "No data",
+                    transform=ax.transAxes,
+                    ha="center",
+                    va="center",
+                )
                 ax.set_xlabel("M", fontsize=base_label_size * axis_label_scale)
                 ax.set_ylabel("TFLOPS", fontsize=base_label_size * axis_label_scale)
                 ax.grid(alpha=0.25)
@@ -149,7 +179,9 @@ def _maybe_plot(rows, plot_dir):
                 color="#1f77b4",
                 label=custom_label,
             )
-            ax.set_title(f"TFLOPS vs M (N={n}, K={k})", fontsize=base_title_size * title_scale)
+            ax.set_title(
+                f"TFLOPS vs M (N={n}, K={k})", fontsize=base_title_size * title_scale
+            )
             ax.set_xlabel("M", fontsize=base_label_size * axis_label_scale)
             ax.set_ylabel("TFLOPS", fontsize=base_label_size * axis_label_scale)
             ax.set_xlim(left=0)
@@ -239,7 +271,9 @@ def main():
     if not single_auto_noswizzle_lib.is_absolute():
         single_auto_noswizzle_lib = base_dir / single_auto_noswizzle_lib
     if not double_auto_swizzle_lib.exists():
-        raise FileNotFoundError(f"Double-buffer auto-sync swizzle library not found: {double_auto_swizzle_lib}")
+        raise FileNotFoundError(
+            f"Double-buffer auto-sync swizzle library not found: {double_auto_swizzle_lib}"
+        )
     if not double_auto_noswizzle_lib.exists():
         raise FileNotFoundError(
             f"Double-buffer auto-sync non-swizzle library not found: {double_auto_noswizzle_lib}"
@@ -280,8 +314,14 @@ def main():
         print(f"=== N={n}, K={k} ===")
         for m in m_list:
             alloc = args.warmup + args.repeat
-            a_list = [torch.randn(m, k, dtype=torch.float16, device=device) for _ in range(alloc)]
-            b_list = [torch.randn(n, k, dtype=torch.float16, device=device) for _ in range(alloc)]
+            a_list = [
+                torch.randn(m, k, dtype=torch.float16, device=device)
+                for _ in range(alloc)
+            ]
+            b_list = [
+                torch.randn(n, k, dtype=torch.float16, device=device)
+                for _ in range(alloc)
+            ]
 
             double_auto_swizzle_us = _time_us(
                 double_auto_swizzle_mm, a_list, b_list, args.warmup, args.repeat
@@ -311,11 +351,17 @@ def main():
             torch_matmul_tflops = flops / torch_matmul_us / 1e6
 
             # Step 1: buffering effect (double-buffer vs single-buffer, both non-swizzle auto-sync).
-            step1_double_vs_single = double_auto_noswizzle_tflops / single_auto_noswizzle_tflops
+            step1_double_vs_single = (
+                double_auto_noswizzle_tflops / single_auto_noswizzle_tflops
+            )
             # Step 2: swizzle effect (double-buffer auto-sync swizzle vs non-swizzle).
-            step2_swizzle_vs_noswizzle = double_auto_swizzle_tflops / double_auto_noswizzle_tflops
+            step2_swizzle_vs_noswizzle = (
+                double_auto_swizzle_tflops / double_auto_noswizzle_tflops
+            )
             # Step 3: manual-sync effect (double-buffer swizzle manual-sync vs auto-sync).
-            step3_manual_vs_auto = double_manual_swizzle_tflops / double_auto_swizzle_tflops
+            step3_manual_vs_auto = (
+                double_manual_swizzle_tflops / double_auto_swizzle_tflops
+            )
 
             ratios_step1_double_vs_single_noswizzle.append(step1_double_vs_single)
             ratios_step2_swizzle_vs_noswizzle.append(step2_swizzle_vs_noswizzle)
@@ -346,13 +392,19 @@ def main():
             )
         print("")
 
-    avg_step1 = sum(ratios_step1_double_vs_single_noswizzle) / len(ratios_step1_double_vs_single_noswizzle)
+    avg_step1 = sum(ratios_step1_double_vs_single_noswizzle) / len(
+        ratios_step1_double_vs_single_noswizzle
+    )
     min_step1 = min(ratios_step1_double_vs_single_noswizzle)
     max_step1 = max(ratios_step1_double_vs_single_noswizzle)
-    avg_step2 = sum(ratios_step2_swizzle_vs_noswizzle) / len(ratios_step2_swizzle_vs_noswizzle)
+    avg_step2 = sum(ratios_step2_swizzle_vs_noswizzle) / len(
+        ratios_step2_swizzle_vs_noswizzle
+    )
     min_step2 = min(ratios_step2_swizzle_vs_noswizzle)
     max_step2 = max(ratios_step2_swizzle_vs_noswizzle)
-    avg_step3 = sum(ratios_step3_manual_vs_auto_swizzle) / len(ratios_step3_manual_vs_auto_swizzle)
+    avg_step3 = sum(ratios_step3_manual_vs_auto_swizzle) / len(
+        ratios_step3_manual_vs_auto_swizzle
+    )
     min_step3 = min(ratios_step3_manual_vs_auto_swizzle)
     max_step3 = max(ratios_step3_manual_vs_auto_swizzle)
 
@@ -362,13 +414,25 @@ def main():
     print(f"min FLOP ratio(double_noswizzle_auto/single_noswizzle): {min_step1:.3f}x")
     print(f"max FLOP ratio(double_noswizzle_auto/single_noswizzle): {max_step1:.3f}x")
     print("Step2 (swizzle speedup, both double-buffer auto-sync):")
-    print(f"avg FLOP ratio(double_swizzle_auto/double_noswizzle_auto): {avg_step2:.3f}x")
-    print(f"min FLOP ratio(double_swizzle_auto/double_noswizzle_auto): {min_step2:.3f}x")
-    print(f"max FLOP ratio(double_swizzle_auto/double_noswizzle_auto): {max_step2:.3f}x")
+    print(
+        f"avg FLOP ratio(double_swizzle_auto/double_noswizzle_auto): {avg_step2:.3f}x"
+    )
+    print(
+        f"min FLOP ratio(double_swizzle_auto/double_noswizzle_auto): {min_step2:.3f}x"
+    )
+    print(
+        f"max FLOP ratio(double_swizzle_auto/double_noswizzle_auto): {max_step2:.3f}x"
+    )
     print("Step3 (manual-sync speedup, both double-buffer swizzle):")
-    print(f"avg FLOP ratio(double_swizzle_manual/double_swizzle_auto): {avg_step3:.3f}x")
-    print(f"min FLOP ratio(double_swizzle_manual/double_swizzle_auto): {min_step3:.3f}x")
-    print(f"max FLOP ratio(double_swizzle_manual/double_swizzle_auto): {max_step3:.3f}x")
+    print(
+        f"avg FLOP ratio(double_swizzle_manual/double_swizzle_auto): {avg_step3:.3f}x"
+    )
+    print(
+        f"min FLOP ratio(double_swizzle_manual/double_swizzle_auto): {min_step3:.3f}x"
+    )
+    print(
+        f"max FLOP ratio(double_swizzle_manual/double_swizzle_auto): {max_step3:.3f}x"
+    )
 
     _maybe_plot(plot_rows, plot_dir)
 

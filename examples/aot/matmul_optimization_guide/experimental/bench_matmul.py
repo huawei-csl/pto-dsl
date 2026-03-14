@@ -208,7 +208,9 @@ def _maybe_plot(rows, plot_dir):
         linear_by_m = {}
         for m in m_values:
             candidates = [r for r in chunk if r["m"] == m]
-            linear_by_m[m] = sum(r["linear_tflops"] for r in candidates) / len(candidates)
+            linear_by_m[m] = sum(r["linear_tflops"] for r in candidates) / len(
+                candidates
+            )
 
         plt.figure(figsize=(9, 5))
         plt.plot(
@@ -292,9 +294,7 @@ def _maybe_plot(rows, plot_dir):
             alpha = 1.0 if is_baseline else 0.7
             color = cmap(idx % 10)
             base_label = (
-                "no-swizzle baseline"
-                if is_baseline
-                else f"d={direction}, c={count}"
+                "no-swizzle baseline" if is_baseline else f"d={direction}, c={count}"
             )
             speedup_label = f"speedup {base_label}"
 
@@ -358,12 +358,20 @@ def main():
     for n, k in SHAPES_NK:
         for m in m_list:
             alloc = args.warmup + args.repeat
-            a_list = [torch.randn(m, k, dtype=torch.float16, device=device) for _ in range(alloc)]
-            b_list = [torch.randn(n, k, dtype=torch.float16, device=device) for _ in range(alloc)]
+            a_list = [
+                torch.randn(m, k, dtype=torch.float16, device=device)
+                for _ in range(alloc)
+            ]
+            b_list = [
+                torch.randn(n, k, dtype=torch.float16, device=device)
+                for _ in range(alloc)
+            ]
             c_ref = F.linear(a_list[0], b_list[0])
             torch.npu.synchronize()
 
-            linear_time_us = _time_fn(F.linear, a_list, b_list, args.warmup, args.repeat)
+            linear_time_us = _time_fn(
+                F.linear, a_list, b_list, args.warmup, args.repeat
+            )
             flops = 2.0 * m * n * k
             linear_tflops = flops / linear_time_us / 1e6
 
@@ -389,7 +397,9 @@ def main():
                 torch.npu.synchronize()
                 max_absdiff = float((c - c_ref).abs().max().item())
                 mean_absdiff = float((c - c_ref).abs().mean().item())
-                custom_time_us = _time_fn(_custom, a_list, b_list, args.warmup, args.repeat)
+                custom_time_us = _time_fn(
+                    _custom, a_list, b_list, args.warmup, args.repeat
+                )
                 custom_tflops = flops / custom_time_us / 1e6
                 flops_fraction_vs_linear = custom_tflops / linear_tflops
 

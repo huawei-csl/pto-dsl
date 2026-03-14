@@ -9,7 +9,9 @@ N_FULL = 256
 
 def _print_tile_memory(name, arr):
     kib = arr.nbytes / 1024
-    print(f"[tile-mem] {name}: shape={arr.shape}, dtype={arr.dtype}, bytes={arr.nbytes} ({kib:.1f} KiB)")
+    print(
+        f"[tile-mem] {name}: shape={arr.shape}, dtype={arr.dtype}, bytes={arr.nbytes} ({kib:.1f} KiB)"
+    )
 
 
 def step1_numpy_sim(a, b):
@@ -76,7 +78,10 @@ def step1_numpy_sim(a, b):
                     b_half = phase // 4
                     h_off = b_half * K_TILE
                     # b_l1 layout is [K_TILE, N_FULL], matching tile_buf_b_l1.
-                    b_l1[:, :] = b[n_offset : n_offset + N_FULL, k_offset + h_off : k_offset + h_off + K_TILE].T
+                    b_l1[:, :] = b[
+                        n_offset : n_offset + N_FULL,
+                        k_offset + h_off : k_offset + h_off + K_TILE,
+                    ].T
 
                 # Corresponds to extract A/B quarter tiles
                 a_col = phase * K_QTILE

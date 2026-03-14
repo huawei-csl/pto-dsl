@@ -3,6 +3,7 @@ import time
 import torch
 import torch_npu
 from ptodsl.test_util import get_test_device
+
 try:
     import matplotlib.pyplot as plt
 except ImportError:
@@ -29,9 +30,7 @@ def matmul_io_bytes(a: torch.Tensor, b: torch.Tensor, c: torch.Tensor) -> int:
     # Does not include cache effects or intermediate buffers.
     elt = _dtype_nbytes(a.dtype)
     return (a.numel() + b.numel() + c.numel()) * elt
-    #return (a.numel() + b.numel())  * elt
-
-
+    # return (a.numel() + b.numel())  * elt
 
 
 def benchmark(
@@ -44,7 +43,7 @@ def benchmark(
     flops: int | None = None,
     io_bytes: int | None = None,
 ) -> dict:
-    avg_s = do_bench(fn, warmup_iters=warmup, benchmark_iters=iters, unit='s')
+    avg_s = do_bench(fn, warmup_iters=warmup, benchmark_iters=iters, unit="s")
     stats = {"name": name, "iters": iters, "avg_ms": avg_s * 1e3}
     if flops is not None:
         stats["tflops"] = (flops / avg_s) / 1e12
@@ -65,11 +64,7 @@ def print_benchmark(stats: dict) -> None:
 def load_lib(lib_path):
     lib = ctypes.CDLL(lib_path)
 
-    def matmul_func(
-        c, a, b, batch_size,
-        block_dim,
-        stream_ptr=None
-    ):
+    def matmul_func(c, a, b, batch_size, block_dim, stream_ptr=None):
         if stream_ptr is None:
             stream_ptr = torch.npu.current_stream()._as_parameter_
         lib.call_kernel(
@@ -84,8 +79,6 @@ def load_lib(lib_path):
     return matmul_func
 
 
-
-
 def plot_benchmark():
     device = get_test_device()
     torch.set_default_device(device)
@@ -98,7 +91,7 @@ def plot_benchmark():
     matmul_func = load_lib("./matmul_kernel.so")  # assume defined
     torch.manual_seed(0)
 
-    bs, m, k, n = 24*200, 128, 128, 128
+    bs, m, k, n = 24 * 200, 128, 128, 128
     for blk in blk_values:
         a = torch.rand((bs, m, k), device=device, dtype=dtype)
         b = torch.rand((k, n), device=device, dtype=dtype)
@@ -109,19 +102,29 @@ def plot_benchmark():
         torch.npu.synchronize()
         c_ref = torch.matmul(a, b)
         diff = (c - c_ref).abs().max()
-        assert  diff <= 1e-5, diff
+        assert diff <= 1e-5, diff
 
         flops = matmul_flops(bs, m, k, n)
         io_bytes = matmul_io_bytes(a, b, c)
 
-        torch_b = benchmark("torch.matmul",
-                            lambda: torch.matmul(a, b, out=c),
-                            device=device, warmup=20, iters=20,
-                            flops=flops, io_bytes=io_bytes)['gbps']
-        pto = benchmark("custom_kernel",
-                        lambda: matmul_func(c, a, b, batch_size=bs, block_dim=blk),
-                        device=device, warmup=20, iters=20,
-                        flops=flops, io_bytes=io_bytes)['gbps']
+        torch_b = benchmark(
+            "torch.matmul",
+            lambda: torch.matmul(a, b, out=c),
+            device=device,
+            warmup=20,
+            iters=20,
+            flops=flops,
+            io_bytes=io_bytes,
+        )["gbps"]
+        pto = benchmark(
+            "custom_kernel",
+            lambda: matmul_func(c, a, b, batch_size=bs, block_dim=blk),
+            device=device,
+            warmup=20,
+            iters=20,
+            flops=flops,
+            io_bytes=io_bytes,
+        )["gbps"]
 
         pto_results.append(pto)
         torch_results.append(torch_b)
@@ -136,20 +139,21 @@ def plot_benchmark():
         return
 
     # plot results
-    plt.figure(figsize=(8,5))
-    plt.plot(blk_values, pto_results, 'o-', label='mlir')
-    plt.plot(blk_values, torch_results, 's-', label='torch.matmul (all cores)')
-    plt.xlabel('Number of cores')
-    plt.ylabel('Bandwidth (Read A+B write C) (GB/s)')
+    plt.figure(figsize=(8, 5))
+    plt.plot(blk_values, pto_results, "o-", label="mlir")
+    plt.plot(blk_values, torch_results, "s-", label="torch.matmul (all cores)")
+    plt.xlabel("Number of cores")
+    plt.ylabel("Bandwidth (Read A+B write C) (GB/s)")
     plt.title(
         f"""Benchmark: Custom Kernel vs torch.matmul\n
          A: {tuple(a.shape)} B: {tuple(b.shape)}, C: {tuple(c.shape)} \n
          A+B+C size: {total_mb:.1f} MB"""
     )
-    plt.grid(True, linestyle='--', alpha=0.6)
+    plt.grid(True, linestyle="--", alpha=0.6)
     plt.legend()
     plt.tight_layout()
-    plt.savefig('our.png')
+    plt.savefig("our.png")
+
 
 if __name__ == "__main__":
     plot_benchmark()

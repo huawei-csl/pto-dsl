@@ -87,13 +87,13 @@ def store(source, dest):
 
 def print(format, scalar):
     """
-        Example:
-        `print("hello %d\n", const(5))`
-        is equivalent to
-        `cce::printf("hello%d\n", 5);`
+    Example:
+    `print("hello %d\n", const(5))`
+    is equivalent to
+    `cce::printf("hello%d\n", 5);`
 
-        NOTE: may not print if the print buffer is full from previous
-        prints (typical when printing big tiles).
+    NOTE: may not print if the print buffer is full from previous
+    prints (typical when printing big tiles).
     """
     if isinstance(scalar, Value):
         scalar = _unwrap(scalar)

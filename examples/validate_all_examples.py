@@ -71,7 +71,9 @@ def extract_commands(readme_path: Path) -> list[str]:
     return []
 
 
-def run_example(example_name: str, readme_path: Path, commands: list[str]) -> ExampleResult:
+def run_example(
+    example_name: str, readme_path: Path, commands: list[str]
+) -> ExampleResult:
     example_start = time.time()
     if not commands:
         return ExampleResult(

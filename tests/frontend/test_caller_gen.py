@@ -59,7 +59,10 @@ def test_generate_caller_cpp_maps_pointer_and_scalar_types():
         'extern "C" void call_kernel(uint32_t blockDim, void *stream, uint8_t *data, '
         "int64_t count, int64_t idx)"
     ) in caller_cpp
-    assert "mixed_kernel<<<blockDim, nullptr, stream>>>((int8_t *)data, count, idx);" in caller_cpp
+    assert (
+        "mixed_kernel<<<blockDim, nullptr, stream>>>((int8_t *)data, count, idx);"
+        in caller_cpp
+    )
 
 
 def test_generate_caller_cpp_for_dynamic_1d_add_signature():

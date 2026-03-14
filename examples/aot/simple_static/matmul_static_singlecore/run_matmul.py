@@ -13,11 +13,7 @@ def load_lib(lib_path):
 
     default_block_dim = 1  # NOTE: kernel is single-core for now
 
-    def matmul_func(
-        c, a, b,
-        block_dim=default_block_dim,
-        stream_ptr=None
-    ):
+    def matmul_func(c, a, b, block_dim=default_block_dim, stream_ptr=None):
         if stream_ptr is None:
             stream_ptr = torch.npu.current_stream()._as_parameter_
         lib.call_kernel(
@@ -39,8 +35,8 @@ def test_matmul():
 
     m, k, n = 32, 256, 32
     torch.manual_seed(0)
-    a = torch.rand((m,k), device=device, dtype=dtype)
-    b = torch.rand((k,n), device=device, dtype=dtype)
+    a = torch.rand((m, k), device=device, dtype=dtype)
+    b = torch.rand((k, n), device=device, dtype=dtype)
     c = torch.zeros((m, n), device=device, dtype=dtype)
 
     matmul_func = load_lib("./matmul_kernel.so")
@@ -49,7 +45,7 @@ def test_matmul():
 
     c_ref = torch.matmul(a, b)
     diff = (c - c_ref).abs().max()
-    print('max diff: ', diff)
+    print("max diff: ", diff)
 
 
 if __name__ == "__main__":

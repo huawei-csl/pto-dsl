@@ -80,13 +80,22 @@ def vec_add_1d_dynamic(
                     offset_global = tile_offset_global * c_tile
 
                     sv0 = pto.slice_view(
-                        subtensor_type, source=tv0, offsets=[offset_global], sizes=[c_tile]
+                        subtensor_type,
+                        source=tv0,
+                        offsets=[offset_global],
+                        sizes=[c_tile],
                     )
                     sv1 = pto.slice_view(
-                        subtensor_type, source=tv1, offsets=[offset_global], sizes=[c_tile]
+                        subtensor_type,
+                        source=tv1,
+                        offsets=[offset_global],
+                        sizes=[c_tile],
                     )
                     sv2 = pto.slice_view(
-                        subtensor_type, source=tv2, offsets=[offset_global], sizes=[c_tile]
+                        subtensor_type,
+                        source=tv2,
+                        offsets=[offset_global],
+                        sizes=[c_tile],
                     )
 
                     pto.load(sv0, tb0)

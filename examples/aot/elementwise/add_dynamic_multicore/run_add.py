@@ -9,24 +9,16 @@ def torch_to_ctypes(tensor):
 
 
 def lib_to_func(lib):
-    def add_func(
-        x,
-        y,
-        z,
-        stream_ptr=None
-        ):
+    def add_func(x, y, z, stream_ptr=None):
 
         if stream_ptr is None:
             stream_ptr = torch.npu.current_stream()._as_parameter_
 
         N = x.numel()
         lib.call_kernel(
-            stream_ptr,
-            torch_to_ctypes(x),
-            torch_to_ctypes(y),
-            torch_to_ctypes(z),
-            N
+            stream_ptr, torch_to_ctypes(x), torch_to_ctypes(y), torch_to_ctypes(z), N
         )
+
     return add_func
 
 
@@ -42,7 +34,14 @@ def test_add(lib_path="./add_lib.so"):
     tile_size = 1024
     # Keep shapes aligned to tile size, but vary tile counts so they are not
     # required to be multiples of `num_cores`.
-    tile_counts = [1, 7, num_cores - 1, num_cores + 3, 2 * num_cores + 7, 5 * num_cores - 5]
+    tile_counts = [
+        1,
+        7,
+        num_cores - 1,
+        num_cores + 3,
+        2 * num_cores + 7,
+        5 * num_cores - 5,
+    ]
     shape_list = [tile_size * tiles for tiles in tile_counts]
 
     torch.manual_seed(0)
@@ -59,6 +58,7 @@ def test_add(lib_path="./add_lib.so"):
         z_ref = x + y
         torch.testing.assert_close(z, z_ref)
         print(f"result equal for shape {shape}")
+
 
 if __name__ == "__main__":
     test_add()

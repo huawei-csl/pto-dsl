@@ -24,10 +24,7 @@ _KERNELS = [
     # "colprod",
 ]
 
-_LIB_PATHS = {
-    name: os.path.join(_DIR, f"{name}_lib.so")
-    for name in _KERNELS
-}
+_LIB_PATHS = {name: os.path.join(_DIR, f"{name}_lib.so") for name in _KERNELS}
 
 _SHAPES = [
     (1, 1),
@@ -105,7 +102,9 @@ def _output_shape(name, batch, n_cols):
 
 def _make_input(name, batch, n_cols, device):
     if name.endswith("prod"):
-        return torch.empty(batch, n_cols, device=device, dtype=torch.float32).uniform_(0.5, 1.5)
+        return torch.empty(batch, n_cols, device=device, dtype=torch.float32).uniform_(
+            0.5, 1.5
+        )
     return torch.randn(batch, n_cols, device=device, dtype=torch.float32)
 
 

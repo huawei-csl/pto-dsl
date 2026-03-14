@@ -301,10 +301,14 @@ def _build_row_expand_fused(kind, dtype="fp32"):
                     )
 
                     # src0 = one row of Y, src1 = scalar x[row], dst = one row of Z
-                    tb_src0 = pto.alloc_tile(tile_type, valid_row=c1, valid_col=cols_this)
+                    tb_src0 = pto.alloc_tile(
+                        tile_type, valid_row=c1, valid_col=cols_this
+                    )
                     pto.load(sv_y, tb_src0)
 
-                    tb_dst = pto.alloc_tile(tile_type, valid_row=c1, valid_col=cols_this)
+                    tb_dst = pto.alloc_tile(
+                        tile_type, valid_row=c1, valid_col=cols_this
+                    )
                     row_op(tb_src0, tb_src1, tb_dst)
 
                     pto.store(tb_dst, sv_z)
@@ -341,8 +345,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     builders = {
-        "colexpand":     build_col_expand,
-        "rowexpand":     build_row_expand,
+        "colexpand": build_col_expand,
+        "rowexpand": build_row_expand,
         "rowexpand_mul": build_row_expand_mul,
         "rowexpand_sub": build_row_expand_sub,
         "rowexpand_div": build_row_expand_div,

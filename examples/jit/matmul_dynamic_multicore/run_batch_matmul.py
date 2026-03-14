@@ -34,14 +34,26 @@ def build_kernel(
         tile_view_out = pto.SubTensorType(shape=[M, N], dtype=dtype)
         tile_view_bias = pto.SubTensorType(shape=[1, N], dtype=dtype)
 
-        tile_buf_aMat = pto.TileBufType(shape=[M, BASEK], dtype=dtype, memory_space="MAT")
-        tile_buf_bMat = pto.TileBufType(shape=[BASEK, N], dtype=dtype, memory_space="MAT")
-        tile_buf_biasData = pto.TileBufType(shape=[1, N], dtype=dtype, memory_space="MAT")
+        tile_buf_aMat = pto.TileBufType(
+            shape=[M, BASEK], dtype=dtype, memory_space="MAT"
+        )
+        tile_buf_bMat = pto.TileBufType(
+            shape=[BASEK, N], dtype=dtype, memory_space="MAT"
+        )
+        tile_buf_biasData = pto.TileBufType(
+            shape=[1, N], dtype=dtype, memory_space="MAT"
+        )
 
-        tile_buf_aTile = pto.TileBufType(shape=[M, BASEK], dtype=dtype, memory_space="LEFT")
-        tile_buf_bTile = pto.TileBufType(shape=[BASEK, N], dtype=dtype, memory_space="RIGHT")
+        tile_buf_aTile = pto.TileBufType(
+            shape=[M, BASEK], dtype=dtype, memory_space="LEFT"
+        )
+        tile_buf_bTile = pto.TileBufType(
+            shape=[BASEK, N], dtype=dtype, memory_space="RIGHT"
+        )
         tile_buf_cTile = pto.TileBufType(shape=[M, N], dtype=dtype, memory_space="ACC")
-        tile_buf_biasTile = pto.TileBufType(shape=[1, N], dtype=dtype, memory_space="BIAS")
+        tile_buf_biasTile = pto.TileBufType(
+            shape=[1, N], dtype=dtype, memory_space="BIAS"
+        )
 
         return {
             "ptr_type": ptr_dtype,
@@ -91,10 +103,18 @@ def build_kernel(
             b_end_unclamped = b_start + batches_per_core
             b_end = s.min_u(b_end_unclamped, batch)
 
-            tvA = pto.as_tensor(tensor_type, ptr=a_ptr, shape=[cBM, cK], strides=[cK, c1])
-            tvB = pto.as_tensor(tensor_type, ptr=b_ptr, shape=[cK, cN], strides=[cN, c1])
-            tvOut = pto.as_tensor(tensor_type, ptr=out_ptr, shape=[cBM, cN], strides=[cN, c1])
-            tvBias = pto.as_tensor(tensor_type, ptr=bias_ptr, shape=[c1, cN], strides=[cN, c1])
+            tvA = pto.as_tensor(
+                tensor_type, ptr=a_ptr, shape=[cBM, cK], strides=[cK, c1]
+            )
+            tvB = pto.as_tensor(
+                tensor_type, ptr=b_ptr, shape=[cK, cN], strides=[cN, c1]
+            )
+            tvOut = pto.as_tensor(
+                tensor_type, ptr=out_ptr, shape=[cBM, cN], strides=[cN, c1]
+            )
+            tvBias = pto.as_tensor(
+                tensor_type, ptr=bias_ptr, shape=[c1, cN], strides=[cN, c1]
+            )
 
             aMatTile = pto.alloc_tile(tile_buf_aMat)
             bMatTile = pto.alloc_tile(tile_buf_bMat)

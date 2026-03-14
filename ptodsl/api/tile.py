@@ -85,7 +85,9 @@ def matmul_acc(acc, lhs, rhs, out):
 
 
 def extract(source, index_row, index_col, out):
-    _pto.TExtractOp(src=source, indexRow=_unwrap(index_row), indexCol=_unwrap(index_col), dst=out)
+    _pto.TExtractOp(
+        src=source, indexRow=_unwrap(index_row), indexCol=_unwrap(index_col), dst=out
+    )
 
 
 def row_sum(src, tmp, dst):
@@ -121,19 +123,19 @@ def row_expand_mul(src0, src1, dst):
 
 
 def col_sum(src, tmp, dst, is_binary=True):
-    _pto.TColSumOp(src=src,  dst=dst, tmp=tmp, isBinary=BoolAttr.get(is_binary))
+    _pto.TColSumOp(src=src, dst=dst, tmp=tmp, isBinary=BoolAttr.get(is_binary))
 
 
 def col_min(src, dst):
-    _pto.TColMinOp(src=src,  dst=dst)
+    _pto.TColMinOp(src=src, dst=dst)
 
 
 def col_max(src, dst):
-    _pto.TColMaxOp(src=src,  dst=dst)
+    _pto.TColMaxOp(src=src, dst=dst)
 
 
 def col_prod(src, tmp, dst, is_binary=True):
-    _pto.TColProdOp(src=src,  dst=dst, tmp=tmp, isBinary=BoolAttr.get(is_binary))
+    _pto.TColProdOp(src=src, dst=dst, tmp=tmp, isBinary=BoolAttr.get(is_binary))
 
 
 def col_expand(src, dst):

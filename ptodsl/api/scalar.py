@@ -143,7 +143,9 @@ def ge(a, b):
 
 
 def select(cond, true_val, false_val):
-    return Value(arith.SelectOp(_unwrap(cond), _unwrap(true_val), _unwrap(false_val)).result)
+    return Value(
+        arith.SelectOp(_unwrap(cond), _unwrap(true_val), _unwrap(false_val)).result
+    )
 
 
 __all__ = [

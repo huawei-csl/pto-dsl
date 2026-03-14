@@ -21,10 +21,7 @@ _KERNELS = [
     "rowexpand_div",
 ]
 
-_LIB_PATHS = {
-    name: os.path.join(_DIR, f"{name}_lib.so")
-    for name in _KERNELS
-}
+_LIB_PATHS = {name: os.path.join(_DIR, f"{name}_lib.so") for name in _KERNELS}
 
 _SHAPES = [
     (1, 1),

@@ -32,7 +32,9 @@ def build():
     const = s.const
 
     @to_ir_module(meta_data=meta_data)
-    def sync_kernel_dyn(arg0: "ptr_type", arg1: "ptr_type", argN: "index_dtype") -> None:
+    def sync_kernel_dyn(
+        arg0: "ptr_type", arg1: "ptr_type", argN: "index_dtype"
+    ) -> None:
         with pto.vector_section():
             c0 = const(0)
             c1 = const(1)
@@ -53,8 +55,12 @@ def build():
             num_tiles = s.ceil_div(core_len, c_tile_w)
 
             # GM tensors shape N with stride 1.
-            tv0 = pto.as_tensor(tensor_type, ptr=arg0, shape=[total_elements], strides=[c1])
-            tv1 = pto.as_tensor(tensor_type, ptr=arg1, shape=[total_elements], strides=[c1])
+            tv0 = pto.as_tensor(
+                tensor_type, ptr=arg0, shape=[total_elements], strides=[c1]
+            )
+            tv1 = pto.as_tensor(
+                tensor_type, ptr=arg1, shape=[total_elements], strides=[c1]
+            )
 
             for i in pto.range(c0, num_tiles, c1):
                 offset_tile = i * c_tile_w
@@ -86,6 +92,7 @@ def build():
                 pto.store(tb1, sv1)
 
     return sync_kernel_dyn
+
 
 if __name__ == "__main__":
     print(build())

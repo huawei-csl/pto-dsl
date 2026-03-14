@@ -110,8 +110,12 @@ def fast_hadamard_autosync(
                         )
                         # Alias row halves inside UB row tile (no GM round-trip
                         # per Hadamard iteration).
-                        tb_first = tile.subset(tb_row, [c0, c0], [1, HALF_ELEMENTS_PER_TILE])
-                        tb_second = tile.subset(tb_row, [c0, n_half], [1, HALF_ELEMENTS_PER_TILE])
+                        tb_first = tile.subset(
+                            tb_row, [c0, c0], [1, HALF_ELEMENTS_PER_TILE]
+                        )
+                        tb_second = tile.subset(
+                            tb_row, [c0, n_half], [1, HALF_ELEMENTS_PER_TILE]
+                        )
 
                         pto.load(sv_row, tb_row)
                         for _ in pto.range(c0, log2_n, c1):
@@ -231,9 +235,7 @@ def fast_hadamard_manualsync(
                             tile.sub(tb_even, tb_odd, tb_second)
                             pto.barrier("VEC")
 
-                        pto.record_wait_pair(
-                            "VEC", "STORE_VEC", event_id=event_id
-                        )
+                        pto.record_wait_pair("VEC", "STORE_VEC", event_id=event_id)
                         pto.store(tb_row, sv_row)
                         pto.record_event("STORE_VEC", "VEC", event_id=event_id)
                         pto.record_event("VEC", "LOAD", event_id=event_id)
@@ -254,18 +256,22 @@ def fast_hadamard_manualsync(
                         use_ev0 = (chunk_i % c2) == c0
 
                         with pto.if_context(use_ev0, has_else=True) as branch:
-                            process_rows(tb_row_0, tb_even_0, tb_odd_0, 0, gm_offset, cur_samples)
+                            process_rows(
+                                tb_row_0, tb_even_0, tb_odd_0, 0, gm_offset, cur_samples
+                            )
                         with branch.else_context():
-                            process_rows(tb_row_1, tb_even_1, tb_odd_1, 1, gm_offset, cur_samples)
+                            process_rows(
+                                tb_row_1, tb_even_1, tb_odd_1, 1, gm_offset, cur_samples
+                            )
 
                 for event_id in (0, 1):
                     pto.wait_event("VEC", "LOAD", event_id=event_id)
                     pto.wait_event("STORE_VEC", "VEC", event_id=event_id)
 
 
-
 if __name__ == "__main__":
     import argparse
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--manual-sync",

@@ -23,7 +23,7 @@ CASES = [
     ("float16", "P0101"),
     ("float16", "P1111"),
     ("float16", "P0001"),
-    ("float16", "P1010")
+    ("float16", "P1010"),
 ]
 
 # Runtime shapes (B, N). N must be a multiple of 32.
@@ -168,7 +168,9 @@ def test_build_gather(compiled_lib):
 
 
 @pytest.mark.require_npu
-@pytest.mark.xfail(reason="Known unsolved issues of indeterministic output values", strict=False)
+@pytest.mark.xfail(
+    reason="Known unsolved issues of indeterministic output values", strict=False
+)
 @pytest.mark.parametrize("B, N", _SHAPE_PARAMS)
 def test_gather_dynamic(compiled_lib, B, N):
     import torch_npu
@@ -195,9 +197,7 @@ def test_gather_dynamic(compiled_lib, B, N):
 
     ref = _gather_ref_blocked(src, indices, mask_pattern, num_blocks=NUM_BLOCKS)
 
-    torch.testing.assert_close(
-        out, ref, msg=f"shape=({B},{N}), mask={mask_pattern}"
-    )
+    torch.testing.assert_close(out, ref, msg=f"shape=({B},{N}), mask={mask_pattern}")
 
 
 if __name__ == "__main__":

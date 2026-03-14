@@ -13,9 +13,14 @@ def meta_data():
     ptr_type = pto.PtrType(dtype)
     tensor_type = pto.TensorType(rank=2, dtype=dtype)
 
-    subtensor_type = pto.SubTensorType(shape=[1, 1024], dtype=dtype) 
+    subtensor_type = pto.SubTensorType(shape=[1, 1024], dtype=dtype)
     tile_type = pto.TileBufType(
-        shape=[1, 1024], valid_shape=[-1, -1], dtype=dtype, memory_space="VEC", config=pto.TileBufConfig())
+        shape=[1, 1024],
+        valid_shape=[-1, -1],
+        dtype=dtype,
+        memory_space="VEC",
+        config=pto.TileBufConfig(),
+    )
 
     return {
         "ptr_type": ptr_type,
@@ -26,11 +31,7 @@ def meta_data():
 
 
 @jit(meta_data=meta_data, block_dim=20)
-def vec_add_kernel(
-    arg0: "ptr_type",
-    arg1: "ptr_type",
-    arg2: "ptr_type"
-    ) -> None:
+def vec_add_kernel(arg0: "ptr_type", arg1: "ptr_type", arg2: "ptr_type") -> None:
     c0 = const(0)
     c1 = const(1)
     c1024 = const(1024)
@@ -48,9 +49,15 @@ def vec_add_kernel(
 
     vid_idx = s.index_cast(vid)
     offset = vid_idx * c1024  # every core loads 1024 elements of data
-    sv0 = pto.slice_view(subtensor_type, source=tv0, offsets=[c0, offset], sizes=[c1, c1024])
-    sv1 = pto.slice_view(subtensor_type, source=tv1, offsets=[c0, offset], sizes=[c1, c1024])
-    sv2 = pto.slice_view(subtensor_type, source=tv2, offsets=[c0, offset], sizes=[c1, c1024])
+    sv0 = pto.slice_view(
+        subtensor_type, source=tv0, offsets=[c0, offset], sizes=[c1, c1024]
+    )
+    sv1 = pto.slice_view(
+        subtensor_type, source=tv1, offsets=[c0, offset], sizes=[c1, c1024]
+    )
+    sv2 = pto.slice_view(
+        subtensor_type, source=tv2, offsets=[c0, offset], sizes=[c1, c1024]
+    )
 
     with pto.vector_section():
         tb0 = pto.alloc_tile(tile_type, valid_row=c1, valid_col=c1024)
@@ -80,6 +87,7 @@ def test_add():
     z_ref = x + y
     torch.testing.assert_close(z, z_ref)
     print("result equal!")
+
 
 if __name__ == "__main__":
     test_add()

@@ -15,6 +15,7 @@ from common_utils import (
     swizzle_nz,
 )
 
+
 def build():
     meta_data = build_meta_data()
 
@@ -48,9 +49,19 @@ def build():
             c_swizzle = const(SWIZZLE_COUNT)
             c_swizzle_m1 = c_swizzle - c1
 
-            tv_a = pto.as_tensor(tv_2d, ptr=a_ptr, shape=[m_total, k_total], strides=[k_total, c1])
-            tv_b = pto.as_tensor(tv_2d, ptr=b_ptr, shape=[k_total, n_total], strides=[c1, k_total], layout="DN")
-            tv_c = pto.as_tensor(tv_2d, ptr=c_ptr, shape=[m_total, n_total], strides=[n_total, c1])
+            tv_a = pto.as_tensor(
+                tv_2d, ptr=a_ptr, shape=[m_total, k_total], strides=[k_total, c1]
+            )
+            tv_b = pto.as_tensor(
+                tv_2d,
+                ptr=b_ptr,
+                shape=[k_total, n_total],
+                strides=[c1, k_total],
+                layout="DN",
+            )
+            tv_c = pto.as_tensor(
+                tv_2d, ptr=c_ptr, shape=[m_total, n_total], strides=[n_total, c1]
+            )
 
             a_l1 = [pto.alloc_tile(tile_buf_a_l1), pto.alloc_tile(tile_buf_a_l1)]
             b_l1 = [pto.alloc_tile(tile_buf_b_l1), pto.alloc_tile(tile_buf_b_l1)]
@@ -62,7 +73,9 @@ def build():
             pto.record_event("MOV_M2L", "LOAD", event_id=[0, 1, 2, 3])
 
             for li in pto.range(bid, core_loop, num_blocks):
-                m_idx, n_idx = swizzle_nz(li, m_loop, n_loop, c_swizzle, c_swizzle_m1, c1, c2)
+                m_idx, n_idx = swizzle_nz(
+                    li, m_loop, n_loop, c_swizzle, c_swizzle_m1, c1, c2
+                )
                 m_offset = m_idx * c128
                 n_offset = n_idx * c256
                 c_kt = const(K_TILE)
@@ -115,7 +128,9 @@ def build():
 
                                 tile.extract(a_curr, c0, a_col, a_l0[ping])
                                 if phase == 7:
-                                    pto.record_event("MOV_M2L", "LOAD", event_id=curr_id)
+                                    pto.record_event(
+                                        "MOV_M2L", "LOAD", event_id=curr_id
+                                    )
 
                                 if quarter == 0:
                                     pto.wait_event("LOAD", "MOV_M2L", event_id=b_evt)
@@ -130,8 +145,12 @@ def build():
                                 if phase == 0:
                                     pto.cond(
                                         is_first_k_tile,
-                                        lambda: tile.matmul(a_l0[ping], b_l0[ping], c_l0),
-                                        lambda: tile.matmul_acc(c_l0, a_l0[ping], b_l0[ping], c_l0),
+                                        lambda: tile.matmul(
+                                            a_l0[ping], b_l0[ping], c_l0
+                                        ),
+                                        lambda: tile.matmul_acc(
+                                            c_l0, a_l0[ping], b_l0[ping], c_l0
+                                        ),
                                     )
                                 else:
                                     tile.matmul_acc(c_l0, a_l0[ping], b_l0[ping], c_l0)

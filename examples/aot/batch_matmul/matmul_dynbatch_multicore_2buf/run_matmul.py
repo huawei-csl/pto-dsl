@@ -34,7 +34,7 @@ def benchmark(
     flops: int | None = None,
     io_bytes: int | None = None,
 ) -> dict:
-    avg_s = do_bench(fn, unit='s', flush_cache=True)
+    avg_s = do_bench(fn, unit="s", flush_cache=True)
     stats = {"avg_ms": avg_s * 1e3}
     if flops is not None:
         stats["tflops"] = (flops / avg_s) / 1e12
@@ -55,11 +55,7 @@ def print_benchmark(stats: dict) -> None:
 def load_lib(lib_path):
     lib = ctypes.CDLL(lib_path)
 
-    def matmul_func(
-        c, a, b, batch_size,
-        block_dim,
-        stream_ptr=None
-    ):
+    def matmul_func(c, a, b, batch_size, block_dim, stream_ptr=None):
         if stream_ptr is None:
             stream_ptr = torch.npu.current_stream()._as_parameter_
         lib.call_kernel(
@@ -76,6 +72,7 @@ def load_lib(lib_path):
 
 def plot_benchmark():
     import matplotlib.pyplot as plt
+
     device = get_test_device()
     torch.set_default_device(device)
     torch.npu.set_device(device)
@@ -86,7 +83,7 @@ def plot_benchmark():
 
     pto_results, torch_results, pto2_results, pto3_results = [], [], [], []
     m, k, n = 128, 128, 128
-    batches = list(range(24*2, 8000, 24*2))
+    batches = list(range(24 * 2, 8000, 24 * 2))
     blk = [24, 1, 6]
     for i in batches:
         bs = i
@@ -99,50 +96,60 @@ def plot_benchmark():
         torch.npu.synchronize()
         c_ref = torch.matmul(a, b)
         diff = (c - c_ref).abs().max()
-        #assert  diff <= 1e-5, diff
+        # assert  diff <= 1e-5, diff
         if diff < 1e-5:
-            print('.', end='')
+            print(".", end="")
         else:
-            print(f'failed at shape: {a.shape} with {diff}')
-        
+            print(f"failed at shape: {a.shape} with {diff}")
+
         flops = matmul_flops(bs, m, k, n)
         io_bytes = matmul_io_bytes(a, b, c)
 
         # run a benchmark for warmup (else first iterations are off)
         benchmark(lambda: torch.matmul(a, b, out=c))
 
-        torch_b = benchmark( lambda: torch.matmul(a, b, out=c),
-                            flops=flops, io_bytes=io_bytes)['gbps']
-        pto2 = benchmark( lambda: matmul_func(c, a, b, batch_size=bs, block_dim=blk[1]),
-                        flops=flops, io_bytes=io_bytes)['gbps']
-        pto3 = benchmark( lambda: matmul_func(c, a, b, batch_size=bs, block_dim=blk[2]),
-                        flops=flops, io_bytes=io_bytes)['gbps']
-        pto = benchmark( lambda: matmul_func(c, a, b, batch_size=bs, block_dim=blk[0]),
-                        flops=flops, io_bytes=io_bytes)['gbps']
+        torch_b = benchmark(
+            lambda: torch.matmul(a, b, out=c), flops=flops, io_bytes=io_bytes
+        )["gbps"]
+        pto2 = benchmark(
+            lambda: matmul_func(c, a, b, batch_size=bs, block_dim=blk[1]),
+            flops=flops,
+            io_bytes=io_bytes,
+        )["gbps"]
+        pto3 = benchmark(
+            lambda: matmul_func(c, a, b, batch_size=bs, block_dim=blk[2]),
+            flops=flops,
+            io_bytes=io_bytes,
+        )["gbps"]
+        pto = benchmark(
+            lambda: matmul_func(c, a, b, batch_size=bs, block_dim=blk[0]),
+            flops=flops,
+            io_bytes=io_bytes,
+        )["gbps"]
         pto_results.append(pto)
         pto2_results.append(pto2)
         pto3_results.append(pto3)
         torch_results.append(torch_b)
     print()
-    rel_diff = [our/their for our, their in zip(pto_results, torch_results)]
+    rel_diff = [our / their for our, their in zip(pto_results, torch_results)]
 
-    fig, ax1 = plt.subplots(figsize=(8,5))
+    fig, ax1 = plt.subplots(figsize=(8, 5))
 
-    ax1.plot(batches, pto_results, '-', label=f'pto-dsl ({blk[0]} cores)')
-    ax1.plot(batches, pto2_results, '-', label=f'pto-dsl ({blk[1]} cores)')
-    ax1.plot(batches, pto3_results, '-', label=f'pto-dsl ({blk[2]} cores)')
-    ax1.plot(batches, torch_results, '-', label='torch.matmul (24 cores)')
-    ax1.set_xlabel('Batch size')
-    ax1.set_ylabel('Bandwidth (Read A+B write C) (GB/s)')
-    ax1.grid(True, linestyle='--', alpha=0.6)
+    ax1.plot(batches, pto_results, "-", label=f"pto-dsl ({blk[0]} cores)")
+    ax1.plot(batches, pto2_results, "-", label=f"pto-dsl ({blk[1]} cores)")
+    ax1.plot(batches, pto3_results, "-", label=f"pto-dsl ({blk[2]} cores)")
+    ax1.plot(batches, torch_results, "-", label="torch.matmul (24 cores)")
+    ax1.set_xlabel("Batch size")
+    ax1.set_ylabel("Bandwidth (Read A+B write C) (GB/s)")
+    ax1.grid(True, linestyle="--", alpha=0.6)
 
     ax2 = ax1.twinx()
-    ax2.plot(batches, rel_diff, '-', color='purple', label='pto-dsl / torch')
-    ax2.set_ylabel('Relative Performance (pto-dsl / torch)')
-    ax2.set_ylim(0.95*min(rel_diff),1.05*max(rel_diff))
-    ax2.axhline(y=1, linestyle='--', linewidth=1.0)
+    ax2.plot(batches, rel_diff, "-", color="purple", label="pto-dsl / torch")
+    ax2.set_ylabel("Relative Performance (pto-dsl / torch)")
+    ax2.set_ylim(0.95 * min(rel_diff), 1.05 * max(rel_diff))
+    ax2.axhline(y=1, linestyle="--", linewidth=1.0)
 
-    dt_str = {torch.float16: 'fp16', torch.float32: 'fp32'}[dtype]
+    dt_str = {torch.float16: "fp16", torch.float32: "fp32"}[dtype]
     plt.title(
         f"""pto-dsl kernel vs torch.matmul\n
         <B, {a.shape[1]}, {a.shape[2]}, {dt_str}>@<{b.shape[0]}, {b.shape[1]}, {dt_str}>=<B, {c.shape[1]}, {c.shape[2]}, {dt_str}>"""
@@ -150,9 +157,9 @@ def plot_benchmark():
 
     lines1, labels1 = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
-    ax1.legend(lines1 + lines2, labels1 + labels2, loc='best')
+    ax1.legend(lines1 + lines2, labels1 + labels2, loc="best")
     plt.tight_layout()
-    plt.savefig('dsl.png')
+    plt.savefig("dsl.png")
 
 
 def correctness_verify():
@@ -175,23 +182,21 @@ def correctness_verify():
             torch.npu.synchronize()
             c_ref = torch.matmul(a, b)
 
-
             diff = (c - c_ref).abs().max()
-            #assert  diff <= 1e-5, diff
+            # assert  diff <= 1e-5, diff
             if diff < 1e-5:
-                print('.', end='', flush=True)
+                print(".", end="", flush=True)
             else:
-                print(f'#cores={blk} failed at shape: {list(a.shape)} with error:{diff}')
+                print(
+                    f"#cores={blk} failed at shape: {list(a.shape)} with error:{diff}"
+                )
         print()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--benchmark",
-        dest="benchmark",
-        action="store_true",
-        help="Enable benchmarking"
+        "--benchmark", dest="benchmark", action="store_true", help="Enable benchmarking"
     )
     args = parser.parse_args()
     correctness_verify()

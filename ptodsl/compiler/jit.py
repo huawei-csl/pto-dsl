@@ -141,7 +141,9 @@ class JitWrapper:
     def _compile_shared_library(self, caller_cpp_path, lib_path):
         toolkit_home = os.environ.get("ASCEND_TOOLKIT_HOME")
         if not toolkit_home:
-            raise RuntimeError("ASCEND_TOOLKIT_HOME is required to compile generated caller.cpp.")
+            raise RuntimeError(
+                "ASCEND_TOOLKIT_HOME is required to compile generated caller.cpp."
+            )
         cmd = [
             "bisheng",
             f"-I{toolkit_home}/include",
@@ -197,7 +199,9 @@ class JitWrapper:
         ptoas_cmd += [str(pto_path), "-o", str(cpp_path)]
         subprocess.run(ptoas_cmd, check=True, cwd=str(self._output_dir))
 
-        caller_path.write_text(self._generate_caller_cpp(cpp_path.name), encoding="utf-8")
+        caller_path.write_text(
+            self._generate_caller_cpp(cpp_path.name), encoding="utf-8"
+        )
         self._compile_shared_library(caller_path, lib_path)
 
         self._lib = ctypes.CDLL(str(lib_path))
@@ -219,7 +223,9 @@ class JitWrapper:
     def _prepare_call_args(self, args):
         params = list(self._sig.parameters.values())
         if len(args) > len(params):
-            raise TypeError(f"Expected at most {len(params)} arguments, got {len(args)}.")
+            raise TypeError(
+                f"Expected at most {len(params)} arguments, got {len(args)}."
+            )
 
         filled_args = list(args)
         for idx in range(len(args), len(params)):

@@ -229,7 +229,7 @@ msprof op \
 ```
 
 对4096x4096小矩阵，即使不用swizzled loop order，L2 hit就很高（97.88%）：
- 
+
 <img src="./fig/cachehit_N4096.png" alt="cachehit_N4096" width="70%" />
 
 对16384x16384大矩阵，由于超过了L2 size，不swizzle的话L2 hit低到了30.9%：

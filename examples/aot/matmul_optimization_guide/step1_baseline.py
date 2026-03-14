@@ -3,7 +3,15 @@ import argparse
 from ptodsl import pto, tile, to_ir_module
 from ptodsl import scalar as s
 
-from common_utils import K_DTILE, K_QTILE, K_TILE, M_TILE, N_FULL, build_meta_data, const
+from common_utils import (
+    K_DTILE,
+    K_QTILE,
+    K_TILE,
+    M_TILE,
+    N_FULL,
+    build_meta_data,
+    const,
+)
 
 
 def build():
@@ -36,9 +44,19 @@ def build():
             core_loop = n_loop * m_loop
             k_dtile_num = k_total // c512
 
-            tv_a = pto.as_tensor(tv_2d, ptr=a_ptr, shape=[m_total, k_total], strides=[k_total, c1])
-            tv_b = pto.as_tensor(tv_2d, ptr=b_ptr, shape=[k_total, n_total], strides=[c1, k_total], layout="DN")
-            tv_c = pto.as_tensor(tv_2d, ptr=c_ptr, shape=[m_total, n_total], strides=[n_total, c1])
+            tv_a = pto.as_tensor(
+                tv_2d, ptr=a_ptr, shape=[m_total, k_total], strides=[k_total, c1]
+            )
+            tv_b = pto.as_tensor(
+                tv_2d,
+                ptr=b_ptr,
+                shape=[k_total, n_total],
+                strides=[c1, k_total],
+                layout="DN",
+            )
+            tv_c = pto.as_tensor(
+                tv_2d, ptr=c_ptr, shape=[m_total, n_total], strides=[n_total, c1]
+            )
 
             a_l1 = pto.alloc_tile(tile_buf_a_l1)
             b_l1 = pto.alloc_tile(tile_buf_b_l1)
@@ -85,7 +103,9 @@ def build():
                         tile.extract(b_l1, b_row, c0, b_l0)
 
                         if phase == 0:
-                            with pto.if_context(is_first_k_tile, has_else=True) as branch:
+                            with pto.if_context(
+                                is_first_k_tile, has_else=True
+                            ) as branch:
                                 tile.matmul(a_l0, b_l0, c_l0)
                             with branch.else_context():
                                 tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)

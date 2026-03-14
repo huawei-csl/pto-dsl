@@ -29,7 +29,9 @@ def build(
         tile_buf_aMat = pto.TileBufType(shape=[M, K], dtype=dtype, memory_space="MAT")
         tile_buf_bMat = pto.TileBufType(shape=[K, N], dtype=dtype, memory_space="MAT")
         tile_buf_aTile = pto.TileBufType(shape=[M, K], dtype=dtype, memory_space="LEFT")
-        tile_buf_bTile = pto.TileBufType(shape=[K, N], dtype=dtype, memory_space="RIGHT")
+        tile_buf_bTile = pto.TileBufType(
+            shape=[K, N], dtype=dtype, memory_space="RIGHT"
+        )
         tile_buf_cTile = pto.TileBufType(shape=[M, N], dtype=dtype, memory_space="ACC")
 
         return {
@@ -89,9 +91,13 @@ def build(
             length = base + s.select(lt_rem, c1, c0)
             b_end = s.min_u(b_start + length, batch)
 
-            tvA = pto.as_tensor(tv_a, ptr=a_ptr, shape=[batch, cM, cK], strides=[cKM, cK, c1])
+            tvA = pto.as_tensor(
+                tv_a, ptr=a_ptr, shape=[batch, cM, cK], strides=[cKM, cK, c1]
+            )
             tvB = pto.as_tensor(tv_b, ptr=b_ptr, shape=[cK, cN], strides=[cN, c1])
-            tvOut = pto.as_tensor(tv_out, ptr=out_ptr, shape=[batch, cM, cN], strides=[cMN, cN, c1])
+            tvOut = pto.as_tensor(
+                tv_out, ptr=out_ptr, shape=[batch, cM, cN], strides=[cMN, cN, c1]
+            )
 
             aMatTile = pto.alloc_tile(tile_buf_aMat)
             bMatTile = pto.alloc_tile(tile_buf_bMat)
@@ -100,7 +106,9 @@ def build(
             cTile = pto.alloc_tile(tile_buf_cTile)
 
             # B is shared across batches: load once GM->L1->L0B.
-            svB = pto.slice_view(tile_view_b, source=tvB, offsets=[c0, c0], sizes=[cK, cTileN])
+            svB = pto.slice_view(
+                tile_view_b, source=tvB, offsets=[c0, c0], sizes=[cK, cTileN]
+            )
             pto.load(svB, bMatTile)
             pto.record_wait_pair("LOAD", "MOV_M2L", event_id=0)
             tile.mov(bMatTile, bTile)

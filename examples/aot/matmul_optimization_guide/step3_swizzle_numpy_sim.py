@@ -32,7 +32,9 @@ def show_mapping(m_loop, n_loop, c_swizzle, preview=24):
         rows.append((li, m_linear, n_linear, m_swz, n_swz))
 
     arr = np.array(rows, dtype=np.int32)
-    print(f"\n=== swizzle={c_swizzle}, m_loop={m_loop}, n_loop={n_loop}, core_loop={core_loop} ===")
+    print(
+        f"\n=== swizzle={c_swizzle}, m_loop={m_loop}, n_loop={n_loop}, core_loop={core_loop} ==="
+    )
     print("li | linear(m,n) -> swizzle(m,n)")
     for li, ml, nl, ms, ns in arr:
         print(f"{li:2d} | ({ml:2d},{nl:2d}) -> ({ms:2d},{ns:2d})")

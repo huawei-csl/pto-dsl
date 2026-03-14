@@ -1,5 +1,6 @@
 import os
 import csv
+
 try:
     import matplotlib.pyplot as plt
 except ImportError:

@@ -11,11 +11,7 @@ def torch_to_ctypes(tensor):
 def load_lib(lib_path):
     lib = ctypes.CDLL(lib_path)
 
-    def matmul_func(
-        c, a, b, batch_size,
-        block_dim,
-        stream_ptr=None
-    ):
+    def matmul_func(c, a, b, batch_size, block_dim, stream_ptr=None):
         if stream_ptr is None:
             stream_ptr = torch.npu.current_stream()._as_parameter_
         lib.call_kernel(

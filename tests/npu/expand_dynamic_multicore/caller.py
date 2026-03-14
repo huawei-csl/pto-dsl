@@ -4,7 +4,6 @@ Usage:
   python caller.py --mode colexpand|rowexpand|rowexpand_mul|rowexpand_sub|rowexpand_div
 """
 
-
 _FUSED_MODES = {"rowexpand_mul", "rowexpand_sub", "rowexpand_div"}
 
 

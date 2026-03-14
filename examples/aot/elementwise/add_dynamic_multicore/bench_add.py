@@ -24,7 +24,9 @@ def lib_to_func(lib):
     return add_func
 
 
-def bench_add(add_func, x, y, z, kernel_name="add_func", warmup_iters=5, benchmark_iters=50):
+def bench_add(
+    add_func, x, y, z, kernel_name="add_func", warmup_iters=5, benchmark_iters=50
+):
     io_bytes = x.numel() * x.element_size() * 3
     # Overwrite a large buffer between launches to reduce L2 cache reuse.
     cache = torch.empty((256 * 1024 * 1024,), dtype=torch.int8, device=x.device)

@@ -83,13 +83,22 @@ def vec_add_1d_dynamic(
                     offset_global = tile_offset_global * c_tile
 
                     sv0 = pto.slice_view(
-                        subtensor_type, source=tv0, offsets=[offset_global], sizes=[c_tile]
+                        subtensor_type,
+                        source=tv0,
+                        offsets=[offset_global],
+                        sizes=[c_tile],
                     )
                     sv1 = pto.slice_view(
-                        subtensor_type, source=tv1, offsets=[offset_global], sizes=[c_tile]
+                        subtensor_type,
+                        source=tv1,
+                        offsets=[offset_global],
+                        sizes=[c_tile],
                     )
                     sv2 = pto.slice_view(
-                        subtensor_type, source=tv2, offsets=[offset_global], sizes=[c_tile]
+                        subtensor_type,
+                        source=tv2,
+                        offsets=[offset_global],
+                        sizes=[c_tile],
                     )
 
                     pto.load(sv0, tb0)
@@ -117,7 +126,9 @@ def build_verbose():
         sl = _pto.SLayoutAttr.get(_pto.SLayout.NoneBox)
         pd = _pto.PadValueAttr.get(_pto.PadValue.Null)
         cfg = _pto.TileBufConfigAttr.get(bl, sl, 512, pd)
-        tile_buf = _pto.TileBufType.get([1, tile_length], f32, vec, [1, tile_length], cfg)
+        tile_buf = _pto.TileBufType.get(
+            [1, tile_length], f32, vec, [1, tile_length], cfg
+        )
         fn_ty = func.FunctionType.get([ptr_f32, ptr_f32, ptr_f32, i32], [])
 
         with InsertionPoint(module.body):
@@ -149,9 +160,15 @@ def build_verbose():
             vec_section = _pto.SectionVectorOp()
             vec_block = vec_section.body.blocks.append()
             with InsertionPoint(vec_block):
-                tv0 = _pto.MakeTensorViewOp(tensor_view, arg0, [total_elements], [c1]).result
-                tv1 = _pto.MakeTensorViewOp(tensor_view, arg1, [total_elements], [c1]).result
-                tv2 = _pto.MakeTensorViewOp(tensor_view, arg2, [total_elements], [c1]).result
+                tv0 = _pto.MakeTensorViewOp(
+                    tensor_view, arg0, [total_elements], [c1]
+                ).result
+                tv1 = _pto.MakeTensorViewOp(
+                    tensor_view, arg1, [total_elements], [c1]
+                ).result
+                tv2 = _pto.MakeTensorViewOp(
+                    tensor_view, arg2, [total_elements], [c1]
+                ).result
 
                 tb0 = _pto.AllocTileOp(tile_buf).result
                 tb1 = _pto.AllocTileOp(tile_buf).result
@@ -183,8 +200,12 @@ def build_verbose():
                     work_if = scf.IfOp(has_elements)
                     with InsertionPoint(work_if.then_block):
                         for i in scf.for_(c0, tiles_to_process, c1):
-                            tile_offset_global = arith.AddIOp(i, tile_offset_this_core).result
-                            offset_global = arith.MulIOp(tile_offset_global, c_tile).result
+                            tile_offset_global = arith.AddIOp(
+                                i, tile_offset_this_core
+                            ).result
+                            offset_global = arith.MulIOp(
+                                tile_offset_global, c_tile
+                            ).result
 
                             sv0 = _pto.PartitionViewOp(
                                 tile_view, tv0, offsets=[offset_global], sizes=[c_tile]

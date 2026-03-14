@@ -19,7 +19,7 @@ BINARY_OPS = [
     ("div", lambda x, y: x / y),
     ("max", lambda x, y: torch.max(x, y)),
     ("min", lambda x, y: torch.min(x, y)),
-    #("or", lambda x, y: x | y), #TODO add back bitwise or test after fixing int16 support in the builder
+    # ("or", lambda x, y: x | y), #TODO add back bitwise or test after fixing int16 support in the builder
 ]
 
 DTYPES = ["float32", "float16", "int16"]
@@ -133,6 +133,7 @@ def test_build_binary_kernels(compiled_lib):
 @pytest.mark.require_npu
 def test_binary_1d_precision(compiled_lib):
     import torch_npu
+
     torch.npu.set_device(_DEVICE)
     ref_fn = compiled_lib["ref_fn"]
     torch_dtype = TORCH_DTYPES[compiled_lib["dtype"]]
@@ -164,6 +165,7 @@ def test_binary_1d_precision(compiled_lib):
 @pytest.mark.require_npu
 def test_binary_2d_precision(compiled_lib):
     import torch_npu
+
     torch.npu.set_device(_DEVICE)
     ref_fn = compiled_lib["ref_fn"]
     torch_dtype = TORCH_DTYPES[compiled_lib["dtype"]]

@@ -24,7 +24,9 @@ def SubTensorType(*, shape, dtype):
 
 
 class TileBufConfig:
-    def __init__(self, blayout="RowMajor", slayout="NoneBox", s_fractal_size=512, pad="Null"):
+    def __init__(
+        self, blayout="RowMajor", slayout="NoneBox", s_fractal_size=512, pad="Null"
+    ):
         # TODO: expose and validate a broader set of tile buffer knobs if PTO adds
         # more layout/padding/fractal settings that should be configurable here.
         self._bl = _pto.BLayoutAttr.get(getattr(_pto.BLayout, blayout))
@@ -34,7 +36,9 @@ class TileBufConfig:
 
     @property
     def attr(self):
-        return _pto.TileBufConfigAttr.get(self._bl, self._sl, self._s_fractal_size, self._pd)
+        return _pto.TileBufConfigAttr.get(
+            self._bl, self._sl, self._s_fractal_size, self._pd
+        )
 
 
 def _default_tile_config(memory_space, shape):
@@ -78,7 +82,9 @@ def _default_tile_config(memory_space, shape):
         )
     if space == "VEC":
         return TileBufConfig()
-    raise ValueError(f"Unsupported memory_space '{memory_space}' for default tile config.")
+    raise ValueError(
+        f"Unsupported memory_space '{memory_space}' for default tile config."
+    )
 
 
 def TileBufType(*, shape, dtype, memory_space, valid_shape=None, config=None):

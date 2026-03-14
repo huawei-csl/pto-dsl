@@ -15,7 +15,11 @@ def meta_data():
     subtensor_type = pto.SubTensorType(shape=[32, 32], dtype=dtype)
     tile_cfg = pto.TileBufConfig()
     tile_type = pto.TileBufType(
-        shape=[32, 32], valid_shape=[-1, -1], dtype=dtype, memory_space="VEC", config=tile_cfg
+        shape=[32, 32],
+        valid_shape=[-1, -1],
+        dtype=dtype,
+        memory_space="VEC",
+        config=tile_cfg,
     )
     return {
         "ptr_type": ptr_type,
@@ -53,9 +57,15 @@ def vec_add_2d_static(
 
     vid_idx = s.index_cast(vid)
     offset_row = vid_idx * c32
-    sv0 = pto.slice_view(subtensor_type, source=tv0, offsets=[offset_row, c0], sizes=[c32, c32])
-    sv1 = pto.slice_view(subtensor_type, source=tv1, offsets=[offset_row, c0], sizes=[c32, c32])
-    sv2 = pto.slice_view(subtensor_type, source=tv2, offsets=[offset_row, c0], sizes=[c32, c32])
+    sv0 = pto.slice_view(
+        subtensor_type, source=tv0, offsets=[offset_row, c0], sizes=[c32, c32]
+    )
+    sv1 = pto.slice_view(
+        subtensor_type, source=tv1, offsets=[offset_row, c0], sizes=[c32, c32]
+    )
+    sv2 = pto.slice_view(
+        subtensor_type, source=tv2, offsets=[offset_row, c0], sizes=[c32, c32]
+    )
 
     with pto.vector_section():
         tb0 = pto.alloc_tile(tile_type, valid_row=v_row_idx, valid_col=v_col_idx)
@@ -132,9 +142,15 @@ def build():
             vec_section = _pto.SectionVectorOp()
             vec_block = vec_section.body.blocks.append()
             with InsertionPoint(vec_block):
-                tb0 = _pto.AllocTileOp(tile_buf_dynamic, valid_row=v_row_idx, valid_col=v_col_idx).result
-                tb1 = _pto.AllocTileOp(tile_buf_dynamic, valid_row=v_row_idx, valid_col=v_col_idx).result
-                tb2 = _pto.AllocTileOp(tile_buf_dynamic, valid_row=v_row_idx, valid_col=v_col_idx).result
+                tb0 = _pto.AllocTileOp(
+                    tile_buf_dynamic, valid_row=v_row_idx, valid_col=v_col_idx
+                ).result
+                tb1 = _pto.AllocTileOp(
+                    tile_buf_dynamic, valid_row=v_row_idx, valid_col=v_col_idx
+                ).result
+                tb2 = _pto.AllocTileOp(
+                    tile_buf_dynamic, valid_row=v_row_idx, valid_col=v_col_idx
+                ).result
 
                 _pto.TLoadOp(None, sv0, tb0)
                 _pto.TLoadOp(None, sv1, tb1)

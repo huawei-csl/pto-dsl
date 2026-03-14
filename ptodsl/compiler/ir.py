@@ -9,7 +9,9 @@ from ..api.scalar import wrap_value
 def _resolve_meta(meta_fn):
     values = meta_fn()
     if not isinstance(values, dict):
-        raise ValueError("`meta_data()` must return a dict of named symbols to MLIR/PTO types.")
+        raise ValueError(
+            "`meta_data()` must return a dict of named symbols to MLIR/PTO types."
+        )
     return dict(values)
 
 

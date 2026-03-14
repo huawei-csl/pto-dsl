@@ -23,15 +23,25 @@ def build_meta_data():
         tile_view_b = pto.SubTensorType(shape=[K_TILE, N_FULL], dtype=dtype)
         tile_view_c = pto.SubTensorType(shape=[M_TILE, N_FULL], dtype=dtype)
 
-        b_l1_cfg = pto.TileBufConfig(blayout="RowMajor", slayout="ColMajor", s_fractal_size=512)
+        b_l1_cfg = pto.TileBufConfig(
+            blayout="RowMajor", slayout="ColMajor", s_fractal_size=512
+        )
 
-        tile_buf_a_l1 = pto.TileBufType(shape=[M_TILE, K_DTILE], dtype=dtype, memory_space="MAT")
+        tile_buf_a_l1 = pto.TileBufType(
+            shape=[M_TILE, K_DTILE], dtype=dtype, memory_space="MAT"
+        )
         tile_buf_b_l1 = pto.TileBufType(
             shape=[K_TILE, N_FULL], dtype=dtype, memory_space="MAT", config=b_l1_cfg
         )
-        tile_buf_a_l0 = pto.TileBufType(shape=[M_TILE, K_QTILE], dtype=dtype, memory_space="LEFT")
-        tile_buf_b_l0 = pto.TileBufType(shape=[K_QTILE, N_FULL], dtype=dtype, memory_space="RIGHT")
-        tile_buf_c = pto.TileBufType(shape=[M_TILE, N_FULL], dtype=acc_dtype, memory_space="ACC")
+        tile_buf_a_l0 = pto.TileBufType(
+            shape=[M_TILE, K_QTILE], dtype=dtype, memory_space="LEFT"
+        )
+        tile_buf_b_l0 = pto.TileBufType(
+            shape=[K_QTILE, N_FULL], dtype=dtype, memory_space="RIGHT"
+        )
+        tile_buf_c = pto.TileBufType(
+            shape=[M_TILE, N_FULL], dtype=acc_dtype, memory_space="ACC"
+        )
 
         return {
             "ptr_type": ptr_type,

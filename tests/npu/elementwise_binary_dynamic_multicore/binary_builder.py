@@ -174,9 +174,7 @@ def build_binary_kernels(op_name, op_fn, dtype=None, tile_length=1024):
                 rows_end = row_start + rows_per_core
                 need_truncate = rows_end > rows
                 remaining_rows = rows - row_start
-                rows_to_process = s.select(
-                    need_truncate, remaining_rows, rows_per_core
-                )
+                rows_to_process = s.select(need_truncate, remaining_rows, rows_per_core)
 
                 for r in pto.range(c0, rows_to_process, c1):
                     row_idx = r + row_start

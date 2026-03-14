@@ -86,7 +86,9 @@ def build_geglu(fn_name="geglu_fp16"):
                     num_blocks = pto.get_block_num()
 
                     vid = s.index_cast(cid * sub_bnum + sub_bid)  # vector core index
-                    num_cores = s.index_cast(num_blocks * sub_bnum)  # number of vector cores
+                    num_cores = s.index_cast(
+                        num_blocks * sub_bnum
+                    )  # number of vector cores
 
                     # Distribute rows across cores (row-level parallelism).
                     rows_per_core = s.ceil_div(batch, num_cores)
