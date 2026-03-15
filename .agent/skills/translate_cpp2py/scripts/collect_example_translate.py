@@ -85,7 +85,7 @@ def main() -> int:
     found = len(example_list)
     results: list[dict[str, str]] = []
 
-    for example in example_list:
+    for idx, example in enumerate(example_list, start=1):
         rel_dir = Path(str(example["example_dir"]))
         example_dir = aot_dir / rel_dir
         py_rel = Path(str(example["py_source"]))
@@ -93,7 +93,9 @@ def main() -> int:
         py_cmd = str(example["py_command"])
         ptoas_cmd = str(example["ptoas_command"])
         example_name = f"{example['example_dir']}:{example['pto_file']}"
+        progress_name = py_rel.stem
         dependencies = example.get("dependency", [])
+        print(f"[{idx}/{found}] collecting {progress_name}")
 
         if not py_source.exists():
             failed += 1
@@ -202,13 +204,6 @@ def main() -> int:
             "",
         ]
         (dst / "compile.sh").write_text("\n".join(commands), encoding="utf-8")
-
-        meta = [
-            f"source_compile={Path('examples/aot') / rel_dir / example['compile_script']}",
-            f"source_dir={Path('examples/aot') / rel_dir}",
-            "",
-        ]
-        (dst / "source_info.txt").write_text("\n".join(meta), encoding="utf-8")
 
         copied += 1
         results.append(
