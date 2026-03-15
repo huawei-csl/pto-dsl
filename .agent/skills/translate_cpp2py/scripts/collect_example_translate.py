@@ -25,29 +25,45 @@ REQUIRED_FIELDS = {
     "pto_file",
     "cpp_file",
 }
+OPTIONAL_FIELDS = {"dependency"}
 
 
-def load_example_list(config_path: Path) -> list[dict[str, str]]:
+def load_example_list(config_path: Path) -> list[dict[str, object]]:
     if not config_path.exists():
         raise FileNotFoundError(f"example config not found: {config_path}")
     raw = json.loads(config_path.read_text(encoding="utf-8"))
     if not isinstance(raw, list):
         raise ValueError("example config root must be a list")
 
-    examples: list[dict[str, str]] = []
+    examples: list[dict[str, object]] = []
     for idx, item in enumerate(raw):
         if not isinstance(item, dict):
             raise ValueError(f"entry #{idx} must be an object")
         missing = REQUIRED_FIELDS - set(item.keys())
         if missing:
             raise ValueError(f"entry #{idx} missing fields: {sorted(missing)}")
+        unknown = set(item.keys()) - REQUIRED_FIELDS - OPTIONAL_FIELDS
+        if unknown:
+            raise ValueError(f"entry #{idx} has unknown fields: {sorted(unknown)}")
 
-        normalized: dict[str, str] = {}
+        normalized: dict[str, str | list[str]] = {}
         for key in REQUIRED_FIELDS:
             value = item[key]
             if not isinstance(value, str) or not value.strip():
                 raise ValueError(f"entry #{idx} field '{key}' must be a non-empty string")
             normalized[key] = value
+
+        dependency = item.get("dependency", [])
+        if not isinstance(dependency, list):
+            raise ValueError(f"entry #{idx} field 'dependency' must be a list of strings")
+        dep_list: list[str] = []
+        for dep_idx, dep in enumerate(dependency):
+            if not isinstance(dep, str) or not dep.strip():
+                raise ValueError(
+                    f"entry #{idx} dependency[{dep_idx}] must be a non-empty string"
+                )
+            dep_list.append(dep)
+        normalized["dependency"] = dep_list
         examples.append(normalized)
     return examples
 
@@ -70,14 +86,14 @@ def main() -> int:
     results: list[dict[str, str]] = []
 
     for example in example_list:
-        rel_dir = Path(example["example_dir"])
+        rel_dir = Path(str(example["example_dir"]))
         example_dir = aot_dir / rel_dir
-        py_source = example_dir / example["py_source"]
-        pto_src = example_dir / example["pto_file"]
-        cpp_src = example_dir / example["cpp_file"]
-        py_cmd = example["py_command"]
-        ptoas_cmd = example["ptoas_command"]
+        py_rel = Path(str(example["py_source"]))
+        py_source = example_dir / py_rel
+        py_cmd = str(example["py_command"])
+        ptoas_cmd = str(example["ptoas_command"])
         example_name = f"{example['example_dir']}:{example['pto_file']}"
+        dependencies = example.get("dependency", [])
 
         if not py_source.exists():
             failed += 1
@@ -90,12 +106,38 @@ def main() -> int:
             )
             continue
 
+        dst = unique_dir(out_dir / rel_dir / Path(str(example["pto_file"])).stem)
+        dst.mkdir(parents=True, exist_ok=True)
+
+        py_dst = dst / py_rel
+        py_dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(py_source, py_dst)
+        dep_copy_failed = False
+        for dep in dependencies:
+            dep_src = example_dir / dep
+            if not dep_src.exists():
+                failed += 1
+                results.append(
+                    {
+                        "name": example_name,
+                        "status": "FAIL",
+                        "reason": f"dependency does not exist: {dep_src}",
+                    }
+                )
+                dep_copy_failed = True
+                break
+            dep_dst = dst / dep
+            dep_dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(dep_src, dep_dst)
+        if dep_copy_failed:
+            continue
+
         run_env = os.environ.copy()
 
         py_run = subprocess.run(
             py_cmd,
             shell=True,
-            cwd=example_dir,
+            cwd=dst,
             env=run_env,
             executable="/bin/bash",
             stdout=subprocess.PIPE,
@@ -117,7 +159,7 @@ def main() -> int:
         ptoas_run = subprocess.run(
             ptoas_cmd,
             shell=True,
-            cwd=example_dir,
+            cwd=dst,
             env=run_env,
             executable="/bin/bash",
             stdout=subprocess.PIPE,
@@ -136,23 +178,21 @@ def main() -> int:
             )
             continue
 
-        if not (pto_src.exists() and cpp_src.exists()):
+        pto_dst = dst / str(example["pto_file"])
+        cpp_dst = dst / str(example["cpp_file"])
+        if not (pto_dst.exists() and cpp_dst.exists()):
             failed += 1
             results.append(
                 {
                     "name": example_name,
                     "status": "FAIL",
-                    "reason": f"expected outputs missing after compile: {pto_src.name}, {cpp_src.name}",
+                    "reason": (
+                        "expected outputs missing after compile: "
+                        f"{example['pto_file']}, {example['cpp_file']}"
+                    ),
                 }
             )
             continue
-
-        dst = unique_dir(out_dir / rel_dir / Path(example["pto_file"]).stem)
-        dst.mkdir(parents=True, exist_ok=True)
-
-        shutil.copy2(py_source, dst / py_source.name)
-        shutil.copy2(pto_src, dst / pto_src.name)
-        shutil.copy2(cpp_src, dst / cpp_src.name)
 
         commands = [
             "#!/usr/bin/env bash",

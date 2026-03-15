@@ -78,7 +78,8 @@
     "py_command": "python ./step1_baseline.py > ./step1_baseline.pto",
     "ptoas_command": "ptoas --enable-insert-sync ./step1_baseline.pto -o ./step1_baseline.cpp",
     "pto_file": "step1_baseline.pto",
-    "cpp_file": "step1_baseline.cpp"
+    "cpp_file": "step1_baseline.cpp",
+    "dependency": ["common_utils.py"]
   },
   {
     "example_dir": "matmul_optimization_guide",
@@ -87,7 +88,8 @@
     "py_command": "python ./step2_doublebuffer.py > ./step2_doublebuffer.pto",
     "ptoas_command": "ptoas --enable-insert-sync ./step2_doublebuffer.pto -o ./step2_doublebuffer.cpp",
     "pto_file": "step2_doublebuffer.pto",
-    "cpp_file": "step2_doublebuffer.cpp"
+    "cpp_file": "step2_doublebuffer.cpp",
+    "dependency": ["common_utils.py"]
   },
   {
     "example_dir": "matmul_optimization_guide",
@@ -96,7 +98,8 @@
     "py_command": "python ./step3_swizzle.py > ./step3_swizzle.pto",
     "ptoas_command": "ptoas --enable-insert-sync ./step3_swizzle.pto -o ./step3_swizzle.cpp",
     "pto_file": "step3_swizzle.pto",
-    "cpp_file": "step3_swizzle.cpp"
+    "cpp_file": "step3_swizzle.cpp",
+    "dependency": ["common_utils.py"]
   },
   {
     "example_dir": "matmul_optimization_guide",
@@ -105,7 +108,8 @@
     "py_command": "python ./step4_manual_pipelining.py > ./step4_manual_pipelining.pto",
     "ptoas_command": "ptoas ./step4_manual_pipelining.pto -o ./step4_manual_pipelining.cpp",
     "pto_file": "step4_manual_pipelining.pto",
-    "cpp_file": "step4_manual_pipelining.cpp"
+    "cpp_file": "step4_manual_pipelining.cpp",
+    "dependency": ["common_utils.py"]
   },
   {
     "example_dir": "matmul_optimization_guide/experimental",
