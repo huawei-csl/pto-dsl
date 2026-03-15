@@ -68,7 +68,9 @@ def run_kernel(lib, inp):
     n = inp_fp32.shape[-1]
     block_dim = int(inp_fp32.shape[0] * inp_fp32.shape[1])
 
-    out = torch.empty_like(inp_fp32, dtype=torch.float32, device=inp_fp32.device)
+    # Zero-init helps diagnose kernels that accidentally read scratch before
+    # first write; avoids NaN-only failures from uninitialized GM.
+    out = torch.zeros_like(inp_fp32, dtype=torch.float32, device=inp_fp32.device)
     identity_neg = torch.zeros((n, n), dtype=torch.float32, device=inp_fp32.device)
     identity_neg.fill_diagonal_(-1)
 
@@ -101,6 +103,8 @@ def check_case(lib, matrix_gen: Callable, atol: float, rtol: float, ftol: float)
     n_list = [16, 32, 64, 96, 128]
     block_dim_x_list = [1, 3, 7, 16]
     block_dim_y_list = [1, 2, 4, 16]
+    failures = []
+    passes = 0
     for n in n_list:
         for block_dim_x in block_dim_x_list:
             for block_dim_y in block_dim_y_list:
@@ -112,26 +116,36 @@ def check_case(lib, matrix_gen: Callable, atol: float, rtol: float, ftol: float)
                     torch.sum((ref - out) * (ref - out)) / torch.sum(ref * ref)
                 )
 
-                np.testing.assert_allclose(
-                    out.numpy(),
-                    ref.numpy(),
-                    atol=atol,
-                    rtol=rtol,
-                    err_msg=(
-                        "allclose mismatch: "
-                        f"shape={tuple(inp.shape)}, atol={atol}, rtol={rtol}"
-                    ),
-                )
-                assert frob_error <= ftol, f"frob_error={frob_error}"
-                print(
-                    f"[pass] n={n}, bx={block_dim_x}, by={block_dim_y}, "
-                    f"frob={float(frob_error):.3e}"
-                )
+                nan_count = int(torch.isnan(out).sum().item())
+                inf_count = int(torch.isinf(out).sum().item())
+
+                allclose_ok = np.allclose(out.numpy(), ref.numpy(), atol=atol, rtol=rtol)
+                frob_ok = bool(frob_error <= ftol)
+                if allclose_ok and frob_ok:
+                    passes += 1
+                    print(
+                        f"[pass] n={n}, bx={block_dim_x}, by={block_dim_y}, "
+                        f"frob={float(frob_error):.3e}"
+                    )
+                else:
+                    msg = (
+                        f"[fail] n={n}, bx={block_dim_x}, by={block_dim_y}, "
+                        f"frob={float(frob_error):.3e}, nan={nan_count}, inf={inf_count}"
+                    )
+                    print(msg)
+                    failures.append(msg)
+
+    total = len(n_list) * len(block_dim_x_list) * len(block_dim_y_list)
+    print(f"summary: pass={passes}, fail={len(failures)}, total={total}")
+    return failures
 
 
 def run_test(lib):
-    check_case(lib, block_ones_matrix, atol=0.0, rtol=0.0, ftol=0.0)
-    check_case(lib, block_random_matrix, atol=5e-5, rtol=0.1, ftol=1e-4)
+    failures = []
+    failures.extend(check_case(lib, block_ones_matrix, atol=0.0, rtol=0.0, ftol=0.0))
+    failures.extend(check_case(lib, block_random_matrix, atol=5e-5, rtol=0.1, ftol=1e-4))
+    if failures:
+        raise AssertionError(f"{len(failures)} cases failed. First: {failures[0]}")
 
 
 if __name__ == "__main__":
