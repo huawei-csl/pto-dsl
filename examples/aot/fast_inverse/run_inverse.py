@@ -64,12 +64,12 @@ def block_random_matrix(n, block_dim_x, block_dim_y, scale=0.2):
 
 
 def run_kernel(lib, inp):
-    inp_half = inp.to(torch.float16).contiguous()
-    n = inp_half.shape[-1]
-    block_dim = int(inp_half.shape[0] * inp_half.shape[1])
+    inp_fp32 = inp.to(torch.float32).contiguous()
+    n = inp_fp32.shape[-1]
+    block_dim = int(inp_fp32.shape[0] * inp_fp32.shape[1])
 
-    out = torch.empty_like(inp_half, dtype=torch.float16, device=inp_half.device)
-    identity_neg = torch.zeros((n, n), dtype=torch.float16, device=inp_half.device)
+    out = torch.empty_like(inp_fp32, dtype=torch.float32, device=inp_fp32.device)
+    identity_neg = torch.zeros((n, n), dtype=torch.float32, device=inp_fp32.device)
     identity_neg.fill_diagonal_(-1)
 
     stream_ptr = torch.npu.current_stream()._as_parameter_
@@ -77,7 +77,7 @@ def run_kernel(lib, inp):
         block_dim,
         stream_ptr,
         torch_to_ctypes(out),
-        torch_to_ctypes(inp_half),
+        torch_to_ctypes(inp_fp32),
         torch_to_ctypes(identity_neg),
         n,
         MAX_BLOCK_SIZE,

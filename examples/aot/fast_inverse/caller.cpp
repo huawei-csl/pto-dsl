@@ -17,9 +17,9 @@ extern "C" void call_kernel(
     uint32_t max_block_size)
 {
     KERNEL_FN<<<blockDim, nullptr, stream>>>(
-        reinterpret_cast<half *>(tensor_out),
-        reinterpret_cast<half *>(tensor_in),
-        reinterpret_cast<half *>(identity_in),
+        reinterpret_cast<float *>(tensor_out),
+        reinterpret_cast<float *>(tensor_in),
+        reinterpret_cast<float *>(identity_in),
         static_cast<int32_t>(matrix_size),
         static_cast<int32_t>(max_block_size));
 }
