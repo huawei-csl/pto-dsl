@@ -2,18 +2,18 @@
 
 ## Summary
 
-When translating `tri_inv_trick` from manual PTO C++ to PTO-DSL Python, the original kernel needs feedback moves like:
+When translating a manual PTO kernel pattern that uses feedback moves like:
 
 - `TMOV(Y_l1_tile, c_l0_tile)` (`ACC -> MAT`)
 
-The manual C++ kernel compiles and runs, but the equivalent PTO-DSL translation fails in two ways:
+the equivalent PTO-DSL path fails, while manual C++ works.
+
+Observed failures:
 
 1. **IR verify failure** (when `ACC` and `MAT` dtypes differ):
    - `error: unknown: 'pto.tmov' op expects src/dst to have the same element type`
-2. **C++ compile failure** (even after forcing same dtype):
+2. **C++ compile failure** (after forcing same dtype):
    - `TMov: Invalid TileType` for `TMOV(Mat, Acc)`
-
-So PTO-DSL currently cannot represent a legal/manual PTO pattern used by this kernel.
 
 ---
 
@@ -21,22 +21,53 @@ So PTO-DSL currently cannot represent a legal/manual PTO pattern used by this ke
 
 - Platform: Ascend `dav-2201`
 - CANN: `8.5.0`
-- Compiler tools: `ptoas`, `bisheng`
-- Project paths:
-  - DSL example: `pto-dsl/examples/aot/fast_inverse`
-  - Working manual kernel: `pto-kernels/csrc/kernel/kernel_tri_inv_trick.cpp`
+- Toolchain: `ptoas`, `bisheng`
+- Repro directory: `pto-dsl/examples/aot/fast_inverse/bug_report`
 
 ---
 
-## Minimal Reproducer (Fails in PTO-DSL)
+## Reproducer Files (local, self-contained)
 
-Save as `repro_fail_tmov_acc_to_mat.py`:
+- Failing PTO-DSL reproducer: `repro_fail_tmov_acc_to_mat.py`
+- Working PTO-DSL workaround: `repro_workaround_spill_acc_to_mat.py`
+- Working manual C++ reproducer: `repro_manual_acc_to_mat.cpp`
+
+Compile helpers:
+
+- `compile_bug.sh` (expected failure)
+- `compile_workaround.sh` (expected success for workaround path)
+- `compile_cpp.sh` (expected success for manual C++ path)
+
+---
+
+## How To Run
+
+```bash
+cd pto-dsl/examples/aot/fast_inverse/bug_report
+
+# 1) Expected failure at IR stage
+bash ./compile_bug.sh
+
+# 2) Expected success via workaround (ACC->GM->MAT)
+bash ./compile_workaround.sh
+
+# 3) Expected success for manual C++ reproducer
+bash ./compile_cpp.sh
+```
+
+---
+
+## Failing PTO-DSL Reproducer
+
+<details>
+<summary><code>repro_fail_tmov_acc_to_mat.py</code> (click to expand)</summary>
 
 ```python
 from ptodsl import pto, tile, to_ir_module
 from ptodsl import scalar as s
 
 const = s.const
+
 
 def meta_data():
     in_dtype = pto.float16
@@ -58,10 +89,12 @@ def meta_data():
         "mat": mat, "left": left, "right": right, "acc": acc,
     }
 
+
 @to_ir_module(meta_data=meta_data)
-def repro(out_ptr: "ptr_out", in_ptr: "ptr_in", n_i32: "i32") -> None:
+def repro_fail_tmov_acc_to_mat(out_ptr: "ptr_out", in_ptr: "ptr_in", n_i32: "i32") -> None:
     with pto.cube_section():
-        c0 = const(0); c1 = const(1)
+        c0 = const(0)
+        c1 = const(1)
         n = s.index_cast(n_i32)
         x = pto.as_tensor(tv_in, ptr=in_ptr, shape=[n, n], strides=[n, c1])
         y = pto.as_tensor(tv_out, ptr=out_ptr, shape=[n, n], strides=[n, c1])
@@ -75,35 +108,41 @@ def repro(out_ptr: "ptr_out", in_ptr: "ptr_in", n_i32: "i32") -> None:
         tile.mov(tmat, ta)
         tile.mov(tmat, tb)
         tile.matmul(ta, tb, tc)
-        tile.mov(tc, tmat)  # ACC -> MAT (fails)
+        tile.mov(tc, tmat)  # ACC -> MAT (expected failure)
         pto.store(tc, sy)
 
+
 if __name__ == "__main__":
-    print(repro)
+    print(repro_fail_tmov_acc_to_mat)
 ```
 
-Run:
-
-```bash
-python3 repro_fail_tmov_acc_to_mat.py > /tmp/repro.pto
-```
-
-Expected: IR emission succeeds.  
-Actual: fails with `'pto.tmov' op expects src/dst to have the same element type`.
-
-If dtype is changed to make `ACC` same dtype as `MAT`, `ptoas` then fails in C++ with:
-
-- `TMov: Invalid TileType` for `TMOV(Mat, Acc)`
+</details>
 
 ---
 
-## Working PTO-DSL Workaround (Current Project)
+## Working PTO-DSL Workaround
 
-Workaround in `pto-dsl/examples/aot/fast_inverse/inverse_builder.py`:
+<details>
+<summary><code>repro_workaround_spill_acc_to_mat.py</code> (click to expand)</summary>
 
 ```python
-# TMOV does not support ACC as source tile on this backend.
-# Use ACC->GM->MAT as a legal feedback path.
+from ptodsl import pto, tile, to_ir_module
+from ptodsl import scalar as s
+
+const = s.const
+
+# Same idea as project workaround:
+# ACC -> GM (store) -> MAT (load), instead of ACC -> MAT TMOV.
+```
+
+</details>
+
+Key workaround logic:
+
+<details>
+<summary>Workaround snippet</summary>
+
+```python
 def spill_acc_to_mat(dst_l1):
     sync("MATMUL", "STORE_ACC")
     pto.store(c_l0, sv_out)
@@ -112,27 +151,14 @@ def spill_acc_to_mat(dst_l1):
     sync("LOAD", "MOV_M2L")
 ```
 
-This avoids `ACC -> MAT` direct move and allows build/runtime to proceed.
+</details>
 
 ---
 
-## Working Manual C++ Reference
+## Working Manual C++ Reproducer
 
-Manual kernel (`pto-kernels/csrc/kernel/kernel_tri_inv_trick.cpp`) contains:
-
-```cpp
-TMATMUL(c_l0_tile, a_l0_tile, b_l0_tile);  // c_l0 contains M^2
-set_flag(PIPE_M, PIPE_FIX, EVENT_ID0);
-wait_flag(PIPE_M, PIPE_FIX, EVENT_ID0);
-
-TMOV(Y_l1_tile, c_l0_tile);  // Y_l1 now contains M^2
-```
-
-This compiles and works in the original project path.
-
-### Self-contained minimal C++ reproducer (works)
-
-Save as `repro_manual_acc_to_mat.cpp`:
+<details>
+<summary><code>repro_manual_acc_to_mat.cpp</code> (click to expand)</summary>
 
 ```cpp
 #define MEMORY_BASE
@@ -151,10 +177,13 @@ extern "C" __global__ AICORE void repro_manual_acc_to_mat(
   using TensorShapeOut = TileShape2D<float, 128, 128, Layout::ND>;
   using TensorStridesOut = BaseShape2D<float, 128, 128, Layout::ND>;
 
-  using GlobalTensorIn = GlobalTensor<half, TensorShapeIn, TensorStridesIn, Layout::ND>;
-  using GlobalTensorOut = GlobalTensor<float, TensorShapeOut, TensorStridesOut, Layout::ND>;
+  using GlobalTensorIn =
+      GlobalTensor<half, TensorShapeIn, TensorStridesIn, Layout::ND>;
+  using GlobalTensorOut =
+      GlobalTensor<float, TensorShapeOut, TensorStridesOut, Layout::ND>;
 
-  using TileL1 = Tile<TileType::Mat, half, 128, 128, BLayout::ColMajor, 128, 128, SLayout::RowMajor, 512>;
+  using TileL1 = Tile<TileType::Mat, half, 128, 128, BLayout::ColMajor, 128,
+                      128, SLayout::RowMajor, 512>;
   using TileL0A = TileLeft<half, 128, 128>;
   using TileL0B = TileRight<half, 128, 128>;
   using TileL0C = TileAcc<float, 128, 128>;
@@ -194,7 +223,7 @@ extern "C" __global__ AICORE void repro_manual_acc_to_mat(
   set_flag(PIPE_M, PIPE_FIX, EVENT_ID0);
   wait_flag(PIPE_M, PIPE_FIX, EVENT_ID0);
 
-  TMOV(y_l1, c_l0);  // ACC(float) -> MAT(half): known working manual path
+  TMOV(y_l1, c_l0);  // ACC(float) -> MAT(half): known manual working path
   set_flag(PIPE_FIX, PIPE_M, EVENT_ID0);
   wait_flag(PIPE_FIX, PIPE_M, EVENT_ID0);
 
@@ -206,45 +235,29 @@ extern "C" __global__ AICORE void repro_manual_acc_to_mat(
 }
 ```
 
-Compile example:
+</details>
 
-```bash
-bisheng -fPIC -shared -xcce -O2 -std=c++17 \
-  --npu-arch=dav-2201 -DMEMORY_BASE \
-  -I"${ASCEND_TOOLKIT_HOME}/include" \
-  ./repro_manual_acc_to_mat.cpp \
-  -o ./repro_manual_acc_to_mat.so
+Manual C++ critical pattern:
+
+<details>
+<summary>Critical `ACC -> MAT` pattern</summary>
+
+```cpp
+TMATMUL(c_l0_tile, a_l0_tile, b_l0_tile);
+set_flag(PIPE_M, PIPE_FIX, EVENT_ID0);
+wait_flag(PIPE_M, PIPE_FIX, EVENT_ID0);
+TMOV(Y_l1_tile, c_l0_tile);  // ACC -> MAT
 ```
 
----
-
-## Compile Script Used
-
-Current script (`pto-dsl/examples/aot/fast_inverse/compile.sh`):
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-rm -f \
-    inverse_auto_sync.pto inverse_manual_sync.pto \
-    inverse_auto_sync.cpp inverse_manual_sync.cpp \
-    inverse_auto_sync_lib.so inverse_manual_sync_lib.so
-
-python ./inverse_builder.py > ./inverse_auto_sync.pto
-ptoas --enable-insert-sync ./inverse_auto_sync.pto -o ./inverse_auto_sync.cpp
-
-python ./inverse_builder.py --manual-sync > ./inverse_manual_sync.pto
-ptoas ./inverse_manual_sync.pto -o ./inverse_manual_sync.cpp
-```
+</details>
 
 ---
 
 ## Impact
 
-- Blocks faithful translation of kernels that require `ACC -> MAT` feedback.
-- Forces extra GM spill/reload workaround, which changes performance and dynamic-shape behavior.
+- Blocks faithful translation of kernels requiring `ACC -> MAT` feedback.
+- Forces GM spill/reload workaround, which can alter performance and dynamic-shape behavior.
 
 ## Request
 
-Please support `ACC -> MAT` move semantics in PTO-DSL lowering when backend/manual PTO supports corresponding `TMOV` usage in this kernel class, or provide an official DSL op/sequence that preserves equivalent semantics without invalidating dynamic-shape behavior.
+Please support `ACC -> MAT` move semantics in PTO-DSL lowering when backend/manual PTO supports corresponding `TMOV` usage, or provide an official DSL-level equivalent that preserves semantics without workaround-specific behavior changes.
