@@ -136,7 +136,7 @@ def main() -> int:
         example_name = f"{example['example_dir']}:{example['pto_file']}"
         progress_name = py_rel.stem
         dependencies = example.get("dependency", [])
-        print(f"[{idx}/{found}] collecting {progress_name}")
+        print(f"[{idx}/{found}] collecting {rel_dir}/{progress_name}")
 
         if not py_source.exists():
             failed += 1
