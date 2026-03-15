@@ -25,6 +25,7 @@ Produce all of the following unless user asks otherwise:
   - auto: `python builder.py > kernel.pto && ptoas --enable-insert-sync kernel.pto -o kernel.cpp`
 - `caller.cpp` kernel launcher with correct ABI and launch geometry.
 - `run_*.py` load-and-test script to validate numerical correctness.
+- `README.md` with minimal usage commands (compile + run + optional bench), following concise style used in `examples/aot/*/README.md`.
 
 ## Non-Negotiable Rules
 
@@ -157,6 +158,7 @@ If op exists in dialect but not lowered in `PTOToEmitC.cpp`, translation require
 - [ ] Launcher `caller.cpp` matches kernel symbol and launch parameters.
 - [ ] Test script loads `.so`, runs multiple shapes (including tail/non-divisible cases), compares against trusted reference.
 - [ ] If multicore kernel: test cases include shapes not multiples of core count.
+- [ ] `README.md` documents the exact local commands to compile and run verification.
 
 ## Reference Priority
 
