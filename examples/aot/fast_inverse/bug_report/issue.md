@@ -29,6 +29,7 @@ Observed failures:
 ## Reproducer Files (local, self-contained)
 
 - Failing PTO-DSL reproducer: `repro_fail_tmov_acc_to_mat.py`
+- Failing raw-MLIR reproducer (no ptodsl wrappers): `reproducer_raw_api.py`
 - Working PTO-DSL workaround: `repro_workaround_spill_acc_to_mat.py`
 - Working manual C++ reproducer: `repro_manual_acc_to_mat.cpp`
 
@@ -47,6 +48,8 @@ cd pto-dsl/examples/aot/fast_inverse/bug_report
 
 # 1) Expected failure at IR stage
 bash ./compile_bug.sh
+# (optional raw API path)
+python3 ./reproducer_raw_api.py > /tmp/reproducer_raw_api.pto
 
 # 2) Expected success via workaround (ACC->GM->MAT)
 bash ./compile_workaround.sh
