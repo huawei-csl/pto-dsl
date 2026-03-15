@@ -2,6 +2,7 @@
 import os
 import re
 import shutil
+import subprocess
 from pathlib import Path
 
 
@@ -72,7 +73,9 @@ def main() -> int:
     )
 
     copied = 0
-    skipped = 0
+    failed = 0
+    found = 0
+    results: list[dict[str, str]] = []
 
     for compile_path in compile_scripts:
         rel_dir = compile_path.parent.relative_to(aot_dir)
@@ -88,12 +91,20 @@ def main() -> int:
             if not m_py:
                 continue
 
+            found += 1
             py_expr = m_py.group(1).strip()
             pto_expr = m_py.group(2).strip()
 
             py_match = py_path_re.search(py_expr)
             if not py_match:
-                skipped += 1
+                failed += 1
+                results.append(
+                    {
+                        "name": f"{rel_dir}/line{i + 1}",
+                        "status": "FAIL",
+                        "reason": "python command does not contain a .py script path",
+                    }
+                )
                 continue
 
             ptoas_line = None
@@ -111,24 +122,99 @@ def main() -> int:
                 cpp_expr = (m_as.group("cpp1") or m_as.group("cpp2") or "").strip()
                 break
 
-            if not ptoas_line or not cpp_expr:
-                skipped += 1
-                continue
-
             py_rel = normalize_rel_path(expand_vars(py_match.group(1), variables))
             pto_rel = normalize_rel_path(expand_vars(pto_expr, variables))
+            example_name = f"{rel_dir}/{Path(py_rel).stem}:{Path(pto_rel).name}"
+
+            if not ptoas_line or not cpp_expr:
+                failed += 1
+                results.append(
+                    {
+                        "name": example_name,
+                        "status": "FAIL",
+                        "reason": "no matching ptoas command found for generated .pto",
+                    }
+                )
+                continue
+
             cpp_rel = normalize_rel_path(expand_vars(cpp_expr, variables))
 
             py_src = compile_path.parent / py_rel
             pto_src = compile_path.parent / pto_rel
             cpp_src = compile_path.parent / cpp_rel
 
-            if not (py_src.exists() and pto_src.exists() and cpp_src.exists()):
-                skipped += 1
+            if not py_src.exists():
+                failed += 1
+                results.append(
+                    {
+                        "name": example_name,
+                        "status": "FAIL",
+                        "reason": f"python source does not exist: {py_src}",
+                    }
+                )
                 continue
 
-            example_name = Path(py_rel).stem
-            dst = unique_dir(out_dir / rel_dir / example_name)
+            run_env = os.environ.copy()
+            for key, value in variables.items():
+                run_env[key] = expand_vars(value, variables)
+
+            py_cmd = line.strip()
+            py_run = subprocess.run(
+                py_cmd,
+                shell=True,
+                cwd=compile_path.parent,
+                env=run_env,
+                executable="/bin/bash",
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+            if py_run.returncode != 0:
+                failed += 1
+                output = (py_run.stdout or "").strip()
+                results.append(
+                    {
+                        "name": example_name,
+                        "status": "FAIL",
+                        "reason": f"python command failed: {py_cmd}" + (f" | {output}" if output else ""),
+                    }
+                )
+                continue
+
+            ptoas_run = subprocess.run(
+                ptoas_line,
+                shell=True,
+                cwd=compile_path.parent,
+                env=run_env,
+                executable="/bin/bash",
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+            if ptoas_run.returncode != 0:
+                failed += 1
+                output = (ptoas_run.stdout or "").strip()
+                results.append(
+                    {
+                        "name": example_name,
+                        "status": "FAIL",
+                        "reason": f"ptoas command failed: {ptoas_line}" + (f" | {output}" if output else ""),
+                    }
+                )
+                continue
+
+            if not (pto_src.exists() and cpp_src.exists()):
+                failed += 1
+                results.append(
+                    {
+                        "name": example_name,
+                        "status": "FAIL",
+                        "reason": f"expected outputs missing after compile: {pto_src.name}, {cpp_src.name}",
+                    }
+                )
+                continue
+
+            dst = unique_dir(out_dir / rel_dir / Path(py_rel).stem)
             dst.mkdir(parents=True, exist_ok=True)
 
             shutil.copy2(py_src, dst / py_src.name)
@@ -152,9 +238,19 @@ def main() -> int:
             (dst / "source_info.txt").write_text("\n".join(meta), encoding="utf-8")
 
             copied += 1
+            results.append(
+                {
+                    "name": example_name,
+                    "status": "OK",
+                    "reason": f"collected to {dst}",
+                }
+            )
 
+    print(f"Discovered {found} python->pto candidates under {aot_dir}")
+    for item in results:
+        print(f"[{item['status']}] {item['name']} - {item['reason']}")
     print(f"Collected {copied} translation examples into {out_dir}")
-    print(f"Skipped {skipped} entries (missing match or files)")
+    print(f"Failed to collect {failed} examples")
     return 0
 
 
