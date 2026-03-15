@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
+"""Collect python->pto->cpp translation examples into a reference directory.
+
+Usage:
+  python collect_example_translate.py
+  python collect_example_translate.py --aot-dir /path/to/examples/aot --out-dir /tmp/example_translation
+"""
 import json
+import argparse
 import os
 import shutil
 import subprocess
@@ -68,13 +75,47 @@ def load_example_list(config_path: Path) -> list[dict[str, object]]:
     return examples
 
 
-def main() -> int:
+def parse_args() -> argparse.Namespace:
     script_dir = Path(__file__).resolve().parent
-    example_config = script_dir / "example_list.json"
-    repo_root = Path(os.environ["REPO_ROOT"]).resolve()
-    aot_dir = Path(os.environ["AOT_DIR"]).resolve()
-    out_dir = Path(os.environ["OUT_DIR"]).resolve()
+    default_repo_root = (script_dir / "../../../..").resolve()
+    parser = argparse.ArgumentParser(description="Collect python->pto->cpp translation examples.")
+    parser.add_argument(
+        "--repo-root",
+        type=Path,
+        default=default_repo_root,
+        help="Repository root path (default: script_dir/../../../..).",
+    )
+    parser.add_argument(
+        "--aot-dir",
+        type=Path,
+        default=default_repo_root / "examples/aot",
+        help="AOT examples directory (default: <repo-root>/examples/aot).",
+    )
+    parser.add_argument(
+        "--out-dir",
+        type=Path,
+        default=(script_dir / "../references/example_translation").resolve(),
+        help="Output directory (default: script_dir/../references/example_translation).",
+    )
+    parser.add_argument(
+        "--example-config",
+        type=Path,
+        default=script_dir / "example_list.json",
+        help="Example list json path (default: script_dir/example_list.json).",
+    )
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
+    repo_root = args.repo_root.resolve()
+    aot_dir = args.aot_dir.resolve()
+    out_dir = args.out_dir.resolve()
+    example_config = args.example_config.resolve()
     example_list = load_example_list(example_config)
+
+    if not aot_dir.is_dir():
+        raise FileNotFoundError(f"AOT examples directory not found: {aot_dir}")
 
     if out_dir.exists():
         shutil.rmtree(out_dir)
