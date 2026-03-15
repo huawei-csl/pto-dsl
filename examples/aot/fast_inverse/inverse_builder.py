@@ -156,6 +156,15 @@ def build_kernel(manual_sync: bool):
                     if manual_sync:
                         pto.record_wait_pair(record_op, wait_op, event_id=0)
 
+                # TMOV does not support ACC as source tile on this backend.
+                # Use ACC->GM->MAT as a legal feedback path.
+                def spill_acc_to_mat(dst_l1):
+                    sync("MATMUL", "STORE_ACC")
+                    pto.store(c_l0, sv_out)
+                    sync("STORE_ACC", "LOAD")
+                    pto.load(sv_out, dst_l1)
+                    sync("LOAD", "MOV_M2L")
+
                 pto.load(sv_m, y_l1)
                 pto.load(sv_i_neg, x_l1)
                 sync("LOAD", "MOV_M2L")
@@ -167,8 +176,7 @@ def build_kernel(manual_sync: bool):
                 sync("MOV_M2L", "MATMUL")
 
                 tile.matmul(a_l0, b_l0, c_l0)
-                sync("MATMUL", "MOV_M2L")
-                tile.mov(c_l0, y_l1)
+                spill_acc_to_mat(y_l1)
 
                 tile.mov(x_l1, b_l0)
                 sync("MOV_M2L", "MATMUL")
@@ -178,12 +186,10 @@ def build_kernel(manual_sync: bool):
                 tile.mov(x_l1, a_l0)
                 sync("MOV_M2L", "MATMUL")
                 tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)
-                sync("MATMUL", "MOV_M2L")
-                tile.mov(c_l0, x_l1)
+                spill_acc_to_mat(x_l1)
 
                 tile.matmul(a_l0, b_l0, c_l0)
-                sync("MATMUL", "MOV_M2L")
-                tile.mov(c_l0, i_l1)
+                spill_acc_to_mat(i_l1)
 
                 def run_iteration(iter_i):
                     tile.mov(x_l1, a_l0)
@@ -195,15 +201,13 @@ def build_kernel(manual_sync: bool):
                     tile.mov(y_l1, b_l0)
                     sync("MOV_M2L", "MATMUL")
                     tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)
-                    sync("MATMUL", "MOV_M2L")
 
                     with pto.if_context(iter_i < (max_block_size // c2)):
-                        tile.mov(c_l0, x_l1)
+                        spill_acc_to_mat(x_l1)
                         tile.mov(y_l1, a_l0)
                         sync("MOV_M2L", "MATMUL")
                         tile.matmul(a_l0, b_l0, c_l0)
-                        sync("MATMUL", "MOV_M2L")
-                        tile.mov(c_l0, y_l1)
+                        spill_acc_to_mat(y_l1)
 
                 for loop_i in pto.range(c1, max_block_size, c1):
                     with pto.if_context(loop_i == c1, has_else=True) as branch_1:
