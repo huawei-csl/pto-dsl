@@ -55,6 +55,7 @@ def parse_var_assignment(line: str) -> tuple[str, str] | None:
 
 
 def main() -> int:
+    repo_root = Path(os.environ["REPO_ROOT"]).resolve()
     aot_dir = Path(os.environ["AOT_DIR"]).resolve()
     out_dir = Path(os.environ["OUT_DIR"]).resolve()
 
@@ -231,8 +232,8 @@ def main() -> int:
             (dst / "compile.sh").write_text("\n".join(commands), encoding="utf-8")
 
             meta = [
-                f"source_compile={compile_path}",
-                f"source_dir={compile_path.parent}",
+                f"source_compile={compile_path.relative_to(repo_root)}",
+                f"source_dir={compile_path.parent.relative_to(repo_root)}",
                 "",
             ]
             (dst / "source_info.txt").write_text("\n".join(meta), encoding="utf-8")
