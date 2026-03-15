@@ -25,7 +25,7 @@ def control_flow_kernel(n: "i32") -> "i32":
         total = total + one
         i = i + one
 
-    for _ in range(4):
+    for _ in range(n):
         total = total + one
 
     return total + (four - four)
@@ -93,6 +93,23 @@ def test_fillpad_is_emitted_from_ptodsl():
     assert "pto.tfillpad" in str(module)
 
 
+def test_static_python_range_is_unrolled():
+    def static_meta():
+        return {"i32": pto.int32}
+
+    def static_kernel() -> "i32":
+        total = pto.const(0, dtype=pto.int32)
+        for i in range(4):
+            total = total + i
+        return total
+
+    module = to_ir_module(meta_data=static_meta)(static_kernel)
+    ir = str(module)
+    assert "scf.for" not in ir
+    assert ir.count("arith.constant 0") >= 1
+    assert "arith.constant 3" in ir
+
+
 def test_unsupported_python_constructs_raise_targeted_error():
     try:
         to_ir_module(meta_data=unsupported_meta)(unsupported_kernel)
@@ -118,3 +135,25 @@ def test_closure_captured_constants_lower_cleanly():
 
     module = to_ir_module(meta_data=closure_meta)(closure_kernel)
     assert "arith.constant 8" in str(module)
+
+
+def test_pto_scalar_compare_helpers_are_exported():
+    lhs = pto.const(3, dtype=pto.int32)
+    rhs = pto.const(2, dtype=pto.int32)
+    assert "arith.cmpi sgt" in str(pto.gt(lhs, rhs).owner)
+
+
+def test_if_without_else_can_still_carry_values():
+    def carry_meta():
+        return {"i32": pto.int32}
+
+    def carry_kernel(n: "i32") -> "i32":
+        total = pto.const(0, dtype=pto.int32)
+        if pto.gt(n, total):
+            total = n
+        return total
+
+    module = to_ir_module(meta_data=carry_meta)(carry_kernel)
+    ir = str(module)
+    assert "scf.if" in ir
+    assert "else" in ir

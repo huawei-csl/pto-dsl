@@ -105,6 +105,18 @@ def matmul_acc(acc, lhs, rhs, out):
     _pto.TMatmulAccOp(None, acc, lhs, rhs, out)
 
 
+def gemv(lhs, rhs, out):
+    _pto.TGemvOp(None, lhs, rhs, out)
+
+
+def gemv_acc(acc, lhs, rhs, out):
+    _pto.TGemvAccOp(None, acc, lhs, rhs, out)
+
+
+def gemv_bias(lhs, rhs, bias, out):
+    _pto.TGemvBiasOp(None, lhs, rhs, bias, out)
+
+
 def extract(source, index_row, index_col, out):
     _pto.TExtractOp(src=source, indexRow=_unwrap(index_row), indexCol=_unwrap(index_col), dst=out)
 
@@ -129,6 +141,18 @@ def row_expand(src, dst):
     _pto.TRowExpandOp(src=src, dst=dst)
 
 
+def row_expand_div(src0, src1, dst):
+    _pto.TRowExpandDivOp(src0, src1, dst)
+
+
+def row_expand_mul(src0, src1, dst):
+    _pto.TRowExpandMulOp(src0, src1, dst)
+
+
+def row_expand_sub(src0, src1, dst):
+    _pto.TRowExpandSubOp(src0, src1, dst)
+
+
 def col_sum(src, tmp, dst, is_binary=True):
     _pto.TColSumOp(src=src,  dst=dst, tmp=tmp, isBinary=BoolAttr.get(is_binary))
 
@@ -147,6 +171,18 @@ def col_prod(src, tmp, dst, is_binary=True):
 
 def col_expand(src, dst):
     _pto.TColExpandOp(src=src, dst=dst)
+
+
+def col_expand_div(src0, src1, dst):
+    _pto.TColExpandDivOp(src0, src1, dst)
+
+
+def col_expand_mul(src0, src1, dst):
+    _pto.TColExpandMulOp(src0, src1, dst)
+
+
+def col_expand_sub(src0, src1, dst):
+    _pto.TColExpandSubOp(src0, src1, dst)
 
 
 def expands(scalar, dst):
@@ -185,17 +221,26 @@ __all__ = [
     "matmul",
     "matmul_bias",
     "matmul_acc",
+    "gemv",
+    "gemv_acc",
+    "gemv_bias",
     "extract",
     "row_sum",
     "row_min",
     "row_max",
     "row_prod",
     "row_expand",
+    "row_expand_div",
+    "row_expand_mul",
+    "row_expand_sub",
     "col_sum",
     "col_min",
     "col_max",
     "col_prod",
     "col_expand",
+    "col_expand_div",
+    "col_expand_mul",
+    "col_expand_sub",
     "expands",
     "subset",
 ]

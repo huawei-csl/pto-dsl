@@ -13,6 +13,9 @@ class PTODSLAstError(ValueError):
     pass
 
 
+_STATIC_RANGE_UNROLL_LIMIT = 256
+
+
 def _unwrap_if_needed(value):
     return _unwrap(value)
 
@@ -150,6 +153,27 @@ class AstLowerer:
             return
         raise PTODSLAstError(f"Unsupported assignment target: {ast.dump(target)}")
 
+    def _static_range_values(self, args):
+        if any(_is_runtime_value(arg) for arg in args):
+            return None
+        if len(args) == 1:
+            lower_bound, upper_bound, step = 0, args[0], 1
+        elif len(args) == 2:
+            lower_bound, upper_bound = args
+            step = 1
+        elif len(args) == 3:
+            lower_bound, upper_bound, step = args
+        else:
+            raise PTODSLAstError("range(...) expects 1 to 3 arguments.")
+        if not all(isinstance(v, int) for v in (lower_bound, upper_bound, step)):
+            return None
+        if step == 0:
+            raise PTODSLAstError("range(...) step must not be zero.")
+        values = list(range(lower_bound, upper_bound, step))
+        if len(values) > _STATIC_RANGE_UNROLL_LIMIT:
+            return None
+        return values
+
     def lower_statements(self, statements, env):
         terminated = False
         for stmt in statements:
@@ -214,7 +238,8 @@ class AstLowerer:
                 if name in env and _is_runtime_value(env[name])
             ]
             result_types = [_unwrap(env[name]).type for name in carried_names]
-            if_op = scf.IfOp(_unwrap(condition), result_types, hasElse=bool(stmt.orelse))
+            has_else = bool(stmt.orelse) or bool(carried_names)
+            if_op = scf.IfOp(_unwrap(condition), result_types, hasElse=has_else)
 
             with InsertionPoint(if_op.then_block):
                 then_env = env.copy()
@@ -223,12 +248,13 @@ class AstLowerer:
                     raise PTODSLAstError("Dynamic branch returns are not supported yet in PTODSL AST lowering.")
                 scf.YieldOp([_unwrap(then_env[name]) for name in carried_names])
 
-            if stmt.orelse:
+            if has_else:
                 with InsertionPoint(if_op.else_block):
                     else_env = env.copy()
-                    else_env, terminated = self.lower_statements(stmt.orelse, else_env)
-                    if terminated:
-                        raise PTODSLAstError("Dynamic branch returns are not supported yet in PTODSL AST lowering.")
+                    if stmt.orelse:
+                        else_env, terminated = self.lower_statements(stmt.orelse, else_env)
+                        if terminated:
+                            raise PTODSLAstError("Dynamic branch returns are not supported yet in PTODSL AST lowering.")
                     scf.YieldOp([_unwrap(else_env[name]) for name in carried_names])
 
             for name, result in zip(carried_names, if_op.results):
@@ -242,6 +268,14 @@ class AstLowerer:
                 raise PTODSLAstError("break/continue inside for-loops are not supported yet in PTODSL AST lowering.")
 
             args = [self.eval_expr(arg, env) for arg in stmt.iter.args]
+            static_values = self._static_range_values(args)
+            if static_values is not None:
+                for iv in static_values:
+                    self._bind_assignment(stmt.target, const(iv), env)
+                    env, terminated = self.lower_statements(stmt.body, env)
+                    if terminated:
+                        return env, True
+                return env, False
             if len(args) == 1:
                 lower_bound, upper_bound, step = const(0), args[0], const(1)
             elif len(args) == 2:

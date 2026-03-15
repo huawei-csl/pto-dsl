@@ -96,6 +96,21 @@ def store(source, dest):
     _pto.TStoreOp(None, source, dest)
 
 
+def load_scalar(result_type, ptr, offset):
+    return _pto.load_scalar(result_type, _unwrap(ptr), _unwrap(offset))
+
+
+def store_scalar(ptr, offset, value):
+    _pto.store_scalar(_unwrap(ptr), _unwrap(offset), _unwrap(value))
+
+
+def store_fp(source, fp, dest):
+    # This is the PTOAS/PTO-ISA TSTORE_FP path, which currently lowers to the
+    # accumulator-side quantized store contract. It is not a generic vector-tile
+    # quantize-store helper for mixed-dtype vec -> GM stores.
+    _pto.TStoreFPOp(source, fp, dest)
+
+
 def print(format, scalar):
     """
         Example:
@@ -125,5 +140,8 @@ __all__ = [
     "alloc_tile",
     "load",
     "store",
+    "load_scalar",
+    "store_scalar",
+    "store_fp",
     "print",
 ]
