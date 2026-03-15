@@ -10,7 +10,10 @@ MAX_MATRIX_SIZE = 128
 
 def meta_data():
     in_dtype = pto.float16
-    out_dtype = pto.float32
+    # PTO-DSL tile.mov currently requires identical src/dst element dtype.
+    # The source C++ uses ACC(fp32) -> MAT(fp16) TMOV, which cannot be modeled
+    # directly here, so we keep the full tile pipeline in fp16.
+    out_dtype = pto.float16
     i32 = pto.int32
 
     in_ptr_type = pto.PtrType(in_dtype)

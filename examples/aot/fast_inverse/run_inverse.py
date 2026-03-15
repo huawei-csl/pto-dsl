@@ -68,7 +68,7 @@ def run_kernel(lib, inp):
     n = inp_half.shape[-1]
     block_dim = int(inp_half.shape[0] * inp_half.shape[1])
 
-    out = torch.empty_like(inp_half, dtype=torch.float32, device=inp_half.device)
+    out = torch.empty_like(inp_half, dtype=torch.float16, device=inp_half.device)
     identity_neg = torch.zeros((n, n), dtype=torch.float16, device=inp_half.device)
     identity_neg.fill_diagonal_(-1)
 
