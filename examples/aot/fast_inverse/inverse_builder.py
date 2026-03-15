@@ -209,18 +209,12 @@ def build_kernel(manual_sync: bool):
                         tile.matmul(a_l0, b_l0, c_l0)
                         spill_acc_to_mat(y_l1)
 
-                for loop_i in pto.range(c1, max_block_size, c1):
-                    with pto.if_context(loop_i == c1, has_else=True) as branch_1:
+                # Mirror C++ `for (i = 1; i < max_block_size; i *= 2)`.
+                # Using pto.range(1, max_block_size, 1) adds many no-op
+                # iterations that still perturb generated sync scheduling.
+                for loop_i in (c1, c2, c4, c8):
+                    with pto.if_context(loop_i < max_block_size):
                         run_iteration(loop_i)
-                    with branch_1.else_context():
-                        with pto.if_context(loop_i == c2, has_else=True) as branch_2:
-                            run_iteration(loop_i)
-                        with branch_2.else_context():
-                            with pto.if_context(loop_i == c4, has_else=True) as branch_4:
-                                run_iteration(loop_i)
-                            with branch_4.else_context():
-                                with pto.if_context(loop_i == c8):
-                                    run_iteration(loop_i)
 
                 sync("MATMUL", "STORE_ACC")
                 pto.store(c_l0, sv_out)
