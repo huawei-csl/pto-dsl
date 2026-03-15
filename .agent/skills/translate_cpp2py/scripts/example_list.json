@@ -1,0 +1,137 @@
+[
+  {
+    "example_dir": "activations/geglu_dynamic_multicore",
+    "compile_script": "compile.sh",
+    "py_source": "geglu_builder.py",
+    "py_command": "python ./geglu_builder.py > ./geglu.pto",
+    "ptoas_command": "ptoas --enable-insert-sync ./geglu.pto -o ./geglu.cpp",
+    "pto_file": "geglu.pto",
+    "cpp_file": "geglu.cpp"
+  },
+  {
+    "example_dir": "activations/relu_dynamic_multicore",
+    "compile_script": "compile.sh",
+    "py_source": "relu_builder.py",
+    "py_command": "python relu_builder.py > ./relu.pto",
+    "ptoas_command": "ptoas --enable-insert-sync ./relu.pto > generated_relu.cpp",
+    "pto_file": "relu.pto",
+    "cpp_file": "generated_relu.cpp"
+  },
+  {
+    "example_dir": "batch_matmul/matmul_dynbatch_multicore",
+    "compile_script": "compile.sh",
+    "py_source": "matmul_builder.py",
+    "py_command": "python ./matmul_builder.py > matmul.pto",
+    "ptoas_command": "ptoas matmul.pto -o matmul.cpp",
+    "pto_file": "matmul.pto",
+    "cpp_file": "matmul.cpp"
+  },
+  {
+    "example_dir": "batch_matmul/matmul_dynbatch_multicore_opt",
+    "compile_script": "compile.sh",
+    "py_source": "matmul_builder.py",
+    "py_command": "python ./matmul_builder.py > matmul.pto",
+    "ptoas_command": "ptoas matmul.pto -o matmul.cpp",
+    "pto_file": "matmul.pto",
+    "cpp_file": "matmul.cpp"
+  },
+  {
+    "example_dir": "elementwise/add_dynamic_multicore",
+    "compile_script": "compile.sh",
+    "py_source": "add_builder.py",
+    "py_command": "python ./add_builder.py > ./add.pto",
+    "ptoas_command": "ptoas --enable-insert-sync ./add.pto -o ./add.cpp",
+    "pto_file": "add.pto",
+    "cpp_file": "add.cpp"
+  },
+  {
+    "example_dir": "elementwise/add_dynamic_multicore",
+    "compile_script": "compile_double.sh",
+    "py_source": "add_double_builder.py",
+    "py_command": "python ./add_double_builder.py > ./add_double.pto",
+    "ptoas_command": "ptoas --enable-insert-sync ./add_double.pto -o ./add_double.cpp",
+    "pto_file": "add_double.pto",
+    "cpp_file": "add_double.cpp"
+  },
+  {
+    "example_dir": "fast_hadamard",
+    "compile_script": "compile.sh",
+    "py_source": "hadamard_builder.py",
+    "py_command": "python ./hadamard_builder.py > ./hadamard_auto_sync.pto",
+    "ptoas_command": "ptoas --enable-insert-sync ./hadamard_auto_sync.pto -o ./hadamard_auto_sync.cpp",
+    "pto_file": "hadamard_auto_sync.pto",
+    "cpp_file": "hadamard_auto_sync.cpp"
+  },
+  {
+    "example_dir": "fast_hadamard",
+    "compile_script": "compile.sh",
+    "py_source": "hadamard_builder.py",
+    "py_command": "python ./hadamard_builder.py --manual-sync > ./hadamard_manual_sync.pto",
+    "ptoas_command": "ptoas ./hadamard_manual_sync.pto -o ./hadamard_manual_sync.cpp",
+    "pto_file": "hadamard_manual_sync.pto",
+    "cpp_file": "hadamard_manual_sync.cpp"
+  },
+  {
+    "example_dir": "matmul_optimization_guide",
+    "compile_script": "compile.sh",
+    "py_source": "step1_baseline.py",
+    "py_command": "python ./step1_baseline.py > ./step1_baseline.pto",
+    "ptoas_command": "ptoas --enable-insert-sync ./step1_baseline.pto -o ./step1_baseline.cpp",
+    "pto_file": "step1_baseline.pto",
+    "cpp_file": "step1_baseline.cpp"
+  },
+  {
+    "example_dir": "matmul_optimization_guide",
+    "compile_script": "compile.sh",
+    "py_source": "step2_doublebuffer.py",
+    "py_command": "python ./step2_doublebuffer.py > ./step2_doublebuffer.pto",
+    "ptoas_command": "ptoas --enable-insert-sync ./step2_doublebuffer.pto -o ./step2_doublebuffer.cpp",
+    "pto_file": "step2_doublebuffer.pto",
+    "cpp_file": "step2_doublebuffer.cpp"
+  },
+  {
+    "example_dir": "matmul_optimization_guide",
+    "compile_script": "compile.sh",
+    "py_source": "step3_swizzle.py",
+    "py_command": "python ./step3_swizzle.py > ./step3_swizzle.pto",
+    "ptoas_command": "ptoas --enable-insert-sync ./step3_swizzle.pto -o ./step3_swizzle.cpp",
+    "pto_file": "step3_swizzle.pto",
+    "cpp_file": "step3_swizzle.cpp"
+  },
+  {
+    "example_dir": "matmul_optimization_guide",
+    "compile_script": "compile.sh",
+    "py_source": "step4_manual_pipelining.py",
+    "py_command": "python ./step4_manual_pipelining.py > ./step4_manual_pipelining.pto",
+    "ptoas_command": "ptoas ./step4_manual_pipelining.pto -o ./step4_manual_pipelining.cpp",
+    "pto_file": "step4_manual_pipelining.pto",
+    "cpp_file": "step4_manual_pipelining.cpp"
+  },
+  {
+    "example_dir": "matmul_optimization_guide/experimental",
+    "compile_script": "compile.sh",
+    "py_source": "matmul_builder.py",
+    "py_command": "python ./matmul_builder.py > matmul.pto",
+    "ptoas_command": "ptoas matmul.pto -o matmul.cpp",
+    "pto_file": "matmul.pto",
+    "cpp_file": "matmul.cpp"
+  },
+  {
+    "example_dir": "simple_static/add_static_multicore",
+    "compile_script": "compile.sh",
+    "py_source": "add_builder.py",
+    "py_command": "python ./add_builder.py > ./add.pto",
+    "ptoas_command": "ptoas --enable-insert-sync ./add.pto -o ./add.cpp",
+    "pto_file": "add.pto",
+    "cpp_file": "add.cpp"
+  },
+  {
+    "example_dir": "simple_static/matmul_static_singlecore",
+    "compile_script": "compile.sh",
+    "py_source": "matmul_builder.py",
+    "py_command": "python ./matmul_builder.py > matmul.pto",
+    "ptoas_command": "ptoas --enable-insert-sync matmul.pto -o matmul.cpp",
+    "pto_file": "matmul.pto",
+    "cpp_file": "matmul.cpp"
+  }
+]
