@@ -19,10 +19,12 @@ extern "C" __global__ AICORE void repro_manual_acc_to_mat(
   using GlobalTensorOut =
       GlobalTensor<float, TensorShapeOut, TensorStridesOut, Layout::ND>;
 
+  // MAT tile is half.
   using TileL1 = Tile<TileType::Mat, half, 128, 128, BLayout::ColMajor, 128,
                       128, SLayout::RowMajor, 512>;
   using TileL0A = TileLeft<half, 128, 128>;
   using TileL0B = TileRight<half, 128, 128>;
+  // ACC tile is float.
   using TileL0C = TileAcc<float, 128, 128>;
 
   GlobalTensorIn in_gm(in_ptr);
@@ -60,7 +62,7 @@ extern "C" __global__ AICORE void repro_manual_acc_to_mat(
   set_flag(PIPE_M, PIPE_FIX, EVENT_ID0);
   wait_flag(PIPE_M, PIPE_FIX, EVENT_ID0);
 
-  TMOV(y_l1, c_l0);  // ACC(float) -> MAT(half): known manual working path
+  TMOV(y_l1, c_l0);  // ACC(float, TileL0C) -> MAT(half, TileL1): known manual working path
   set_flag(PIPE_FIX, PIPE_M, EVENT_ID0);
   wait_flag(PIPE_FIX, PIPE_M, EVENT_ID0);
 
