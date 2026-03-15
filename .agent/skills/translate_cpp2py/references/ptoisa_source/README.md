@@ -8,7 +8,7 @@ Full references:
 Remove function body and only keep header part, using script:
 
 ```bash
-cd /Users/dalantianshi/work_code/pto-dsl/.agent/skills/translate_cpp2py/
+cd pto-dsl/.agent/skills/translate_cpp2py/
 
 # Extract a2a3_full -> a2a3_header
 python3 scripts/extract_isa_header.py \
