@@ -1,6 +1,6 @@
 #include "pto/pto-inst.hpp"
 using namespace pto;
-__global__ AICORE void tri_inv_trick_fp16(__gm__ float* v1, __gm__ float* v2, __gm__ float* v3, int32_t v4, int32_t v5) {
+__global__ AICORE void tri_inv_trick_fp16(__gm__ float* v1, __gm__ half* v2, __gm__ half* v3, int32_t v4, int32_t v5) {
   unsigned v6 = 1;
   unsigned v7 = 0;
   int32_t v8 = 1;
@@ -8,9 +8,9 @@ __global__ AICORE void tri_inv_trick_fp16(__gm__ float* v1, __gm__ float* v2, __
   int32_t v10 = 4;
   int32_t v11 = 8;
   int32_t v12 = 128;
-  int64_t v13 = 65536;
+  int64_t v13 = 32768;
   int64_t v14 = 0;
-  int64_t v15 = 131072;
+  int64_t v15 = 65536;
   using T = float;
 
   #if defined(__DAV_CUBE__)
@@ -24,28 +24,28 @@ __global__ AICORE void tri_inv_trick_fp16(__gm__ float* v1, __gm__ float* v2, __
     unsigned v22 = (unsigned) v4 * v21;
     pto::Shape<1, 1, 1, -1, -1> v23 = pto::Shape<1, 1, 1, -1, -1>(v4, v4);
     pto::Stride<-1, -1, -1, -1, 1> v24 = pto::Stride<-1, -1, -1, -1, 1>(v22, v22, v22, v21);
-    GlobalTensor<float, pto::Shape<1, 1, 1, -1, -1>, pto::Stride<-1, -1, -1, -1, 1>, pto::Layout::ND> v25 = GlobalTensor<float, pto::Shape<1, 1, 1, -1, -1>, pto::Stride<-1, -1, -1, -1, 1>, pto::Layout::ND>(v2 + (v7 + (unsigned) v19 * (unsigned) v4 + v7 * (unsigned) v8), v23, v24);
+    GlobalTensor<half, pto::Shape<1, 1, 1, -1, -1>, pto::Stride<-1, -1, -1, -1, 1>, pto::Layout::ND> v25 = GlobalTensor<half, pto::Shape<1, 1, 1, -1, -1>, pto::Stride<-1, -1, -1, -1, 1>, pto::Layout::ND>(v2 + (v7 + (unsigned) v19 * (unsigned) v4 + v7 * (unsigned) v8), v23, v24);
     unsigned v26 = (unsigned) v4;
     unsigned v27 = (unsigned) v4;
     unsigned v28 = (unsigned) v4 * v27;
     pto::Shape<1, 1, 1, -1, -1> v29 = pto::Shape<1, 1, 1, -1, -1>(v4, v4);
     pto::Stride<-1, -1, -1, -1, 1> v30 = pto::Stride<-1, -1, -1, -1, 1>(v28, v28, v28, v27);
-    GlobalTensor<float, pto::Shape<1, 1, 1, -1, -1>, pto::Stride<-1, -1, -1, -1, 1>, pto::Layout::ND> v31 = GlobalTensor<float, pto::Shape<1, 1, 1, -1, -1>, pto::Stride<-1, -1, -1, -1, 1>, pto::Layout::ND>(v3 + (v7 + v7 * (unsigned) v4 + v7 * (unsigned) v8), v29, v30);
+    GlobalTensor<half, pto::Shape<1, 1, 1, -1, -1>, pto::Stride<-1, -1, -1, -1, 1>, pto::Layout::ND> v31 = GlobalTensor<half, pto::Shape<1, 1, 1, -1, -1>, pto::Stride<-1, -1, -1, -1, 1>, pto::Layout::ND>(v3 + (v7 + v7 * (unsigned) v4 + v7 * (unsigned) v8), v29, v30);
     unsigned v32 = (unsigned) v4;
     unsigned v33 = (unsigned) v4;
     unsigned v34 = (unsigned) v4 * v33;
     pto::Shape<1, 1, 1, -1, -1> v35 = pto::Shape<1, 1, 1, -1, -1>(v4, v4);
     pto::Stride<-1, -1, -1, -1, 1> v36 = pto::Stride<-1, -1, -1, -1, 1>(v34, v34, v34, v33);
     GlobalTensor<float, pto::Shape<1, 1, 1, -1, -1>, pto::Stride<-1, -1, -1, -1, 1>, pto::Layout::ND> v37 = GlobalTensor<float, pto::Shape<1, 1, 1, -1, -1>, pto::Stride<-1, -1, -1, -1, 1>, pto::Layout::ND>(v1 + (v7 + (unsigned) v19 * (unsigned) v4 + v7 * (unsigned) v8), v35, v36);
-    Tile<TileType::Mat, float, 128, 128, BLayout::ColMajor, -1, -1, SLayout::RowMajor, 512, PadValue::Null> v38 = Tile<TileType::Mat, float, 128, 128, BLayout::ColMajor, -1, -1, SLayout::RowMajor, 512, PadValue::Null>(v4, v4);
+    Tile<TileType::Mat, half, 128, 128, BLayout::ColMajor, -1, -1, SLayout::RowMajor, 512, PadValue::Null> v38 = Tile<TileType::Mat, half, 128, 128, BLayout::ColMajor, -1, -1, SLayout::RowMajor, 512, PadValue::Null>(v4, v4);
     TASSIGN(v38, v13);
-    Tile<TileType::Mat, float, 128, 128, BLayout::ColMajor, -1, -1, SLayout::RowMajor, 512, PadValue::Null> v39 = Tile<TileType::Mat, float, 128, 128, BLayout::ColMajor, -1, -1, SLayout::RowMajor, 512, PadValue::Null>(v4, v4);
+    Tile<TileType::Mat, half, 128, 128, BLayout::ColMajor, -1, -1, SLayout::RowMajor, 512, PadValue::Null> v39 = Tile<TileType::Mat, half, 128, 128, BLayout::ColMajor, -1, -1, SLayout::RowMajor, 512, PadValue::Null>(v4, v4);
     TASSIGN(v39, v14);
-    Tile<TileType::Mat, float, 128, 128, BLayout::ColMajor, -1, -1, SLayout::RowMajor, 512, PadValue::Null> v40 = Tile<TileType::Mat, float, 128, 128, BLayout::ColMajor, -1, -1, SLayout::RowMajor, 512, PadValue::Null>(v4, v4);
+    Tile<TileType::Mat, half, 128, 128, BLayout::ColMajor, -1, -1, SLayout::RowMajor, 512, PadValue::Null> v40 = Tile<TileType::Mat, half, 128, 128, BLayout::ColMajor, -1, -1, SLayout::RowMajor, 512, PadValue::Null>(v4, v4);
     TASSIGN(v40, v15);
-    Tile<TileType::Left, float, 128, 128, BLayout::RowMajor, -1, -1, SLayout::RowMajor, 512, PadValue::Null> v41 = Tile<TileType::Left, float, 128, 128, BLayout::RowMajor, -1, -1, SLayout::RowMajor, 512, PadValue::Null>(v4, v4);
+    Tile<TileType::Left, half, 128, 128, BLayout::RowMajor, -1, -1, SLayout::RowMajor, 512, PadValue::Null> v41 = Tile<TileType::Left, half, 128, 128, BLayout::RowMajor, -1, -1, SLayout::RowMajor, 512, PadValue::Null>(v4, v4);
     TASSIGN(v41, v14);
-    Tile<TileType::Right, float, 128, 128, BLayout::RowMajor, -1, -1, SLayout::ColMajor, 512, PadValue::Null> v42 = Tile<TileType::Right, float, 128, 128, BLayout::RowMajor, -1, -1, SLayout::ColMajor, 512, PadValue::Null>(v4, v4);
+    Tile<TileType::Right, half, 128, 128, BLayout::RowMajor, -1, -1, SLayout::ColMajor, 512, PadValue::Null> v42 = Tile<TileType::Right, half, 128, 128, BLayout::RowMajor, -1, -1, SLayout::ColMajor, 512, PadValue::Null>(v4, v4);
     TASSIGN(v42, v14);
     Tile<TileType::Acc, float, 128, 128, BLayout::ColMajor, -1, -1, SLayout::RowMajor, 1024, PadValue::Null> v43 = Tile<TileType::Acc, float, 128, 128, BLayout::ColMajor, -1, -1, SLayout::RowMajor, 1024, PadValue::Null>(v4, v4);
     TASSIGN(v43, v14);
