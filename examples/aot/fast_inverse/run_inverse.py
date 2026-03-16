@@ -122,17 +122,31 @@ def _test_tri_inv_trick(
     torch.npu.synchronize()
     actual_cpu = actual.cpu().to(torch.float64)
 
+    diff = golden_cpu - actual_cpu
     frob_error = torch.sqrt(
-        torch.sum((golden_cpu - actual_cpu) * (golden_cpu - actual_cpu))
+        torch.sum(diff * diff)
         / torch.sum(golden_cpu * golden_cpu)
     )
+    max_abs_error = torch.max(torch.abs(diff))
+    rel_denom = torch.clamp(torch.abs(golden_cpu), min=1e-12)
+    max_rel_error = torch.max(torch.abs(diff) / rel_denom)
     actual_numpy = actual_cpu.numpy()
     golden_numpy = golden_cpu.numpy()
 
-    assert np.allclose(
-        actual_numpy, golden_numpy, atol=atol, rtol=rtol
-    ), f"Error at allclose - tensor shape: {u.shape} - rtol: {rtol}."
-    assert frob_error <= ftol, f"frob_error: {frob_error}"
+    allclose_ok = np.allclose(actual_numpy, golden_numpy, atol=atol, rtol=rtol)
+    frob_ok = frob_error <= ftol
+
+    return {
+        "allclose_ok": bool(allclose_ok),
+        "frob_ok": bool(frob_ok),
+        "frob_error": float(frob_error.item()),
+        "max_abs_error": float(max_abs_error.item()),
+        "max_rel_error": float(max_rel_error.item()),
+        "shape": tuple(u.shape),
+        "atol": float(atol),
+        "rtol": float(rtol),
+        "ftol": float(ftol),
+    }
 
 
 def run_all_tests(tri_inv_func, max_block_size=None):
@@ -140,12 +154,15 @@ def run_all_tests(tri_inv_func, max_block_size=None):
         (block_ones_matrix, 0.0, 0.0, 0.0),
         (block_random_matrix, 5e-5, 0.1, 1e-4),
     ]
+    total = 0
+    failed = 0
     for n in SUPPORTED_SIZES:
         for block_dim_x in (1, 3, 7, 16):
             for block_dim_y in (1, 2, 4, 16):
                 for matrix_gen, atol, rtol, ftol in matrix_generators:
+                    total += 1
                     u = matrix_gen(n, block_dim_x, block_dim_y)
-                    _test_tri_inv_trick(
+                    metrics = _test_tri_inv_trick(
                         tri_inv_func,
                         u,
                         atol=atol,
@@ -153,9 +170,25 @@ def run_all_tests(tri_inv_func, max_block_size=None):
                         ftol=ftol,
                         max_block_size=max_block_size,
                     )
+                    passed = metrics["allclose_ok"] and metrics["frob_ok"]
+                    if not passed:
+                        failed += 1
+                    status = "ok" if passed else "fail"
                     print(
-                        f"[ok] n={n}, bx={block_dim_x}, by={block_dim_y}, generator={matrix_gen.__name__}"
+                        f"[{status}] n={n}, bx={block_dim_x}, by={block_dim_y}, "
+                        f"generator={matrix_gen.__name__}, "
+                        f"allclose={metrics['allclose_ok']}, frob_ok={metrics['frob_ok']}, "
+                        f"frob={metrics['frob_error']:.6e}, "
+                        f"max_abs={metrics['max_abs_error']:.6e}, "
+                        f"max_rel={metrics['max_rel_error']:.6e}"
                     )
+
+    passed = total - failed
+    print(f"\nSummary: total={total}, passed={passed}, failed={failed}")
+    if failed > 0:
+        raise AssertionError(
+            f"{failed}/{total} cases failed. See per-case error norms above."
+        )
 
 
 if __name__ == "__main__":
