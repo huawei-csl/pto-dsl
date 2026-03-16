@@ -156,8 +156,7 @@ def build_kernel(manual_sync: bool):
                     if manual_sync:
                         pto.record_wait_pair(record_op, wait_op, event_id=0)
 
-                # TMOV does not support ACC as source tile on this backend.
-                # Use ACC->GM->MAT as a legal feedback path.
+                # TODO: use TMOV ACC-MAT instead of this ACC->GM->MAT around-trip
                 def spill_acc_to_mat(dst_l1):
                     sync("MATMUL", "STORE_ACC")
                     pto.store(c_l0, sv_out)
