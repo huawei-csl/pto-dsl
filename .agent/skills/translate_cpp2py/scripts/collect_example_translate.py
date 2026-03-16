@@ -12,6 +12,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
+
 def unique_dir(base: Path) -> Path:
     if not base.exists():
         return base
@@ -57,12 +58,16 @@ def load_example_list(config_path: Path) -> list[dict[str, object]]:
         for key in REQUIRED_FIELDS:
             value = item[key]
             if not isinstance(value, str) or not value.strip():
-                raise ValueError(f"entry #{idx} field '{key}' must be a non-empty string")
+                raise ValueError(
+                    f"entry #{idx} field '{key}' must be a non-empty string"
+                )
             normalized[key] = value
 
         dependency = item.get("dependency", [])
         if not isinstance(dependency, list):
-            raise ValueError(f"entry #{idx} field 'dependency' must be a list of strings")
+            raise ValueError(
+                f"entry #{idx} field 'dependency' must be a list of strings"
+            )
         dep_list: list[str] = []
         for dep_idx, dep in enumerate(dependency):
             if not isinstance(dep, str) or not dep.strip():
@@ -78,7 +83,9 @@ def load_example_list(config_path: Path) -> list[dict[str, object]]:
 def parse_args() -> argparse.Namespace:
     script_dir = Path(__file__).resolve().parent
     default_repo_root = (script_dir / "../../../..").resolve()
-    parser = argparse.ArgumentParser(description="Collect python->pto->cpp translation examples.")
+    parser = argparse.ArgumentParser(
+        description="Collect python->pto->cpp translation examples."
+    )
     parser.add_argument(
         "--repo-root",
         type=Path,
@@ -194,7 +201,8 @@ def main() -> int:
                 {
                     "name": example_name,
                     "status": "FAIL",
-                    "reason": f"python command failed: {py_cmd}" + (f" | {output}" if output else ""),
+                    "reason": f"python command failed: {py_cmd}"
+                    + (f" | {output}" if output else ""),
                 }
             )
             continue
@@ -216,7 +224,8 @@ def main() -> int:
                 {
                     "name": example_name,
                     "status": "FAIL",
-                    "reason": f"ptoas command failed: {ptoas_cmd}" + (f" | {output}" if output else ""),
+                    "reason": f"ptoas command failed: {ptoas_cmd}"
+                    + (f" | {output}" if output else ""),
                 }
             )
             continue

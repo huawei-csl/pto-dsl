@@ -5,13 +5,17 @@ from . import _pto_ops_gen as _pto_ops_gen
 from ._pto_ops_gen import *
 from mlir import ir as _ods_ir
 
+
 def _load_local_pto_ext():
     import importlib.util
     from pathlib import Path
+
     lib_dir = Path(__file__).resolve().parent.parent / "_mlir_libs"
     for suffix in ("*.so", "*.pyd", "*.dll", "*.dylib"):
         for so_path in lib_dir.glob(f"_pto{suffix}"):
-            spec = importlib.util.spec_from_file_location("mlir._mlir_libs._pto", so_path)
+            spec = importlib.util.spec_from_file_location(
+                "mlir._mlir_libs._pto", so_path
+            )
             if spec and spec.loader:
                 mod = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(mod)
@@ -57,42 +61,72 @@ MaskPatternAttr = _pto_mod.MaskPatternAttr
 __all__ = [
     # Dialect utilities
     "register_dialect",
-
     # Types
     "PtrType",
     "TensorViewType",
     "PartitionTensorViewType",
     "TileType",
     "TileBufType",
-    "AddressSpace", "AddressSpaceAttr",
-    "BLayout","BLayoutAttr",
-    "SLayout","SLayoutAttr",
-    "PadValue","PadValueAttr",
-    "RoundMode", "RoundModeAttr",
-    "CmpMode", "CmpModeAttr",
-    "PIPE", "PipeAttr",
-    "Layout", "LayoutAttr",
-    "SyncOpType", "SyncOpTypeAttr",
-    "EVENT", "EventAttr",
-    "MaskPattern", "MaskPatternAttr",
+    "AddressSpace",
+    "AddressSpaceAttr",
+    "BLayout",
+    "BLayoutAttr",
+    "SLayout",
+    "SLayoutAttr",
+    "PadValue",
+    "PadValueAttr",
+    "RoundMode",
+    "RoundModeAttr",
+    "CmpMode",
+    "CmpModeAttr",
+    "PIPE",
+    "PipeAttr",
+    "Layout",
+    "LayoutAttr",
+    "SyncOpType",
+    "SyncOpTypeAttr",
+    "EVENT",
+    "EventAttr",
+    "MaskPattern",
+    "MaskPatternAttr",
     "TileBufConfigAttr",
     "TileConfig",
     # High-level sync helpers
-    "record_event", "wait_event", "barrier",
+    "record_event",
+    "wait_event",
+    "barrier",
     # Scalar pointer helpers
-    "load_scalar", "store_scalar"
-
+    "load_scalar",
+    "store_scalar"
     # Aliases for SyncOpType enums (for terse calls)
-    ,"TLOAD","TSTORE_ACC","TSTORE_VEC","TMOV_M2L","TMOV_M2S",
-    "TMOV_M2B","TMOV_M2V","TMOV_V2M","TMATMUL","TVEC","TVECWAIT_EVENT"
+    ,
+    "TLOAD",
+    "TSTORE_ACC",
+    "TSTORE_VEC",
+    "TMOV_M2L",
+    "TMOV_M2S",
+    "TMOV_M2B",
+    "TMOV_M2V",
+    "TMOV_V2M",
+    "TMATMUL",
+    "TVEC",
+    "TVECWAIT_EVENT"
     # Aliases for EVENT enums
-    ,"EVENT_ID0","EVENT_ID1","EVENT_ID2","EVENT_ID3",
-    "EVENT_ID4","EVENT_ID5","EVENT_ID6","EVENT_ID7"
+    ,
+    "EVENT_ID0",
+    "EVENT_ID1",
+    "EVENT_ID2",
+    "EVENT_ID3",
+    "EVENT_ID4",
+    "EVENT_ID5",
+    "EVENT_ID6",
+    "EVENT_ID7",
 ]
 
 # -----------------------------------------------------------------------------
 # Convenience wrappers for high-level sync to allow passing enums directly
 # -----------------------------------------------------------------------------
+
 
 def _ensure_sync_attr(val, ctx):
     # Accept SyncOpType enum, SyncOpTypeAttr, or string name ("TMATMUL"/"tmatmul").
@@ -107,6 +141,7 @@ def _ensure_sync_attr(val, ctx):
         return SyncOpTypeAttr.get(enum_val, ctx)
     return val
 
+
 def _ensure_event_attr(val, ctx):
     if isinstance(val, EVENT):
         return EventAttr.get(val, ctx)
@@ -119,13 +154,17 @@ def _ensure_event_attr(val, ctx):
         return EventAttr.get(enum_val, ctx)
     return val
 
+
 def record_event(src_op, dst_op, event_id, *, loc=None, ip=None):
     ctx = loc.context if loc else _ods_ir.Context.current
     return _pto_ops_gen.record_event(
         _ensure_sync_attr(src_op, ctx),
         _ensure_sync_attr(dst_op, ctx),
         _ensure_event_attr(event_id, ctx),
-        loc=loc, ip=ip)
+        loc=loc,
+        ip=ip,
+    )
+
 
 def wait_event(src_op, dst_op, event_id, *, loc=None, ip=None):
     ctx = loc.context if loc else _ods_ir.Context.current
@@ -133,7 +172,10 @@ def wait_event(src_op, dst_op, event_id, *, loc=None, ip=None):
         _ensure_sync_attr(src_op, ctx),
         _ensure_sync_attr(dst_op, ctx),
         _ensure_event_attr(event_id, ctx),
-        loc=loc, ip=ip)
+        loc=loc,
+        ip=ip,
+    )
+
 
 def barrier(op, *, loc=None, ip=None):
     ctx = loc.context if loc else _ods_ir.Context.current
@@ -143,6 +185,7 @@ def barrier(op, *, loc=None, ip=None):
         return _pto_ops_gen.barrier_sync(op_attr, loc=loc, ip=ip)
     # Otherwise fall back to low-level barrier expecting PipeAttr
     return _pto_ops_gen.barrier(op, loc=loc, ip=ip)
+
 
 # -----------------------------------------------------------------------------
 # Scalar pointer helpers (manual wrappers until python ops are regenerated)
@@ -175,6 +218,7 @@ def store_scalar(ptr, offset, value, *, loc=None, ip=None):
         ip=ip,
     )
 
+
 # -----------------------------------------------------------------------------
 # Export enum aliases for terse calls: pto.record_event(TLOAD, TLOAD, EVENT_ID0)
 # -----------------------------------------------------------------------------
@@ -199,6 +243,7 @@ EVENT_ID5 = EVENT.EVENT_ID5
 EVENT_ID6 = EVENT.EVENT_ID6
 EVENT_ID7 = EVENT.EVENT_ID7
 
+
 class TileConfig:
     alignedSize = 32
     fixedRowSize = 16
@@ -208,6 +253,7 @@ class TileConfig:
     fractalABSize = 512
     fractalCSize = 1024
     fractalMxSize = 32
+
 
 # -----------------------------------------------------------------------------
 # Op aliases without "Op" suffix (user-facing)
@@ -229,5 +275,6 @@ def _install_op_aliases():
         globals()[alias] = obj
         added.append(alias)
     return added
+
 
 __all__.extend(_install_op_aliases())

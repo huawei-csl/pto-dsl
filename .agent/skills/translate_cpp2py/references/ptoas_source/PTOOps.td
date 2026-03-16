@@ -162,9 +162,9 @@ def PartitionViewOp : PTO_Op<"partition_view", [AttrSizedOperandSegments]> {
   let description = [{
     Captures a specific calculation region from a large view.
     It carries offsets (where to read) and sizes (how much to read).
-    
+
     IR Example:
-      %1 = pto.partition_view %0, offsets=[...], sizes=[...] 
+      %1 = pto.partition_view %0, offsets=[...], sizes=[...]
            : !pto.tensor_view -> !pto.partition_tensor_view
   }];
 
@@ -224,7 +224,7 @@ def AllocTileOp : PTO_Op<"alloc_tile", [AttrSizedOperandSegments]> {
 
   let assemblyFormat = [{
     (`addr` `=` $addr^)?
-    (`valid_row` `=` $valid_row^)? 
+    (`valid_row` `=` $valid_row^)?
     (`valid_col` `=` $valid_col^)?
      attr-dict `:` qualified(type($result))
   }];
@@ -270,7 +270,7 @@ def SubsetOp : PTO_Op<"subset", [
     ViewLikeOpInterface,
     DeclareOpInterfaceMethods<InferTypeOpInterface> // 启用 C++ 推导
   ]> {
-  
+
   let summary = "Create a strided view (subset) from a parent tile.";
   let description = [{
     Creates a view into the source tile.
@@ -298,7 +298,7 @@ def SubsetOp : PTO_Op<"subset", [
   let extraClassDeclaration = [{
     // 接口要求 getViewSource，我们转发给自动生成的 getSource
     ::mlir::Value getViewSource() { return getSource(); }
-    
+
     // ViewLikeOpInterface 可能还需要 getOffsets (如果 Variadic 不自动匹配)
     // 但通常 Variadic<Index>:$offsets 会生成 getOffsets()，这应该没问题。
     // 如果后续报 getOffsets 错，也可以在这里加。
@@ -358,7 +358,7 @@ def TLoadOp  : PTO_TOp<"tload", [
       pto.tload ins(%partition_view) outs(%tile_buf)
   }];
 
-  let arguments = (ins 
+  let arguments = (ins
     PTODpsType:$src,
     PTODpsType:$dst,
     OptionalAttr<PTO_PadModeAttr>:$pad_mode,
@@ -378,23 +378,23 @@ def TLoadOp  : PTO_TOp<"tload", [
   let builders = [
     // 1. Basic: (src, dst)
     OpBuilder<(ins "TypeRange":$res, "Value":$src, "Value":$dst), [{
-      build($_builder, $_state, res, src, dst, 
-            /*pad_mode=*/nullptr, /*pad_value=*/nullptr, 
-            /*left=*/nullptr, /*right=*/nullptr, 
-            /*init_out=*/nullptr, /*init_cond=*/nullptr); 
+      build($_builder, $_state, res, src, dst,
+            /*pad_mode=*/nullptr, /*pad_value=*/nullptr,
+            /*left=*/nullptr, /*right=*/nullptr,
+            /*init_out=*/nullptr, /*init_cond=*/nullptr);
     }]>,
 
     // 2. With left_padding_num
     OpBuilder<(ins "TypeRange":$res, "Value":$src, "Value":$dst,
                    "Value":$left_padding_num), [{
-      build($_builder, $_state, res, src, dst, 
+      build($_builder, $_state, res, src, dst,
             nullptr, nullptr, left_padding_num, nullptr, nullptr, nullptr);
     }]>,
 
     // 3. With pad_mode, pad_value
     OpBuilder<(ins "TypeRange":$res, "Value":$src, "Value":$dst,
                    "pto::PadModeAttr":$pad_mode, "Value":$pad_value), [{
-      build($_builder, $_state, res, src, dst, 
+      build($_builder, $_state, res, src, dst,
             pad_mode, pad_value, nullptr, nullptr, nullptr, nullptr);
     }]>,
 
@@ -402,7 +402,7 @@ def TLoadOp  : PTO_TOp<"tload", [
     OpBuilder<(ins "TypeRange":$res, "Value":$src, "Value":$dst,
                    "pto::PadModeAttr":$pad_mode, "Value":$pad_value,
                    "Value":$left_padding_num), [{
-      build($_builder, $_state, res, src, dst, 
+      build($_builder, $_state, res, src, dst,
             pad_mode, pad_value, left_padding_num, nullptr, nullptr, nullptr);
     }]>,
 
@@ -410,7 +410,7 @@ def TLoadOp  : PTO_TOp<"tload", [
     OpBuilder<(ins "TypeRange":$res, "Value":$src, "Value":$dst,
                    "pto::PadModeAttr":$pad_mode, "Value":$pad_value,
                    "Value":$left_padding_num, "Value":$right_padding_num), [{
-      build($_builder, $_state, res, src, dst, 
+      build($_builder, $_state, res, src, dst,
             pad_mode, pad_value, left_padding_num, right_padding_num, nullptr, nullptr);
     }]>,
 
@@ -419,8 +419,8 @@ def TLoadOp  : PTO_TOp<"tload", [
                    "pto::PadModeAttr":$pad_mode, "Value":$pad_value,
                    "Value":$left_padding_num, "Value":$right_padding_num,
                    "bool":$init_out_buffer), [{
-      build($_builder, $_state, res, src, dst, 
-            pad_mode, pad_value, left_padding_num, right_padding_num, 
+      build($_builder, $_state, res, src, dst,
+            pad_mode, pad_value, left_padding_num, right_padding_num,
             init_out_buffer, nullptr);
     }]>
   ];
@@ -437,7 +437,7 @@ def TLoadOp  : PTO_TOp<"tload", [
     (`init_condition` `=` $init_condition^ `:` type($init_condition))?
     (`->` qualified(type($result))^)?
   }];
-  
+
   let extraClassDeclaration = [{
     static StringRef getOpName() { return "pto_load"; }
     ShapedType getSrcOperandType() {
@@ -461,7 +461,7 @@ def TStoreOp: PTO_TOp<"tstore", [
   let summary = "PTO data store operation (TileBuf -> PartitionView).";
   let description = [{
     Stores data from a 2D physical tile buffer back to a high-dimensional logical partition view.
-    
+
     DPS form:
       pto.tstore ins(%tile_buf) outs(%partition_view)
   }];
@@ -737,7 +737,7 @@ def TMatmulOp : PTO_TOp<"tmatmul", [
   let extraClassDeclaration = [{
     static StringRef getOpName() { return "matmul_dps"; }
     ::mlir::pto::PIPE getPipe() {
-      return ::mlir::pto::PIPE::PIPE_M; 
+      return ::mlir::pto::PIPE::PIPE_M;
     }
     ::mlir::MutableOperandRange getDpsInitsMutable() { return getDstMutable(); }
   }];
@@ -772,7 +772,7 @@ def TMatmulAccOp : PTO_TOp<"tmatmul.acc", [
 
   let extraClassDeclaration = [{
       ::mlir::pto::PIPE getPipe() {
-        return ::mlir::pto::PIPE::PIPE_M; 
+        return ::mlir::pto::PIPE::PIPE_M;
       }
       ::mlir::MutableOperandRange getDpsInitsMutable() { return getDstMutable(); }
   }];
@@ -807,7 +807,7 @@ def TGemvOp : PTO_TOp<"tgemv", [
   let extraClassDeclaration = [{
     static StringRef getOpName() { return "gemv"; }
     ::mlir::pto::PIPE getPipe() {
-      return ::mlir::pto::PIPE::PIPE_M; 
+      return ::mlir::pto::PIPE::PIPE_M;
     }
     ::mlir::MutableOperandRange getDpsInitsMutable() { return getDstMutable(); }
   }];
@@ -842,7 +842,7 @@ def TGemvAccOp : PTO_TOp<"tgemv.acc", [
 
   let extraClassDeclaration = [{
       ::mlir::pto::PIPE getPipe() {
-        return ::mlir::pto::PIPE::PIPE_M; 
+        return ::mlir::pto::PIPE::PIPE_M;
       }
       ::mlir::MutableOperandRange getDpsInitsMutable() { return getDstMutable(); }
   }];
@@ -876,7 +876,7 @@ def TGemvBiasOp : PTO_TOp<"tgemv.bias", [
   let extraClassDeclaration = [{
     static StringRef getIntrinsicName() { return "TGEMV_BIAS"; }
     ::mlir::pto::PIPE getPipe() {
-      return ::mlir::pto::PIPE::PIPE_M; 
+      return ::mlir::pto::PIPE::PIPE_M;
     }
     ::mlir::MutableOperandRange getDpsInitsMutable() { return getDstMutable(); }
   }];
@@ -888,7 +888,7 @@ def TMovOp  : PTO_TOp<"tmov", [
   DeclareOpInterfaceMethods<MemoryEffectsOpInterface>
 ]> {
   let summary = "Move data between domains (DPS version).";
-  
+
   let arguments = (ins
     PTODpsType:$src,
     PTODpsType:$dst
@@ -969,15 +969,15 @@ def TMovOp  : PTO_TOp<"tmov", [
 
 def PointerCastOp : PTO_Op<"pointer_cast", [AttrSizedOperandSegments, Pure]> {
   let summary = "Casts an integer address to a MemRef with optional valid dims";
-  
+
   // 参数定义 (保持 Optional)
-  let arguments = (ins 
+  let arguments = (ins
     Variadic<I64>:$addrs,
     Optional<Index>:$valid_row,
     Optional<Index>:$valid_col,
     OptionalAttr<TileBufConfigAttr>:$config
   );
-  
+
   let results = (outs Res<AnyMemRef, "", [MemAlloc]>:$result);
 
   // Assembly Format (去掉了 [])
@@ -994,11 +994,11 @@ def PointerCastOp : PTO_Op<"pointer_cast", [AttrSizedOperandSegments, Pure]> {
       if (vRow) $_state.addOperands(vRow);
       if (vCol) $_state.addOperands(vCol);
       if (config) $_state.addAttribute("config", config);
-      
+
       int32_t addrsSize = addrs.size();
       int32_t vRowSize = vRow ? 1 : 0;
       int32_t vColSize = vCol ? 1 : 0;
-      $_state.addAttribute("operandSegmentSizes", 
+      $_state.addAttribute("operandSegmentSizes",
         $_builder.getDenseI32ArrayAttr({addrsSize, vRowSize, vColSize}));
     }]>
   ];
@@ -1440,7 +1440,7 @@ def TAbsOp : PTO_TOp<"tabs", [
     PTODpsType:$dst
   );
 
-  let results = (outs); 
+  let results = (outs);
 
   let assemblyFormat = [{
     `ins` `(` $src `:` qualified(type($src)) `)` `outs` `(` $dst `:` qualified(type($dst) ) `)`
@@ -1652,7 +1652,7 @@ def TCIOp : PTO_TOp<"tci", [
   let results = (outs);
 
   let assemblyFormat = [{
-    `ins` `(` $S 
+    `ins` `(` $S
     attr-dict
     `:` type($S) `)`
     `outs` `(` $dst `:` qualified(type($dst) ) `)`
@@ -1685,12 +1685,12 @@ def TCmpOp : PTO_TOp<"tcmp", [
     `ins` `(` $src0 `,` $src1
             attr-dict
           `:` qualified(type($src0)) `,` qualified(type($src1)) `)`
-    `outs` `(` $dst `:` qualified(type($dst) ) `)`   
+    `outs` `(` $dst `:` qualified(type($dst) ) `)`
   }];
 
    let builders = [
     OpBuilder<(ins "TypeRange":$res, "Value":$src0, "Value":$src1, "Value":$dst), [{
-      build($_builder, $_state, res, src0, src1, dst, /*cmpMode=*/nullptr); 
+      build($_builder, $_state, res, src0, src1, dst, /*cmpMode=*/nullptr);
     }]>];
 
   let hasVerifier = 1;
@@ -1728,7 +1728,7 @@ def TCmpSOp : PTO_TOp<"tcmps", [
           attr-dict
           `:` qualified(type($src)) `,` type($scalar) `)`
     `outs` `(` $dst `:` qualified(type($dst) ) `)`
-    
+
   }];
 }
 
@@ -1866,7 +1866,7 @@ def TCvtOp : PTO_TOp<"tcvt", [
   }];
 
   let assemblyFormat = [{
-    `ins` `(` $src 
+    `ins` `(` $src
     attr-dict
     `:` qualified(type($src)) `)`
     `outs` `(` $dst `:` qualified(type($dst) ) `)`
@@ -3334,7 +3334,7 @@ def TSort32Op: PTO_TOp<"tsort32", [
 
 def TSqrtOp: PTO_TOp<"tsqrt", [
   PTO_DpsInitOpInterface,
-  OpPipeInterface,  
+  OpPipeInterface,
   DeclareOpInterfaceMethods<MemoryEffectsOpInterface>
 ]> {
   let summary = "TSQRT: Elementwise square root.";

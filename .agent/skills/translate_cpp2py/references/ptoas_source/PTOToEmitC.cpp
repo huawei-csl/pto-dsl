@@ -37,7 +37,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/Transforms/FuncConversions.h"
-#include "mlir/Dialect/SCF/IR/SCF.h"                   
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Conversion/SCFToEmitC/SCFToEmitC.h"
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 
@@ -163,7 +163,7 @@ public:
       // [关键修改] i1 保持为 i1，不要转为 emitc.opaque<"bool">
       // 这样 emitc.if (接受 i1) 就不会报错。
       // 在打印 C++ 代码时，i1 会自动打印为 bool。
-      //if (type.getWidth() == 1) return IntegerType::get(Ctx, 1); 
+      //if (type.getWidth() == 1) return IntegerType::get(Ctx, 1);
       if (type.getWidth() == 1) return type; // <--- 保持 i1 不变
 
       // Prefer fixed-width C types. Preserve signedness if the MLIR integer is
@@ -199,7 +199,7 @@ public:
         return emitc::OpaqueType::get(Ctx, "pto::MrgSortExecutedNumList");
       return Type{};
     });
-    
+
     // ---------------------------------------------------------
     // 2. PTO 特殊类型 (透传或转换)
     // ---------------------------------------------------------
@@ -239,12 +239,12 @@ public:
 
       // A. 转换元素类型
       Type elemType = type.getElementType();
-      Type newElemType = convertType(elemType); 
+      Type newElemType = convertType(elemType);
       if (!newElemType) {
         llvm::errs() << "  [Error] Failed to convert element type: " << elemType << "\n";
         return std::nullopt;
       }
-      
+
       // 获取元素类型的字符串
       std::string elemTypeStr;
       if (auto opq = dyn_cast<emitc::OpaqueType>(newElemType)) {
@@ -257,7 +257,7 @@ public:
       // B. 处理 Memory Space
       std::string qualifier = "";
       Attribute memorySpace = type.getMemorySpace();
-      
+
       if (!memorySpace) {
          qualifier = "__gm__";
       } else if (auto ptoAttr = dyn_cast<pto::AddressSpaceAttr>(memorySpace)) {
@@ -269,7 +269,7 @@ public:
 
       std::string finalTypeStr = qualifier + " " + elemTypeStr;
       llvm::errs() << "  [Success] -> " << finalTypeStr << "*\n";
-      
+
       return emitc::PointerType::get(emitc::OpaqueType::get(Ctx, finalTypeStr));
     });
 
@@ -1904,12 +1904,12 @@ struct ArithTruncIToEmitC : public OpConversionPattern<arith::TruncIOp> {
 
 		struct ArithConstantToEmitC : public OpConversionPattern<arith::ConstantOp> {
 		  using OpConversionPattern<arith::ConstantOp>::OpConversionPattern;
-		
+
 		  LogicalResult matchAndRewrite(arith::ConstantOp op, OpAdaptor adaptor,
 		                                ConversionPatternRewriter &rewriter) const override {
 	    Type newType = getTypeConverter()->convertType(op.getType());
 	    if (!newType) return failure();
-	
+
 	    // `adaptor.getValue()` may be null if attribute conversion isn't defined.
 	    // Use the original attribute as fallback and always cast null-safely.
 	    Attribute valueAttr = adaptor.getValue();
@@ -1936,14 +1936,14 @@ struct ArithTruncIToEmitC : public OpConversionPattern<arith::TruncIOp> {
 		      rewriter.replaceOpWithNewOp<emitc::ConstantOp>(op, newType, constAttr);
 		      return success();
 		    }
-	
+
 	    if (auto intAttr = dyn_cast_or_null<IntegerAttr>(valueAttr)) {
 	      std::string valStr = std::to_string(intAttr.getValue().getSExtValue());
 	      auto constAttr = emitc::OpaqueAttr::get(rewriter.getContext(), valStr);
 	      rewriter.replaceOpWithNewOp<emitc::ConstantOp>(op, newType, constAttr);
 	      return success();
 	    }
-	
+
 	    return failure();
 	  }
 	};
@@ -2163,7 +2163,7 @@ struct SubviewToEmitCPattern : public OpConversionPattern<memref::SubViewOp> {
                                 ConversionPatternRewriter &rewriter) const override {
     auto loc = op.getLoc();
     auto *ctx = rewriter.getContext();
-    
+
     // 获取源 MemRef 类型信息
     auto srcType = mlir::cast<MemRefType>(op.getSource().getType());
     int64_t rank = srcType.getRank();
@@ -2201,10 +2201,10 @@ struct SubviewToEmitCPattern : public OpConversionPattern<memref::SubViewOp> {
     // -------------------------------------------------------------------------
     // Part 1: 指针偏移计算 (Runtime Pointer Arithmetic)
     // -------------------------------------------------------------------------
-    
+
     // 准备类型: unsigned
     Type u32Ty = emitc::OpaqueType::get(ctx, "unsigned");
-    
+
     // Helper: 创建 unsigned 常量
     auto mkU32 = [&](int64_t v) -> Value {
       return rewriter.create<emitc::ConstantOp>(
@@ -2366,7 +2366,7 @@ struct SubviewToEmitCPattern : public OpConversionPattern<memref::SubViewOp> {
     // -------------------------------------------------------------------------
     // Part 3: 生成 GlobalTensor 类型 (Shape/Stride Template Generation)
     // -------------------------------------------------------------------------
-    
+
     // When emitting C++ with `declareVariablesAtTop`, value declarations are
     // hoisted before body statements. Avoid introducing local `using` aliases
     // for templated types (Shape/Stride/GlobalTensor) because those aliases
@@ -2376,11 +2376,11 @@ struct SubviewToEmitCPattern : public OpConversionPattern<memref::SubViewOp> {
     // Instead, use the fully spelled template types as EmitC opaque types.
 
     auto resTy = mlir::cast<MemRefType>(op.getResult().getType());
-    
+
     // 1. 解析具体元素类型 (完整逻辑，不省略)
-    std::string elemTypeStr = "float"; 
+    std::string elemTypeStr = "float";
     Type elemTy = resTy.getElementType();
-    
+
 	    if (elemTy.isF16()) {
 	        elemTypeStr = "half";
 	    } else if (elemTy.isBF16()) {
@@ -2391,7 +2391,7 @@ struct SubviewToEmitCPattern : public OpConversionPattern<memref::SubViewOp> {
         // 区分有符号/无符号通常依赖上下文，但在 EmitC 中 int8_t 比较通用
         if (elemTy.isSignlessInteger(8) || elemTy.isSignedInteger(8))
             elemTypeStr = "int8_t";
-        else 
+        else
             elemTypeStr = "uint8_t";
     } else if (elemTy.isInteger(16)) {
         if (elemTy.isSignlessInteger(16) || elemTy.isSignedInteger(16))
@@ -2401,7 +2401,7 @@ struct SubviewToEmitCPattern : public OpConversionPattern<memref::SubViewOp> {
     } else if (elemTy.isInteger(32)) {
         if (elemTy.isSignlessInteger(32) || elemTy.isSignedInteger(32))
             elemTypeStr = "int32_t";
-        else 
+        else
             elemTypeStr = "uint32_t";
     } else if (elemTy.isInteger(64)) {
         elemTypeStr = cast<IntegerType>(elemTy).isUnsigned() ? "uint64_t" : "int64_t";
@@ -2592,16 +2592,16 @@ struct SubviewToEmitCPattern : public OpConversionPattern<memref::SubViewOp> {
     for (Value dynSize : adaptor.getSizes()) {
         shapeArgs.push_back(dynSize);
     }
-    
+
     auto shapeInstOp = rewriter.create<emitc::CallOpaqueOp>(
-        loc, 
+        loc,
         shapeTypeOpaque, // 返回类型
         shapeCppType,    // 调用的“函数名”即类名构造函数
-        /*args=*/ArrayAttr{}, 
-        /*templateArgs=*/ArrayAttr{}, 
+        /*args=*/ArrayAttr{},
+        /*templateArgs=*/ArrayAttr{},
         /*operands=*/ValueRange(shapeArgs)
     );
-    
+
     // B. Instantiate Stride object.
     auto strideTypeOpaque = emitc::OpaqueType::get(ctx, strideCppType);
     // 仅传入动态 stride 维度对应的值，匹配 pto::Stride 的 N-parameter ctor（并满足其 static_assert）。
@@ -2628,10 +2628,10 @@ struct SubviewToEmitCPattern : public OpConversionPattern<memref::SubViewOp> {
     gtConstructorArgs.push_back(strideInstOp.getResult(0)); // 拿到 stride_inst 的 SSA Value
 
     rewriter.replaceOpWithNewOp<emitc::CallOpaqueOp>(
-        op, 
-        gtType, 
+        op,
+        gtType,
         gtCppType,
-        /*args=*/ArrayAttr{}, 
+        /*args=*/ArrayAttr{},
         /*templateArgs=*/ArrayAttr{},
         /*operands=*/ValueRange(gtConstructorArgs)
     );
@@ -2880,10 +2880,10 @@ struct PointerCastConversion : public OpConversionPattern<pto::PointerCastOp> {
           case pto::AddressSpace::LEFT:  return TileRole::Left;
           case pto::AddressSpace::RIGHT: return TileRole::Right;
           case pto::AddressSpace::ACC:   return TileRole::Acc;
-          case pto::AddressSpace::BIAS:  return TileRole::Bias; 
+          case pto::AddressSpace::BIAS:  return TileRole::Bias;
           case pto::AddressSpace::MAT:   return TileRole::Mat;
           case pto::AddressSpace::SCALING: return TileRole::Scaling;
-          default: break; 
+          default: break;
         }
       }
     }
@@ -2928,7 +2928,7 @@ struct PointerCastConversion : public OpConversionPattern<pto::PointerCastOp> {
     auto selfType = mlir::cast<MemRefType>(op.getType());
     ArrayRef<int64_t> shape = selfType.getShape();
     Type elemType = selfType.getElementType();
-    
+
     // 1. 推导 Tile Role
     TileRole role = inferRole(op);
 
@@ -2972,7 +2972,7 @@ struct PointerCastConversion : public OpConversionPattern<pto::PointerCastOp> {
         int32_t blVal = 0;
         if (auto attr = dyn_cast<BLayoutAttr>(config.getBLayout()))
             blVal = static_cast<int32_t>(attr.getValue());
- 
+
         if (blVal == 1) layoutParams = "BLayout::ColMajor";
 
         int32_t slVal = 0;
@@ -3003,7 +3003,7 @@ struct PointerCastConversion : public OpConversionPattern<pto::PointerCastOp> {
     // [核心修改] Valid Dims 处理逻辑 (支持混合静态/动态)
     std::string vrowTok, vcolTok;
     bool useConstructor = false;
-    
+
     // 引入标志位，明确记录哪个维度是动态的
     bool rowIsDynamic = false;
     bool colIsDynamic = false;
@@ -3012,7 +3012,7 @@ struct PointerCastConversion : public OpConversionPattern<pto::PointerCastOp> {
 
     Value vRow = op.getValidRow();
     Value vCol = op.getValidCol();
-    Value vRowEmitC = adaptor.getValidRow(); 
+    Value vRowEmitC = adaptor.getValidRow();
     Value vColEmitC = adaptor.getValidCol();
 
     int64_t cRow, cCol;
@@ -3063,7 +3063,7 @@ struct PointerCastConversion : public OpConversionPattern<pto::PointerCastOp> {
     if (useConstructor) {
         // 使用 CallOpaqueOp 生成构造函数调用 (Tile v = Tile(...))
         auto ctorOp = rewriter.create<emitc::CallOpaqueOp>(
-            loc, 
+            loc,
             tileType,        // Result Type
             tileTypeStr,     // Callee Name (类名)
             ArrayAttr{},     // args
@@ -3074,8 +3074,8 @@ struct PointerCastConversion : public OpConversionPattern<pto::PointerCastOp> {
     } else {
         // 静态情况 (Tile v;)
         auto varOp = rewriter.create<emitc::VariableOp>(
-            loc, 
-            tileType, 
+            loc,
+            tileType,
             emitc::OpaqueAttr::get(ctx, "")
         );
         resultValue = varOp.getResult();
@@ -3352,7 +3352,7 @@ static std::string getPipeName(pto::PIPE pipe) {
     case pto::PIPE::VIRTUAL_PIPE_MTE2_L1A: return "VIRTUAL_PIPE_MTE2_L1A";
     case pto::PIPE::VIRTUAL_PIPE_MTE2_L1B: return "VIRTUAL_PIPE_MTE2_L1B";
     // 默认回退
-    default: return "PIPE_ALL"; 
+    default: return "PIPE_ALL";
   }
 }
 
@@ -3366,7 +3366,7 @@ struct PTOBarrierToEmitC : public OpConversionPattern<pto::BarrierOp> {
                                 ConversionPatternRewriter &rewriter) const override {
     auto *ctx = rewriter.getContext();
 
-    // [FIX] op.getPipe() returns PipeAttr. 
+    // [FIX] op.getPipe() returns PipeAttr.
     // We must call .getPipe() on the attribute to get the actual Enum value.
     pto::PIPE pipeEnum = op.getPipe().getPipe();
 
@@ -3378,7 +3378,7 @@ struct PTOBarrierToEmitC : public OpConversionPattern<pto::BarrierOp> {
     });
 
     rewriter.replaceOpWithNewOp<emitc::CallOpaqueOp>(
-        op, 
+        op,
         TypeRange{},        // void return
         "pipe_barrier",     // function name
         args,               // arguments
@@ -4324,7 +4324,7 @@ struct PTOColExpandToEmitC : public OpConversionPattern<pto::TColExpandOp> {
 
     rewriter.create<emitc::CallOpaqueOp>(
         loc, TypeRange{}, "TCOLEXPAND",
-        /*args=*/ArrayAttr(),           
+        /*args=*/ArrayAttr(),
         /*templateArgs=*/ArrayAttr(),
         /*operands=*/ValueRange{dst, src});
 
@@ -4340,7 +4340,7 @@ struct PTOCmpToEmitC : public OpConversionPattern<pto::TCmpOp> {
                                 ConversionPatternRewriter &rewriter) const override {
     auto loc = op.getLoc();
     auto *ctx = rewriter.getContext();
-	
+
     Value dst  = peelUnrealized(adaptor.getDst());
     Value src0 = peelUnrealized(adaptor.getSrc0());
     Value src1 = peelUnrealized(adaptor.getSrc1());
@@ -4472,14 +4472,14 @@ struct PTOColSumToEmitC : public OpConversionPattern<pto::TColSumOp> {
 
       rewriter.create<emitc::CallOpaqueOp>(
           loc, TypeRange{}, "TCOLSUM",
-          /*args=*/ArrayAttr(),             
+          /*args=*/ArrayAttr(),
           /*templateArgs=*/ArrayAttr(),
           /*operands=*/ValueRange{dst, src, tmp, isBinaryVal});
     } else {
       // Format 1: without tmp and isBinary
       rewriter.create<emitc::CallOpaqueOp>(
           loc, TypeRange{}, "TCOLSUM",
-          /*args=*/ArrayAttr(),             
+          /*args=*/ArrayAttr(),
           /*templateArgs=*/ArrayAttr(),
           /*operands=*/ValueRange{dst, src});
     }
@@ -4573,15 +4573,15 @@ struct PTODivSToEmitC : public OpConversionPattern<pto::TDivSOp> {
     // The adaptor types may already be converted to emitc.opaque
     Value origSrc = op.getSrc();
     Value origScalar = op.getScalar();
-    
+
     // Determine order based on original operand types
     // Check if src is memref/tensor/partition_tensor_view/tile (not scalar)
-    bool srcIsMemref = (isa<MemRefType>(origSrc.getType()) || 
+    bool srcIsMemref = (isa<MemRefType>(origSrc.getType()) ||
                         isa<RankedTensorType>(origSrc.getType()) ||
                         isa<mlir::pto::PartitionTensorViewType>(origSrc.getType()) ||
                         isa<mlir::pto::TileBufType>(origSrc.getType()));
     // Check if scalar is memref/tensor/partition_tensor_view/tile (not scalar)
-    bool scalarIsMemref = (isa<MemRefType>(origScalar.getType()) || 
+    bool scalarIsMemref = (isa<MemRefType>(origScalar.getType()) ||
                            isa<RankedTensorType>(origScalar.getType()) ||
                            isa<mlir::pto::PartitionTensorViewType>(origScalar.getType()) ||
                            isa<mlir::pto::TileBufType>(origScalar.getType()));
@@ -4880,11 +4880,11 @@ struct PTOLogToEmitC : public OpConversionPattern<pto::TLogOp> {
 
 	struct PTOLReluToEmitC : public OpConversionPattern<pto::TLReluOp> {
 	  using OpConversionPattern<pto::TLReluOp>::OpConversionPattern;
-	
+
 	  LogicalResult matchAndRewrite(pto::TLReluOp op, OpAdaptor adaptor,
 	                                ConversionPatternRewriter &rewriter) const override {
 	    auto loc = op.getLoc();
-	
+
 	    Value src = peelUnrealized(adaptor.getSrc());
 	    Value slope = peelUnrealized(adaptor.getSlope());
 	    Value dst = peelUnrealized(adaptor.getDst());
@@ -4933,11 +4933,11 @@ struct PTOMaxToEmitC : public OpConversionPattern<pto::TMaxOp> {
 
 	struct PTOMaxSToEmitC : public OpConversionPattern<pto::TMaxSOp> {
 	  using OpConversionPattern<pto::TMaxSOp>::OpConversionPattern;
-	
+
 	  LogicalResult matchAndRewrite(pto::TMaxSOp op, OpAdaptor adaptor,
 	                                ConversionPatternRewriter &rewriter) const override {
 	    auto loc = op.getLoc();
-	
+
 	    Value src0 = peelUnrealized(adaptor.getSrc());
 	    Value scalar = peelUnrealized(adaptor.getScalar());
 	    Value dst  = peelUnrealized(adaptor.getDst());
@@ -5486,7 +5486,7 @@ struct PTORemSToEmitC : public OpConversionPattern<pto::TRemSOp> {
     Value src = peelUnrealized(adaptor.getSrc());
     Value dst = peelUnrealized(adaptor.getDst());
     Value scalar = peelUnrealized(adaptor.getScalar());
-    
+
     SmallVector<Value, 3> operands{dst, src, scalar};
     rewriter.create<emitc::CallOpaqueOp>(
         loc, TypeRange{}, "TREMS",
@@ -6712,7 +6712,7 @@ public:
     }
 
     rewriter.replaceOpWithNewOp<emitc::CmpOp>(
-        op, 
+        op,
         /*resultType=*/resTy, // i1 -> bool/i1
         emitcPred,
         lhs,
@@ -7426,7 +7426,7 @@ struct EmitPTOManualPass
 	        loc, builder.getStringAttr("pto/pto-inst.hpp"), /*isAngled=*/nullptr);
 	    builder.create<emitc::VerbatimOp>(
 	        loc, builder.getStringAttr("using namespace pto;"));
-	
+
 	    // Only inject the bitcast helper when we actually lower ops that need it
 	    // (e.g. arith.bitcast or arith.maximumf/minimumf tie-breaking on zeros).
 	    bool needsBitcastHelper = false;
@@ -7520,8 +7520,8 @@ struct EmitPTOManualPass
     target.addIllegalDialect<memref::MemRefDialect>();
     target.addIllegalDialect<pto::PTODialect>();
     target.addIllegalDialect<arith::ArithDialect>();
-    target.addIllegalDialect<mlir::scf::SCFDialect>(); 
-    
+    target.addIllegalDialect<mlir::scf::SCFDialect>();
+
     // If we introduced CFG branches (e.g. from scf.while), make sure they are
     // updated to use legalized operand types.
     target.addDynamicallyLegalOp<cf::BranchOp, cf::CondBranchOp>(
@@ -7531,10 +7531,10 @@ struct EmitPTOManualPass
         });
 
     // [关键] 允许 Cast 存在，最后统一清理
-    target.addLegalOp<UnrealizedConversionCastOp>(); 
+    target.addLegalOp<UnrealizedConversionCastOp>();
 
     target.addIllegalOp<func::ReturnOp>();
-    target.addIllegalOp<func::FuncOp>(); 
+    target.addIllegalOp<func::FuncOp>();
     target.addIllegalOp<func::CallOp>();
 
     target.addLegalDialect<emitc::EmitCDialect>();
@@ -7557,12 +7557,12 @@ struct EmitPTOManualPass
     }
 
     // =========================================================================
-    // 4. [终极清理] 
+    // 4. [终极清理]
     // 顺序至关重要：
     // Step A: 先移除所有 Cast，让 Loop 的 Operand 类型变成底层类型 (如 int32)
     // Step B: 再根据新的 Operand 类型，修复 Loop IV 的类型
     // =========================================================================
-    
+
     // --- Step A: 清理 UnrealizedConversionCastOp ---
     // Prefer dropping redundant/unused casts; otherwise lower to emitc.cast
     // so the C++ emitter can print it.
@@ -7651,14 +7651,14 @@ struct EmitPTOManualPass
     // --- Step B: 修复 Loop 归纳变量 (IV) ---
     // 此时 emitc.for 的 operand 已经是 int32 了，我们检查 IV 是否匹配，不匹配则修正
     mop.walk([&](emitc::ForOp forOp) {
-       Type boundTy = forOp.getLowerBound().getType(); 
-       BlockArgument iv = forOp.getBody()->getArgument(0); 
-       
+       Type boundTy = forOp.getLowerBound().getType();
+       BlockArgument iv = forOp.getBody()->getArgument(0);
+
        if (iv.getType() != boundTy) {
          iv.setType(boundTy); // 强制将 IV 类型 (index) 修改为与边界一致 (int32)
        }
     });
-    
+
     // --- Step C: 消除冗余 Tile 变量 (Dead Code Elimination) [新增] ---
     // 逻辑：如果一个 emitc.variable 没有被读取（use_empty），
     // 那么它自己，以及给它赋值的 TASSIGN 都可以删除。
