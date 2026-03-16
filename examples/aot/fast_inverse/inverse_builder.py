@@ -9,10 +9,11 @@ MAX_MATRIX_SIZE = 128
 
 
 def meta_data():
-    # PTO-DSL currently enforces same-dtype tile.mov; this means we cannot
-    # model ACC(fp32) -> MAT(fp16) feedback used in hand-written C++.
-    # Keep all matrix tiles in fp32 so TMOV feedback paths verify and compile.
-    in_dtype = pto.float32
+    # Match the hand-written kernel:
+    # - MAT/LEFT/RIGHT tiles are fp16
+    # - ACC and global output are fp32
+    # This enables legal TMOV Acc(fp32) -> Mat(fp16) lowering.
+    in_dtype = pto.float16
     out_dtype = pto.float32
     i32 = pto.int32
 
