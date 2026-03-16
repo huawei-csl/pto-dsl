@@ -158,7 +158,7 @@ def build_kernel(manual_sync: bool):
 
                 def spill_acc_to_mat(dst_l1):
                     sync("MATMUL", "MOV_V2M")
-                    tile.mov(dst_l1, c_l0)
+                    tile.mov(c_l0, dst_l1)
                     sync("MOV_V2M", "MOV_M2L")
 
                 pto.load(sv_m, y_l1)
