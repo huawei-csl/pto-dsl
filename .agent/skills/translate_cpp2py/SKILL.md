@@ -116,7 +116,7 @@ Rule of thumb: one kernel variant should use one sync strategy only.
 12. `tile.add/sub/mul/div/relu/exp/...` -> corresponding PTO compute intrinsics.
 13. `tile.matmul*` family -> cube matmul intrinsics.
 14. Multicore distribution usually maps via:
-    - virtual core id = `block_idx * subblock_num + subblock_idx`
+    - vector core id = `block_idx * subblock_num + subblock_idx` (vector core is 2x than cube core, `subblock_num` equals 2)
     - tiles per core = ceil-div(total tiles, total cores)
     - guarded tail processing for final core(s).
 15. Dynamic-shape kernels require explicit bound guards before slicing/loading/storing.
@@ -124,7 +124,7 @@ Rule of thumb: one kernel variant should use one sync strategy only.
 ## Runtime Semantics Reminder (Critical)
 
 PTO-DSL is Python tracing, not AST rewriting:
-- Python-native `if/for` executes at build time.
+- Python-native `if/for` executes at build time, similar to C++ compile-time metaprogramming or loop unrolling
 - Only `pto.range` and `pto.if_context` represent runtime control flow in generated kernel.
 
 Never translate runtime C++ control logic into Python-native `if/range` by mistake.
@@ -149,6 +149,7 @@ Check in order:
 4. ISA semantics: `references/ptoisa_source/pto-inst.hpp`
 
 If op exists in dialect but not lowered in `PTOToEmitC.cpp`, translation requires PTOAS compiler work (not only DSL wrapper work).
+In this case, suggest an issue report to PTOAS project (https://github.com/zhangstevenunity/PTOAS)
 
 ## Round-Trip Verification Checklist
 
@@ -170,3 +171,6 @@ Use these first:
 - `examples/aot/matmul_optimization_guide/matmul_optim_guide.md` (sync and runtime-control semantics)
 
 Consult `references/ptoas_source/**` and ISA headers only for patterns not covered by examples.
+
+If the directory `references/example_translation` is empty or contains too few examples,
+ask for running `scripts/collect_example_translate.py` to generate full Python-C++ mapping examples.
