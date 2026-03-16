@@ -13,8 +13,11 @@ ptoas --enable-insert-sync ./tri_inv_trick_auto_sync.pto -o ./tri_inv_trick_auto
 python ./inverse_builder.py --manual-sync > ./tri_inv_trick_manual_sync.pto
 ptoas ./tri_inv_trick_manual_sync.pto -o ./tri_inv_trick_manual_sync.cpp
 
+PTO_LIB_PATH=/sources/pto-isa
+# PTO_LIB_PATH=$ASCEND_TOOLKIT_HOME
+
 bisheng \
-    -I${ASCEND_TOOLKIT_HOME}/include \
+    -I${PTO_LIB_PATH}/include \
     -fPIC -shared -D_FORTIFY_SOURCE=2 -O2 -std=c++17 \
     -Wno-macro-redefined -Wno-ignored-attributes -fstack-protector-strong \
     -xcce -Xhost-start -Xhost-end \
@@ -29,7 +32,7 @@ bisheng \
     -o ./tri_inv_trick_auto_sync_lib.so
 
 bisheng \
-    -I${ASCEND_TOOLKIT_HOME}/include \
+    -I${PTO_LIB_PATH}/include \
     -fPIC -shared -D_FORTIFY_SOURCE=2 -O2 -std=c++17 \
     -Wno-macro-redefined -Wno-ignored-attributes -fstack-protector-strong \
     -xcce -Xhost-start -Xhost-end \
