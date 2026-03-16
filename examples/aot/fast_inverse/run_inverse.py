@@ -65,22 +65,22 @@ def block_random_matrix(n, block_dim_x, block_dim_y, scale=0.2):
 
 
 def run_kernel(lib, inp):
-    inp_fp32 = inp.to(torch.float32).contiguous()
-    n = int(inp_fp32.shape[-1])
-    block_dim = int(inp_fp32.shape[0] * inp_fp32.shape[1])
+    inp_fp16 = inp.to(torch.float16).contiguous()
+    n = int(inp_fp16.shape[-1])
+    block_dim = int(inp_fp16.shape[0] * inp_fp16.shape[1])
 
     # The current translated kernel is reliable at 128x128 tile shape.
     # For smaller n, run on padded 128x128 and slice top-left output.
     run_n = KERNEL_MATRIX_SIZE if n < KERNEL_MATRIX_SIZE else n
     if n < run_n:
-        padded_shape = (*inp_fp32.shape[:-2], run_n, run_n)
-        inp_run = torch.zeros(padded_shape, dtype=torch.float32, device=inp_fp32.device)
-        inp_run[..., :n, :n] = inp_fp32
+        padded_shape = (*inp_fp16.shape[:-2], run_n, run_n)
+        inp_run = torch.zeros(padded_shape, dtype=torch.float16, device=inp_fp16.device)
+        inp_run[..., :n, :n] = inp_fp16
     else:
-        inp_run = inp_fp32
+        inp_run = inp_fp16
 
     out = torch.zeros_like(inp_run, dtype=torch.float32, device=inp_run.device)
-    identity_neg = torch.zeros((run_n, run_n), dtype=torch.float32, device=inp_run.device)
+    identity_neg = torch.zeros((run_n, run_n), dtype=torch.float16, device=inp_run.device)
     identity_neg.fill_diagonal_(-1)
 
     stream_ptr = torch.npu.current_stream()._as_parameter_
