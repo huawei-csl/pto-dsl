@@ -20,8 +20,8 @@ RUN pip install --no-cache-dir \
 # ARG ARCH=x86_64
 ARG ARCH=aarch64
 ARG RELEASE_REPO=huawei-csl/PTOAS
-ARG RELEASE_TAG=20260228
-ARG WHEEL_NAME=ptoas-0.1.1-cp311-none-manylinux_2_34_${ARCH}.whl
+ARG RELEASE_TAG=0.8
+ARG WHEEL_NAME=ptoas-${RELEASE_TAG}-cp311-none-manylinux_2_34_${ARCH}.whl
 ARG CLI_TAR_NAME=ptoas-bin-${ARCH}.tar.gz
 
 WORKDIR /installers/

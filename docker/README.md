@@ -3,7 +3,7 @@ Recommend using [Ascend Docker Runtime](https://gitcode.com/Ascend/mind-cluster/
 Then, build and run docker image:
 
 ```bash
-RELEASE_TAG=20260309
+RELEASE_TAG=0.8
 sudo docker build \
     --build-arg RELEASE_TAG=$RELEASE_TAG \
     . -t pto_dsl:$RELEASE_TAG
