@@ -69,15 +69,9 @@ def run_kernel(lib, inp):
     n = int(inp_fp16.shape[-1])
     block_dim = int(inp_fp16.shape[0] * inp_fp16.shape[1])
 
-    # The current translated kernel is reliable at 128x128 tile shape.
-    # For smaller n, run on padded 128x128 and slice top-left output.
-    run_n = KERNEL_MATRIX_SIZE if n < KERNEL_MATRIX_SIZE else n
-    if n < run_n:
-        padded_shape = (*inp_fp16.shape[:-2], run_n, run_n)
-        inp_run = torch.zeros(padded_shape, dtype=torch.float16, device=inp_fp16.device)
-        inp_run[..., :n, :n] = inp_fp16
-    else:
-        inp_run = inp_fp16
+    # Run true matrix sizes directly (e.g., 32x32, 64x64) without padding.
+    run_n = n
+    inp_run = inp_fp16
 
     out = torch.zeros_like(inp_run, dtype=torch.float32, device=inp_run.device)
     identity_neg = torch.zeros((run_n, run_n), dtype=torch.float16, device=inp_run.device)
@@ -94,8 +88,6 @@ def run_kernel(lib, inp):
         MAX_BLOCK_SIZE,
     )
     torch.npu.synchronize()
-    if n < run_n:
-        return out[..., :n, :n].contiguous()
     return out
 
 

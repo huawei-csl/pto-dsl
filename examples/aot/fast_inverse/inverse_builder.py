@@ -6,6 +6,7 @@ from ptodsl import scalar as s
 
 const = s.const
 MAX_MATRIX_SIZE = 128
+SUPPORTED_MATRIX_SIZES = (16, 32, 64, 96, 128)
 
 
 def meta_data():
@@ -85,14 +86,12 @@ def build_kernel(manual_sync: bool):
             c2 = const(2)
             c4 = const(4)
             c8 = const(8)
-            c128 = const(MAX_MATRIX_SIZE)
 
-            matrix_size = s.index_cast(matrix_size_i32)
             max_block_size = s.index_cast(max_block_size_i32)
             block_idx = s.index_cast(pto.get_block_idx())
             num_blocks = s.index_cast(pto.get_block_num())
 
-            with pto.if_context(matrix_size <= c128):
+            def emit_specialized_path(matrix_size):
                 total_rows = num_blocks * matrix_size
                 row_offset = block_idx * matrix_size
 
@@ -220,6 +219,13 @@ def build_kernel(manual_sync: bool):
 
                 sync("MATMUL", "STORE_ACC")
                 pto.store(c_l0, sv_out)
+
+            # Mirror C++ specialization dispatch:
+            # switch(matrix_size) {16,32,64,96,128}
+            matrix_size = s.index_cast(matrix_size_i32)
+            for size in SUPPORTED_MATRIX_SIZES:
+                with pto.if_context(matrix_size == const(size)):
+                    emit_specialized_path(const(size))
 
     return tri_inv_trick_fp16
 
