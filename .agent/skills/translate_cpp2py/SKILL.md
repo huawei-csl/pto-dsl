@@ -35,8 +35,8 @@ Produce all of the following unless user asks otherwise:
 4. Match section type exactly: vector (`__DAV_VEC__`) vs cube (`__DAV_CUBE__`).
 5. Prefer compact Python; preserve semantics, not C++ verbosity.
 6. If wrapper is missing in `ptodsl/api`, add it instead of forcing awkward translation.
-7. If the directory `references/example_translation` is empty or contains too few examples,
-   ask for running `scripts/collect_example_translate.py` to generate full Python-C++ mapping examples.
+7. First check if the directory `references/example_translation` is empty or contains too few examples,
+   If empty, ask for running `scripts/collect_example_translate.py` to generate full Python-C++ mapping examples.
 
 
 ## Translation Workflow
