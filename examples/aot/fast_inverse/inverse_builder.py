@@ -5,7 +5,6 @@ from ptodsl import pto, tile, to_ir_module
 from ptodsl import scalar as s
 
 const = s.const
-MAX_MATRIX_SIZE = 128
 SUPPORTED_MATRIX_SIZES = (16, 32, 64, 96, 128)
 
 

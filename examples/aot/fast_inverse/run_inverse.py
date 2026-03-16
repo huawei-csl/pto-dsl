@@ -15,7 +15,6 @@ torch.manual_seed(42)
 np.random.seed(42)
 
 MAX_BLOCK_SIZE = 16
-KERNEL_MATRIX_SIZE = 128
 
 
 def torch_to_ctypes(tensor):
