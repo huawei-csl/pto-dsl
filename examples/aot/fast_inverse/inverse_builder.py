@@ -69,8 +69,6 @@ def make_meta_data(matrix_size: int):
 
 
 def build_kernel(manual_sync: bool, matrix_size: int, kernel_name: str):
-    matrix_size_c = const(matrix_size)
-
     def tri_inv_trick_fp16(
         out_ptr: "out_ptr_type",
         in_ptr: "in_ptr_type",
@@ -84,6 +82,7 @@ def build_kernel(manual_sync: bool, matrix_size: int, kernel_name: str):
             c2 = const(2)
             c4 = const(4)
             c8 = const(8)
+            matrix_size_c = const(matrix_size)
 
             max_block_size = s.index_cast(max_block_size_i32)
             block_idx = s.index_cast(pto.get_block_idx())
