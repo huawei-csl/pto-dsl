@@ -156,13 +156,10 @@ def build_kernel(manual_sync: bool):
                     if manual_sync:
                         pto.record_wait_pair(record_op, wait_op, event_id=0)
 
-                # TODO: use TMOV ACC-MAT instead of this ACC->GM->MAT around-trip
                 def spill_acc_to_mat(dst_l1):
-                    sync("MATMUL", "STORE_ACC")
-                    pto.store(c_l0, sv_out)
-                    sync("STORE_ACC", "LOAD")
-                    pto.load(sv_out, dst_l1)
-                    sync("LOAD", "MOV_M2L")
+                    sync("MATMUL", "MOV_V2M")
+                    tile.mov(dst_l1, c_l0)
+                    sync("MOV_V2M", "MOV_M2L")
 
                 pto.load(sv_m, y_l1)
                 pto.load(sv_i_neg, x_l1)
