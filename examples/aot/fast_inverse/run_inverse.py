@@ -74,7 +74,9 @@ def run_kernel(lib, inp):
     inp_run = inp_fp16
 
     out = torch.zeros_like(inp_run, dtype=torch.float32, device=inp_run.device)
-    identity_neg = torch.zeros((run_n, run_n), dtype=torch.float16, device=inp_run.device)
+    identity_neg = torch.zeros(
+        (run_n, run_n), dtype=torch.float16, device=inp_run.device
+    )
     identity_neg.fill_diagonal_(-1)
 
     stream_ptr = torch.npu.current_stream()._as_parameter_
@@ -98,7 +100,9 @@ def reference_inverse(inp):
     inp_cpu = inp.cpu()
     for x in range(inp.shape[0]):
         for y in range(inp.shape[1]):
-            golden[x, y] = np.linalg.inv(inp_cpu[x, y].numpy().astype(np.double) + identity)
+            golden[x, y] = np.linalg.inv(
+                inp_cpu[x, y].numpy().astype(np.double) + identity
+            )
     return torch.from_numpy(golden)
 
 
@@ -122,7 +126,9 @@ def check_case(lib, matrix_gen: Callable, atol: float, rtol: float, ftol: float)
                 nan_count = int(torch.isnan(out).sum().item())
                 inf_count = int(torch.isinf(out).sum().item())
 
-                allclose_ok = np.allclose(out.numpy(), ref.numpy(), atol=atol, rtol=rtol)
+                allclose_ok = np.allclose(
+                    out.numpy(), ref.numpy(), atol=atol, rtol=rtol
+                )
                 frob_ok = bool(frob_error <= ftol)
                 if allclose_ok and frob_ok:
                     passes += 1
@@ -146,7 +152,9 @@ def check_case(lib, matrix_gen: Callable, atol: float, rtol: float, ftol: float)
 def run_test(lib):
     failures = []
     failures.extend(check_case(lib, block_ones_matrix, atol=0.0, rtol=0.0, ftol=0.0))
-    failures.extend(check_case(lib, block_random_matrix, atol=5e-5, rtol=0.1, ftol=1.2e-4))
+    failures.extend(
+        check_case(lib, block_random_matrix, atol=5e-5, rtol=0.1, ftol=1.2e-4)
+    )
     if failures:
         warnings.warn(
             f"{len(failures)} cases failed. First: {failures[0]}",
@@ -163,7 +171,11 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    lib_path = "./inverse_manual_sync_lib.so" if args.manual_sync else "./inverse_auto_sync_lib.so"
+    lib_path = (
+        "./inverse_manual_sync_lib.so"
+        if args.manual_sync
+        else "./inverse_auto_sync_lib.so"
+    )
     device = get_test_device()
     torch.npu.set_device(device)
 

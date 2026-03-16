@@ -23,8 +23,12 @@ def make_meta_data(matrix_size: int):
 
         in_tensor_type = pto.TensorType(rank=2, dtype=in_dtype)
         out_tensor_type = pto.TensorType(rank=2, dtype=out_dtype)
-        in_subtensor = pto.SubTensorType(shape=[matrix_size, matrix_size], dtype=in_dtype)
-        out_subtensor = pto.SubTensorType(shape=[matrix_size, matrix_size], dtype=out_dtype)
+        in_subtensor = pto.SubTensorType(
+            shape=[matrix_size, matrix_size], dtype=in_dtype
+        )
+        out_subtensor = pto.SubTensorType(
+            shape=[matrix_size, matrix_size], dtype=out_dtype
+        )
         l1_tile_type = pto.TileBufType(
             shape=[matrix_size, matrix_size],
             valid_shape=[matrix_size, matrix_size],
