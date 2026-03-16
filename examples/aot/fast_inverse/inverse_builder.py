@@ -133,24 +133,12 @@ def build_kernel(manual_sync: bool, matrix_size: int, kernel_name: str):
                 sizes=[matrix_size_c, matrix_size_c],
             )
 
-            x_l1 = pto.alloc_tile(
-                l1_tile_type, valid_row=matrix_size_c, valid_col=matrix_size_c
-            )
-            y_l1 = pto.alloc_tile(
-                l1_tile_type, valid_row=matrix_size_c, valid_col=matrix_size_c
-            )
-            i_l1 = pto.alloc_tile(
-                l1_tile_type, valid_row=matrix_size_c, valid_col=matrix_size_c
-            )
-            a_l0 = pto.alloc_tile(
-                l0a_tile_type, valid_row=matrix_size_c, valid_col=matrix_size_c
-            )
-            b_l0 = pto.alloc_tile(
-                l0b_tile_type, valid_row=matrix_size_c, valid_col=matrix_size_c
-            )
-            c_l0 = pto.alloc_tile(
-                l0c_tile_type, valid_row=matrix_size_c, valid_col=matrix_size_c
-            )
+            x_l1 = pto.alloc_tile(l1_tile_type)
+            y_l1 = pto.alloc_tile(l1_tile_type)
+            i_l1 = pto.alloc_tile(l1_tile_type)
+            a_l0 = pto.alloc_tile(l0a_tile_type)
+            b_l0 = pto.alloc_tile(l0b_tile_type)
+            c_l0 = pto.alloc_tile(l0c_tile_type)
 
             def sync(record_op, wait_op):
                 if manual_sync:
