@@ -17,6 +17,9 @@ RUN pip install --no-cache-dir \
 
 # cache above layers unrelated to ptoas version change
 
+# change this ununsed arg if need to force rebuild later lines
+ARG CACHE_BURST=1
+
 # ARG ARCH=x86_64
 ARG ARCH=aarch64
 ARG RELEASE_REPO=huawei-csl/PTOAS
