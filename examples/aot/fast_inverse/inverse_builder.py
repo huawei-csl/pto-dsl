@@ -157,11 +157,6 @@ def build_kernel(manual_sync: bool):
                     if manual_sync:
                         pto.record_wait_pair(record_op, wait_op, event_id=0)
 
-                def spill_acc_to_mat(dst_l1, next_wait_op="MOV_M2L"):
-                    sync("MATMUL", "MOV_V2M")
-                    tile.mov(c_l0, dst_l1)
-                    sync("MOV_V2M", next_wait_op)
-
                 pto.load(sv_m, y_l1)
                 pto.load(sv_i_neg, x_l1)
                 sync("LOAD", "MOV_M2L")
@@ -173,7 +168,9 @@ def build_kernel(manual_sync: bool):
                 sync("MOV_M2L", "MATMUL")
 
                 tile.matmul(a_l0, b_l0, c_l0)
-                spill_acc_to_mat(y_l1)
+                sync("MATMUL", "MOV_V2M")
+                tile.mov(c_l0, y_l1)
+                sync("MOV_V2M", "MOV_M2L")
 
                 tile.mov(x_l1, b_l0)
                 sync("MOV_M2L", "MATMUL")
@@ -183,10 +180,14 @@ def build_kernel(manual_sync: bool):
                 tile.mov(x_l1, a_l0)
                 sync("MOV_M2L", "MATMUL")
                 tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)
-                spill_acc_to_mat(x_l1, "MATMUL")
+                sync("MATMUL", "MOV_V2M")
+                tile.mov(c_l0, x_l1)
+                sync("MOV_V2M", "MATMUL")
 
                 tile.matmul(a_l0, b_l0, c_l0)
-                spill_acc_to_mat(i_l1)
+                sync("MATMUL", "MOV_V2M")
+                tile.mov(c_l0, i_l1)
+                sync("MOV_V2M", "MOV_M2L")
 
                 def run_iteration(iter_i):
                     tile.mov(x_l1, a_l0)
@@ -200,11 +201,15 @@ def build_kernel(manual_sync: bool):
                     tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)
 
                     with pto.if_context(iter_i < (max_block_size // c2)):
-                        spill_acc_to_mat(x_l1)
+                        sync("MATMUL", "MOV_V2M")
+                        tile.mov(c_l0, x_l1)
+                        sync("MOV_V2M", "MOV_M2L")
                         tile.mov(y_l1, a_l0)
                         sync("MOV_M2L", "MATMUL")
                         tile.matmul(a_l0, b_l0, c_l0)
-                        spill_acc_to_mat(y_l1)
+                        sync("MATMUL", "MOV_V2M")
+                        tile.mov(c_l0, y_l1)
+                        sync("MOV_V2M", "MOV_M2L")
 
                 # Mirror C++ `for (i = 1; i < max_block_size; i *= 2)`.
                 # Using pto.range(1, max_block_size, 1) adds many no-op
