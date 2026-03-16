@@ -1,30 +1,25 @@
 #ifndef KERNEL_CPP
-#define KERNEL_CPP "tri_inv_trick_auto_sync.cpp"
+#define KERNEL_CPP "inverse_auto_sync.cpp"
 #endif
 #include KERNEL_CPP
 
 #ifndef KERNEL_FN
-#define KERNEL_FN tri_inv_trick_fp16_autosync
-#endif
-
-#ifndef NUM_CORES
-#define NUM_CORES 24
+#define KERNEL_FN tri_inv_trick_fp16
 #endif
 
 extern "C" void call_kernel(
     uint32_t blockDim,
     void *stream,
-    uint8_t *out,
-    uint8_t *m,
-    uint8_t *i_neg,
+    uint8_t *tensor_out,
+    uint8_t *tensor_in,
+    uint8_t *identity_in,
     uint32_t matrix_size,
     uint32_t max_block_size)
 {
-    uint32_t launch_blocks = blockDim > 0 ? blockDim : NUM_CORES;
-    KERNEL_FN<<<launch_blocks, nullptr, stream>>>(
-        reinterpret_cast<float *>(out),
-        reinterpret_cast<half *>(m),
-        reinterpret_cast<half *>(i_neg),
+    KERNEL_FN<<<blockDim, nullptr, stream>>>(
+        reinterpret_cast<float *>(tensor_out),
+        reinterpret_cast<float *>(tensor_in),
+        reinterpret_cast<float *>(identity_in),
         static_cast<int32_t>(matrix_size),
         static_cast<int32_t>(max_block_size));
 }

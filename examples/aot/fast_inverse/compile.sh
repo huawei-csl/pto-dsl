@@ -1,17 +1,18 @@
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
 rm -f \
-    tri_inv_trick_auto_sync.pto tri_inv_trick_manual_sync.pto \
-    tri_inv_trick_auto_sync.cpp tri_inv_trick_manual_sync.cpp \
-    tri_inv_trick_auto_sync_lib.so tri_inv_trick_manual_sync_lib.so
+    inverse_auto_sync.pto inverse_manual_sync.pto \
+    inverse_auto_sync.cpp inverse_manual_sync.cpp \
+    inverse_auto_sync_lib.so inverse_manual_sync_lib.so
 
 # Auto-sync path: rely on ptoas synchronization insertion.
-python ./inverse_builder.py > ./tri_inv_trick_auto_sync.pto
-ptoas --enable-insert-sync ./tri_inv_trick_auto_sync.pto -o ./tri_inv_trick_auto_sync.cpp
+python ./inverse_builder.py > ./inverse_auto_sync.pto
+ptoas --enable-insert-sync ./inverse_auto_sync.pto -o ./inverse_auto_sync.cpp
 
 # Manual-sync path: explicit record/wait events from builder.
-python ./inverse_builder.py --manual-sync > ./tri_inv_trick_manual_sync.pto
-ptoas ./tri_inv_trick_manual_sync.pto -o ./tri_inv_trick_manual_sync.cpp
+python ./inverse_builder.py --manual-sync > ./inverse_manual_sync.pto
+ptoas ./inverse_manual_sync.pto -o ./inverse_manual_sync.cpp
 
 PTO_LIB_PATH=/sources/pto-isa
 # PTO_LIB_PATH=$ASCEND_TOOLKIT_HOME
@@ -29,7 +30,7 @@ bisheng \
     --npu-arch=dav-2201 -DMEMORY_BASE \
     -std=gnu++17 \
     ./caller.cpp \
-    -o ./tri_inv_trick_auto_sync_lib.so
+    -o ./inverse_auto_sync_lib.so
 
 bisheng \
     -I${PTO_LIB_PATH}/include \
@@ -43,7 +44,6 @@ bisheng \
     -mllvm -cce-aicore-dcci-insert-for-scalar=false \
     --npu-arch=dav-2201 -DMEMORY_BASE \
     -std=gnu++17 \
-    -DKERNEL_CPP="\"tri_inv_trick_manual_sync.cpp\"" \
-    -DKERNEL_FN=tri_inv_trick_fp16_manualsync \
+    -DKERNEL_CPP="\"inverse_manual_sync.cpp\"" \
     ./caller.cpp \
-    -o ./tri_inv_trick_manual_sync_lib.so
+    -o ./inverse_manual_sync_lib.so

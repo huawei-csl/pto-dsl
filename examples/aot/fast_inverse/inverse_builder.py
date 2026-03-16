@@ -1,44 +1,53 @@
+# pyright: reportUndefinedVariable=false
+import argparse
+
 from ptodsl import pto, tile, to_ir_module
 from ptodsl import scalar as s
 
 const = s.const
 MAX_MATRIX_SIZE = 128
-SUPPORTED_SIZES = (16, 32, 64, 96, 128)
 
 
 def meta_data():
-    in_dtype = pto.float16
+    # PTO-DSL currently enforces same-dtype tile.mov; this means we cannot
+    # model ACC(fp32) -> MAT(fp16) feedback used in hand-written C++.
+    # Keep all matrix tiles in fp32 so TMOV feedback paths verify and compile.
+    in_dtype = pto.float32
     out_dtype = pto.float32
-    ptr_in = pto.PtrType(in_dtype)
-    ptr_out = pto.PtrType(out_dtype)
     i32 = pto.int32
 
-    tensor_in = pto.TensorType(rank=2, dtype=in_dtype)
-    tensor_out = pto.TensorType(rank=2, dtype=out_dtype)
-    subtensor_in = pto.SubTensorType(shape=[MAX_MATRIX_SIZE, MAX_MATRIX_SIZE], dtype=in_dtype)
-    subtensor_out = pto.SubTensorType(
+    in_ptr_type = pto.PtrType(in_dtype)
+    out_ptr_type = pto.PtrType(out_dtype)
+
+    in_tensor_type = pto.TensorType(rank=2, dtype=in_dtype)
+    out_tensor_type = pto.TensorType(rank=2, dtype=out_dtype)
+
+    in_subtensor = pto.SubTensorType(
+        shape=[MAX_MATRIX_SIZE, MAX_MATRIX_SIZE], dtype=in_dtype
+    )
+    out_subtensor = pto.SubTensorType(
         shape=[MAX_MATRIX_SIZE, MAX_MATRIX_SIZE], dtype=out_dtype
     )
 
-    tile_mat = pto.TileBufType(
+    l1_tile_type = pto.TileBufType(
         shape=[MAX_MATRIX_SIZE, MAX_MATRIX_SIZE],
         valid_shape=[-1, -1],
         dtype=in_dtype,
         memory_space="MAT",
     )
-    tile_left = pto.TileBufType(
+    l0a_tile_type = pto.TileBufType(
         shape=[MAX_MATRIX_SIZE, MAX_MATRIX_SIZE],
         valid_shape=[-1, -1],
         dtype=in_dtype,
         memory_space="LEFT",
     )
-    tile_right = pto.TileBufType(
+    l0b_tile_type = pto.TileBufType(
         shape=[MAX_MATRIX_SIZE, MAX_MATRIX_SIZE],
         valid_shape=[-1, -1],
         dtype=in_dtype,
         memory_space="RIGHT",
     )
-    tile_acc = pto.TileBufType(
+    l0c_tile_type = pto.TileBufType(
         shape=[MAX_MATRIX_SIZE, MAX_MATRIX_SIZE],
         valid_shape=[-1, -1],
         dtype=out_dtype,
@@ -46,205 +55,184 @@ def meta_data():
     )
 
     return {
-        "ptr_in": ptr_in,
-        "ptr_out": ptr_out,
+        "in_ptr_type": in_ptr_type,
+        "out_ptr_type": out_ptr_type,
         "i32": i32,
-        "tensor_in": tensor_in,
-        "tensor_out": tensor_out,
-        "subtensor_in": subtensor_in,
-        "subtensor_out": subtensor_out,
-        "tile_mat": tile_mat,
-        "tile_left": tile_left,
-        "tile_right": tile_right,
-        "tile_acc": tile_acc,
+        "in_tensor_type": in_tensor_type,
+        "out_tensor_type": out_tensor_type,
+        "in_subtensor": in_subtensor,
+        "out_subtensor": out_subtensor,
+        "l1_tile_type": l1_tile_type,
+        "l0a_tile_type": l0a_tile_type,
+        "l0b_tile_type": l0b_tile_type,
+        "l0c_tile_type": l0c_tile_type,
     }
 
 
-def _emit_tri_inv_kernel(
-    out_ptr,
-    m_ptr,
-    i_neg_ptr,
-    matrix_size_i32,
-    max_block_size_i32,
-    *,
-    manual_sync,
-):
-    c0 = const(0)
-    c1 = const(1)
-    c2 = const(2)
-    c_max = const(MAX_MATRIX_SIZE)
+def build_kernel(manual_sync: bool):
+    @to_ir_module(meta_data=meta_data)
+    def tri_inv_trick_fp16(
+        out_ptr: "out_ptr_type",
+        in_ptr: "in_ptr_type",
+        i_neg_ptr: "in_ptr_type",
+        matrix_size_i32: "i32",
+        max_block_size_i32: "i32",
+    ) -> None:
+        with pto.cube_section():
+            c0 = const(0)
+            c1 = const(1)
+            c2 = const(2)
+            c4 = const(4)
+            c8 = const(8)
+            c128 = const(MAX_MATRIX_SIZE)
 
-    matrix_size = s.index_cast(matrix_size_i32)
-    max_block_size = s.index_cast(max_block_size_i32)
-    bid = s.index_cast(pto.get_block_idx())
-    num_blocks = s.index_cast(pto.get_block_num())
+            matrix_size = s.index_cast(matrix_size_i32)
+            max_block_size = s.index_cast(max_block_size_i32)
+            block_idx = s.index_cast(pto.get_block_idx())
+            num_blocks = s.index_cast(pto.get_block_num())
 
-    def sync(record_op, wait_op):
-        if manual_sync:
-            pto.record_wait_pair(record_op, wait_op, event_id=0)
-
-    with pto.cube_section():
-        with pto.if_context(matrix_size > c0):
-            with pto.if_context(matrix_size <= c_max):
+            with pto.if_context(matrix_size <= c128):
                 total_rows = num_blocks * matrix_size
-                row_offset = bid * matrix_size
+                row_offset = block_idx * matrix_size
 
                 tv_m = pto.as_tensor(
-                    tensor_in,
-                    ptr=m_ptr,
+                    in_tensor_type,
+                    ptr=in_ptr,
                     shape=[total_rows, matrix_size],
                     strides=[matrix_size, c1],
                 )
-                tv_i_neg = pto.as_tensor(
-                    tensor_in,
-                    ptr=i_neg_ptr,
-                    shape=[matrix_size, matrix_size],
-                    strides=[matrix_size, c1],
-                )
                 tv_out = pto.as_tensor(
-                    tensor_out,
+                    out_tensor_type,
                     ptr=out_ptr,
                     shape=[total_rows, matrix_size],
                     strides=[matrix_size, c1],
                 )
+                tv_i_neg = pto.as_tensor(
+                    in_tensor_type,
+                    ptr=i_neg_ptr,
+                    shape=[matrix_size, matrix_size],
+                    strides=[matrix_size, c1],
+                )
 
                 sv_m = pto.slice_view(
-                    subtensor_in,
+                    in_subtensor,
                     source=tv_m,
                     offsets=[row_offset, c0],
                     sizes=[matrix_size, matrix_size],
                 )
                 sv_i_neg = pto.slice_view(
-                    subtensor_in,
+                    in_subtensor,
                     source=tv_i_neg,
                     offsets=[c0, c0],
                     sizes=[matrix_size, matrix_size],
                 )
                 sv_out = pto.slice_view(
-                    subtensor_out,
+                    out_subtensor,
                     source=tv_out,
                     offsets=[row_offset, c0],
                     sizes=[matrix_size, matrix_size],
                 )
 
-                x_l1 = pto.alloc_tile(tile_mat, valid_row=matrix_size, valid_col=matrix_size)
-                y_l1 = pto.alloc_tile(tile_mat, valid_row=matrix_size, valid_col=matrix_size)
-                i_l1 = pto.alloc_tile(tile_mat, valid_row=matrix_size, valid_col=matrix_size)
+                x_l1 = pto.alloc_tile(
+                    l1_tile_type, valid_row=matrix_size, valid_col=matrix_size
+                )
+                y_l1 = pto.alloc_tile(
+                    l1_tile_type, valid_row=matrix_size, valid_col=matrix_size
+                )
+                i_l1 = pto.alloc_tile(
+                    l1_tile_type, valid_row=matrix_size, valid_col=matrix_size
+                )
+                a_l0 = pto.alloc_tile(
+                    l0a_tile_type, valid_row=matrix_size, valid_col=matrix_size
+                )
+                b_l0 = pto.alloc_tile(
+                    l0b_tile_type, valid_row=matrix_size, valid_col=matrix_size
+                )
+                c_l0 = pto.alloc_tile(
+                    l0c_tile_type, valid_row=matrix_size, valid_col=matrix_size
+                )
 
-                a_l0 = pto.alloc_tile(tile_left, valid_row=matrix_size, valid_col=matrix_size)
-                b_l0 = pto.alloc_tile(tile_right, valid_row=matrix_size, valid_col=matrix_size)
-                c_l0 = pto.alloc_tile(tile_acc, valid_row=matrix_size, valid_col=matrix_size)
+                def sync(record_op, wait_op):
+                    if manual_sync:
+                        pto.record_wait_pair(record_op, wait_op, event_id=0)
+
+                # TMOV does not support ACC as source tile on this backend.
+                # Use ACC->GM->MAT as a legal feedback path.
+                def spill_acc_to_mat(dst_l1):
+                    sync("MATMUL", "STORE_ACC")
+                    pto.store(c_l0, sv_out)
+                    sync("STORE_ACC", "LOAD")
+                    pto.load(sv_out, dst_l1)
+                    sync("LOAD", "MOV_M2L")
 
                 pto.load(sv_m, y_l1)
                 pto.load(sv_i_neg, x_l1)
                 sync("LOAD", "MOV_M2L")
 
                 tile.mov(y_l1, a_l0)
+                sync("MOV_M2L", "MATMUL")
+
                 tile.mov(y_l1, b_l0)
                 sync("MOV_M2L", "MATMUL")
 
-                tile.matmul(a_l0, b_l0, c_l0)  # Y = M @ M
-                sync("MATMUL", "MOV_M2L")
-                tile.mov(c_l0, y_l1)
-                sync("MOV_M2L", "MATMUL")
+                tile.matmul(a_l0, b_l0, c_l0)
+                spill_acc_to_mat(y_l1)
 
                 tile.mov(x_l1, b_l0)
                 sync("MOV_M2L", "MATMUL")
-                tile.matmul(a_l0, b_l0, c_l0)  # C = Y @ I_neg
+                tile.matmul(a_l0, b_l0, c_l0)
                 sync("MATMUL", "MOV_M2L")
 
                 tile.mov(x_l1, a_l0)
                 sync("MOV_M2L", "MATMUL")
-                tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)  # C = C + I_neg @ I_neg
-                sync("MATMUL", "MOV_M2L")
+                tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)
+                spill_acc_to_mat(x_l1)
 
-                tile.mov(c_l0, x_l1)  # X
-                sync("MOV_M2L", "MATMUL")
+                tile.matmul(a_l0, b_l0, c_l0)
+                spill_acc_to_mat(i_l1)
 
-                tile.matmul(a_l0, b_l0, c_l0)  # I
-                sync("MATMUL", "MOV_M2L")
-                tile.mov(c_l0, i_l1)
-                sync("MOV_M2L", "MATMUL")
+                def run_iteration(iter_i):
+                    tile.mov(x_l1, a_l0)
+                    tile.mov(i_l1, b_l0)
+                    sync("MOV_M2L", "MATMUL")
+                    tile.matmul(a_l0, b_l0, c_l0)
+                    sync("MATMUL", "MOV_M2L")
 
-                # Emulate C++ loop i = 1; i < max_block_size; i *= 2.
-                for i_value in (1, 2, 4, 8, 16, 32, 64):
-                    i_const = const(i_value)
-                    with pto.if_context(i_const < max_block_size):
-                        tile.mov(x_l1, a_l0)
-                        tile.mov(i_l1, b_l0)
+                    tile.mov(y_l1, b_l0)
+                    sync("MOV_M2L", "MATMUL")
+                    tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)
+
+                    with pto.if_context(iter_i < (max_block_size // c2)):
+                        spill_acc_to_mat(x_l1)
+                        tile.mov(y_l1, a_l0)
                         sync("MOV_M2L", "MATMUL")
+                        tile.matmul(a_l0, b_l0, c_l0)
+                        spill_acc_to_mat(y_l1)
 
-                        tile.matmul(a_l0, b_l0, c_l0)  # C = X
-                        sync("MATMUL", "MOV_M2L")
+                # Mirror C++ `for (i = 1; i < max_block_size; i *= 2)`.
+                # Using pto.range(1, max_block_size, 1) adds many no-op
+                # iterations that still perturb generated sync scheduling.
+                for loop_i in (c1, c2, c4, c8):
+                    with pto.if_context(loop_i < max_block_size):
+                        run_iteration(loop_i)
 
-                        tile.mov(y_l1, b_l0)
-                        sync("MOV_M2L", "MATMUL")
-                        tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)  # C = X + X @ Y
-                        sync("MATMUL", "MOV_M2L")
-
-                        with pto.if_context(i_const < (max_block_size // c2)):
-                            tile.mov(c_l0, x_l1)
-                            tile.mov(y_l1, a_l0)
-                            sync("MOV_M2L", "MATMUL")
-
-                            tile.matmul(a_l0, b_l0, c_l0)  # Y = Y @ Y
-                            sync("MATMUL", "MOV_M2L")
-                            tile.mov(c_l0, y_l1)
-                            sync("MOV_M2L", "MATMUL")
-
-                if manual_sync:
-                    pto.record_wait_pair("MATMUL", "STORE_ACC", event_id=0)
+                sync("MATMUL", "STORE_ACC")
                 pto.store(c_l0, sv_out)
-                if manual_sync:
-                    pto.record_wait_pair("STORE_ACC", "MATMUL", event_id=0)
+
+    return tri_inv_trick_fp16
 
 
-@to_ir_module(meta_data=meta_data)
-def tri_inv_trick_fp16_autosync(
-    out_ptr: "ptr_out",
-    m_ptr: "ptr_in",
-    i_neg_ptr: "ptr_in",
-    matrix_size_i32: "i32",
-    max_block_size_i32: "i32",
-) -> None:
-    _emit_tri_inv_kernel(
-        out_ptr,
-        m_ptr,
-        i_neg_ptr,
-        matrix_size_i32,
-        max_block_size_i32,
-        manual_sync=False,
-    )
-
-
-@to_ir_module(meta_data=meta_data)
-def tri_inv_trick_fp16_manualsync(
-    out_ptr: "ptr_out",
-    m_ptr: "ptr_in",
-    i_neg_ptr: "ptr_in",
-    matrix_size_i32: "i32",
-    max_block_size_i32: "i32",
-) -> None:
-    _emit_tri_inv_kernel(
-        out_ptr,
-        m_ptr,
-        i_neg_ptr,
-        matrix_size_i32,
-        max_block_size_i32,
-        manual_sync=True,
-    )
+tri_inv_trick_fp16_autosync = build_kernel(manual_sync=False)
+tri_inv_trick_fp16_manualsync = build_kernel(manual_sync=True)
 
 
 if __name__ == "__main__":
-    import argparse
-
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--manual-sync",
         action="store_true",
-        help="Emit explicit synchronization ops instead of relying on --enable-insert-sync.",
+        help="Emit explicit record/wait events instead of relying on --enable-insert-sync.",
     )
     args = parser.parse_args()
-
     module = tri_inv_trick_fp16_manualsync if args.manual_sync else tri_inv_trick_fp16_autosync
     print(module)
