@@ -2,17 +2,30 @@
 set -euo pipefail
 
 rm -f \
-    inverse_auto_sync.pto inverse_manual_sync.pto \
-    inverse_auto_sync.cpp inverse_manual_sync.cpp \
+    inverse_auto_sync_*.pto inverse_manual_sync_*.pto \
+    inverse_auto_sync_*.cpp inverse_manual_sync_*.cpp \
     inverse_auto_sync_lib.so inverse_manual_sync_lib.so
 
+SIZES=(16 32 64 96 128)
+
 # Auto-sync path: rely on ptoas synchronization insertion.
-python ./inverse_builder.py > ./inverse_auto_sync.pto
-ptoas --enable-insert-sync ./inverse_auto_sync.pto -o ./inverse_auto_sync.cpp
+for size in "${SIZES[@]}"; do
+    python ./inverse_builder.py \
+        --matrix-size "${size}" \
+        --kernel-name "tri_inv_trick_fp16_${size}" \
+        > "./inverse_auto_sync_${size}.pto"
+    ptoas --enable-insert-sync "./inverse_auto_sync_${size}.pto" -o "./inverse_auto_sync_${size}.cpp"
+done
 
 # Manual-sync path: explicit record/wait events from builder.
-python ./inverse_builder.py --manual-sync > ./inverse_manual_sync.pto
-ptoas ./inverse_manual_sync.pto -o ./inverse_manual_sync.cpp
+for size in "${SIZES[@]}"; do
+    python ./inverse_builder.py \
+        --manual-sync \
+        --matrix-size "${size}" \
+        --kernel-name "tri_inv_trick_fp16_${size}" \
+        > "./inverse_manual_sync_${size}.pto"
+    ptoas "./inverse_manual_sync_${size}.pto" -o "./inverse_manual_sync_${size}.cpp"
+done
 
 PTO_LIB_PATH=/sources/pto-isa
 # PTO_LIB_PATH=$ASCEND_TOOLKIT_HOME
@@ -44,6 +57,10 @@ bisheng \
     -mllvm -cce-aicore-dcci-insert-for-scalar=false \
     --npu-arch=dav-2201 -DMEMORY_BASE \
     -std=gnu++17 \
-    -DKERNEL_CPP="\"inverse_manual_sync.cpp\"" \
+    -DKERNEL_CPP_16="\"inverse_manual_sync_16.cpp\"" \
+    -DKERNEL_CPP_32="\"inverse_manual_sync_32.cpp\"" \
+    -DKERNEL_CPP_64="\"inverse_manual_sync_64.cpp\"" \
+    -DKERNEL_CPP_96="\"inverse_manual_sync_96.cpp\"" \
+    -DKERNEL_CPP_128="\"inverse_manual_sync_128.cpp\"" \
     ./caller.cpp \
     -o ./inverse_manual_sync_lib.so
