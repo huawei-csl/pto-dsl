@@ -85,6 +85,8 @@ def build_kernel_autosync(matrix_size: int, kernel_name: str):
             c2 = const(2)
             c4 = const(4)
             c8 = const(8)
+            c16 = const(16)
+            c32 = const(32)
             matrix_size_c = const(matrix_size)
 
             max_block_size = s.index_cast(max_block_size_i32)
@@ -178,9 +180,8 @@ def build_kernel_autosync(matrix_size: int, kernel_name: str):
                     tile.mov(c_l0, y_l1)
 
             # Mirror C++ `for (i = 1; i < max_block_size; i *= 2)`.
-            # Using pto.range(1, max_block_size, 1) adds many no-op
-            # iterations that still perturb generated sync scheduling.
-            for loop_i in (c1, c2, c4, c8):
+            # TODO: simplify this code logic
+            for loop_i in (c1, c2, c4, c8, c16, c32):  # here only considers max_block_size up to 64
                 with pto.if_context(loop_i < max_block_size):
                     run_iteration(loop_i)
 
@@ -206,6 +207,8 @@ def build_kernel_manualsync(matrix_size: int, kernel_name: str):
             c2 = const(2)
             c4 = const(4)
             c8 = const(8)
+            c16 = const(16)
+            c32 = const(32)
             matrix_size_c = const(matrix_size)
 
             max_block_size = s.index_cast(max_block_size_i32)
@@ -319,9 +322,8 @@ def build_kernel_manualsync(matrix_size: int, kernel_name: str):
                     pto.record_wait_pair("MOV_V2M", "MOV_M2L", event_id=0)
 
             # Mirror C++ `for (i = 1; i < max_block_size; i *= 2)`.
-            # Using pto.range(1, max_block_size, 1) adds many no-op
-            # iterations that still perturb generated sync scheduling.
-            for loop_i in (c1, c2, c4, c8):
+            # TODO: simplify this code logic
+            for loop_i in (c1, c2, c4, c8, c16, c32):  # here only considers max_block_size up to 64
                 with pto.if_context(loop_i < max_block_size):
                     run_iteration(loop_i)
 
