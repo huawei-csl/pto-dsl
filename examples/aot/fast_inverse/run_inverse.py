@@ -165,24 +165,28 @@ def check_case(lib, matrix_gen: Callable, atol: float, rtol: float, ftol: float,
 
 def run_test(lib):
     failures = []
-    failures.extend(
-        check_case(lib, blockdiag_ones_matrix, atol=0.0, rtol=0.0, ftol=0.0, blockdiag_size=16)
-    )
-    # failures.extend(
-    #     check_case(lib, blockdiag_ones_matrix, atol=0.0, rtol=0.0, ftol=0.0, blockdiag_size=32)
-    # )
-    # failures.extend(
-    #     check_case(lib, blockdiag_ones_matrix, atol=0.0, rtol=0.0, ftol=0.0, blockdiag_size=64)
-    # )
-    failures.extend(
-        check_case(lib, blockdiag_random_matrix, atol=5e-5, rtol=0.1, ftol=1.2e-4, blockdiag_size=16)
-    )
-    failures.extend(
-        check_case(lib, blockdiag_random_matrix, atol=5e-5, rtol=0.1, ftol=1.2e-4, blockdiag_size=32)
-    )
-    failures.extend(
-        check_case(lib, blockdiag_random_matrix, atol=5e-5, rtol=0.1, ftol=1.2e-4, blockdiag_size=64)
-    )
+    for blockdiag_size in (16,):
+        failures.extend(
+            check_case(
+                lib,
+                blockdiag_ones_matrix,
+                atol=0.0,
+                rtol=0.0,
+                ftol=0.0,
+                blockdiag_size=blockdiag_size,
+            )
+        )
+    for blockdiag_size in (16, 32, 64):
+        failures.extend(
+            check_case(
+                lib,
+                blockdiag_random_matrix,
+                atol=5e-5,
+                rtol=0.1,
+                ftol=1.2e-4,
+                blockdiag_size=blockdiag_size,
+            )
+        )
     if failures:
         warnings.warn(
             f"{len(failures)} cases failed. First: {failures[0]}",
