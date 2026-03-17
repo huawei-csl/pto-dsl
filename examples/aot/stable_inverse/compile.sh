@@ -16,7 +16,7 @@ for size in "${SIZES[@]}"; do
         --matrix-size "${size}" \
         --kernel-name "tri_inv_rec_unroll_fp16_${size}" \
         > "${ARTIFACT_DIR}/rec_unroll_auto_sync_${size}.pto"
-    ptoas --enable-insert-sync "${ARTIFACT_DIR}/rec_unroll_auto_sync_${size}.pto" \
+    ptoas --pto-level=level3 --enable-insert-sync "${ARTIFACT_DIR}/rec_unroll_auto_sync_${size}.pto" \
         -o "${ARTIFACT_DIR}/rec_unroll_auto_sync_${size}.cpp"
 done
 
@@ -26,7 +26,7 @@ for size in "${SIZES[@]}"; do
         --matrix-size "${size}" \
         --kernel-name "tri_inv_rec_unroll_fp16_${size}" \
         > "${ARTIFACT_DIR}/rec_unroll_manual_sync_${size}.pto"
-    ptoas "${ARTIFACT_DIR}/rec_unroll_manual_sync_${size}.pto" \
+    ptoas --pto-level=level3 "${ARTIFACT_DIR}/rec_unroll_manual_sync_${size}.pto" \
         -o "${ARTIFACT_DIR}/rec_unroll_manual_sync_${size}.cpp"
 done
 
