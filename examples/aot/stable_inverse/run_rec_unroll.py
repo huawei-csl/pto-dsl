@@ -124,30 +124,61 @@ def run_kernel_bsnd_fallback(lib, inp_bsnd):
 
 
 def check_case(lib, U: torch.Tensor, atol: float, rtol: float, ftol: float):
-    golden = reference_inverse(U).to(torch.float64)
-    actual = run_kernel(lib, U.to(device)).cpu().to(torch.float64)
-
-    frob_error = torch.sqrt(torch.sum((golden - actual) ** 2) / torch.sum(golden * golden))
-    assert np.allclose(actual.numpy(), golden.numpy(), atol=atol, rtol=rtol)
-    assert frob_error <= ftol, f"frob_error={frob_error}"
+    try:
+        golden = reference_inverse(U).to(torch.float64)
+        actual = run_kernel(lib, U.to(device)).cpu().to(torch.float64)
+        frob_error = torch.sqrt(
+            torch.sum((golden - actual) ** 2) / torch.sum(golden * golden)
+        )
+        allclose_ok = bool(np.allclose(actual.numpy(), golden.numpy(), atol=atol, rtol=rtol))
+        frob_ok = bool(frob_error <= ftol)
+        nan_count = int(torch.isnan(actual).sum().item())
+        inf_count = int(torch.isinf(actual).sum().item())
+        ok = allclose_ok and frob_ok and nan_count == 0 and inf_count == 0
+        error = None
+        if not ok:
+            error = (
+                f"allclose_ok={allclose_ok}, frob_ok={frob_ok}, "
+                f"frob_error={float(frob_error):.6e}, ftol={ftol:.6e}, "
+                f"nan={nan_count}, inf={inf_count}"
+            )
+        return {"ok": ok, "frob_error": float(frob_error), "error": error}
+    except Exception as exc:
+        return {"ok": False, "frob_error": None, "error": f"{type(exc).__name__}: {exc}"}
 
 
 def check_case_bsnd(
     lib, U: torch.Tensor, B: int, S: int, N: int, D: int, atol: float, rtol: float, ftol: float
 ):
-    U = U.to(torch.float16)
-    golden = reference_inverse(U)
+    try:
+        U = U.to(torch.float16)
+        golden = reference_inverse(U)
 
-    U_bsnd = U.transpose(1, 2).contiguous().reshape(B, S, N, D)
-    golden_bsnd = golden.transpose(1, 2).contiguous().reshape(B, S, N, D)
-    actual = run_kernel_bsnd_fallback(lib, U_bsnd.to(device)).cpu().to(torch.float64)
-    golden_bsnd = golden_bsnd.to(torch.float64)
+        U_bsnd = U.transpose(1, 2).contiguous().reshape(B, S, N, D)
+        golden_bsnd = golden.transpose(1, 2).contiguous().reshape(B, S, N, D)
+        actual = run_kernel_bsnd_fallback(lib, U_bsnd.to(device)).cpu().to(torch.float64)
+        golden_bsnd = golden_bsnd.to(torch.float64)
 
-    frob_error = torch.sqrt(
-        torch.sum((golden_bsnd - actual) ** 2) / torch.sum(golden_bsnd * golden_bsnd)
-    )
-    assert np.allclose(actual.numpy(), golden_bsnd.numpy(), atol=atol, rtol=rtol)
-    assert frob_error <= ftol, f"frob_error={frob_error}"
+        frob_error = torch.sqrt(
+            torch.sum((golden_bsnd - actual) ** 2) / torch.sum(golden_bsnd * golden_bsnd)
+        )
+        allclose_ok = bool(
+            np.allclose(actual.numpy(), golden_bsnd.numpy(), atol=atol, rtol=rtol)
+        )
+        frob_ok = bool(frob_error <= ftol)
+        nan_count = int(torch.isnan(actual).sum().item())
+        inf_count = int(torch.isinf(actual).sum().item())
+        ok = allclose_ok and frob_ok and nan_count == 0 and inf_count == 0
+        error = None
+        if not ok:
+            error = (
+                f"allclose_ok={allclose_ok}, frob_ok={frob_ok}, "
+                f"frob_error={float(frob_error):.6e}, ftol={ftol:.6e}, "
+                f"nan={nan_count}, inf={inf_count}"
+            )
+        return {"ok": ok, "frob_error": float(frob_error), "error": error}
+    except Exception as exc:
+        return {"ok": False, "frob_error": None, "error": f"{type(exc).__name__}: {exc}"}
 
 
 def run_tests(lib):
@@ -158,13 +189,22 @@ def run_tests(lib):
         (random_triu_matrix, 5e-5, 0.1, 1e-4),
     ]
 
+    passes = []
+    failures = []
+
     for n in (16, 32, 64, 128):
         for bx in (1, 2):
             for by in (2, 4):
                 for gen, atol, rtol, ftol in generators:
                     U = gen(n, bx, by)
-                    check_case(lib, U, atol, rtol, ftol)
-                    print(f"[pass] dense n={n}, bx={bx}, by={by}, gen={gen.__name__}")
+                    result = check_case(lib, U, atol, rtol, ftol)
+                    tag = f"dense n={n}, bx={bx}, by={by}, gen={gen.__name__}"
+                    if result["ok"]:
+                        passes.append((tag, result))
+                        print(f"[pass] {tag}, frob={result['frob_error']:.3e}")
+                    else:
+                        failures.append((tag, result))
+                        print(f"[fail] {tag}, err={result['error']}")
 
     for B in (1,):
         for S in (128, 256):
@@ -174,8 +214,22 @@ def run_tests(lib):
                         continue
                     for gen, atol, rtol, ftol in generators:
                         U = gen(D, B * S // D, N)
-                        check_case_bsnd(lib, U, B, S, N, D, atol, rtol, ftol)
-                        print(f"[pass] bsnd B={B}, S={S}, N={N}, D={D}, gen={gen.__name__}")
+                        result = check_case_bsnd(lib, U, B, S, N, D, atol, rtol, ftol)
+                        tag = f"bsnd B={B}, S={S}, N={N}, D={D}, gen={gen.__name__}"
+                        if result["ok"]:
+                            passes.append((tag, result))
+                            print(f"[pass] {tag}, frob={result['frob_error']:.3e}")
+                        else:
+                            failures.append((tag, result))
+                            print(f"[fail] {tag}, err={result['error']}")
+
+    total = len(passes) + len(failures)
+    print(f"summary: pass={len(passes)}, fail={len(failures)}, total={total}")
+    if failures:
+        print("failed cases:")
+        for tag, result in failures:
+            print(f"  - {tag}: {result['error']}")
+    return passes, failures
 
 
 if __name__ == "__main__":
@@ -196,5 +250,8 @@ if __name__ == "__main__":
     torch.npu.set_device(device)
 
     kernel_lib = load_lib(lib_path)
-    run_tests(kernel_lib)
-    print(f"All tests passed for {lib_path}.")
+    _, failures = run_tests(kernel_lib)
+    if failures:
+        print(f"Completed with failures for {lib_path}.")
+    else:
+        print(f"All tests passed for {lib_path}.")
