@@ -113,7 +113,9 @@ def reference_inverse(inp):
     return torch.from_numpy(golden)
 
 
-def check_case(lib, matrix_gen: Callable, atol: float, rtol: float, ftol: float, blockdiag_size=16):
+def check_case(
+    lib, matrix_gen: Callable, atol: float, rtol: float, ftol: float, blockdiag_size=16
+):
     if blockdiag_size == 16:
         n_list = [16, 32, 64, 96, 128]
     elif blockdiag_size == 32:
@@ -129,7 +131,9 @@ def check_case(lib, matrix_gen: Callable, atol: float, rtol: float, ftol: float,
     for n in n_list:
         for block_dim_x in block_dim_x_list:
             for block_dim_y in block_dim_y_list:
-                inp = matrix_gen(n, block_dim_x, block_dim_y, block_size=blockdiag_size).to(device)
+                inp = matrix_gen(
+                    n, block_dim_x, block_dim_y, block_size=blockdiag_size
+                ).to(device)
                 ref = reference_inverse(inp).to(torch.float64)
                 out = run_kernel(lib, inp).cpu().to(torch.float64)
 

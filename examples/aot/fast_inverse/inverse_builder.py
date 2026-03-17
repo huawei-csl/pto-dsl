@@ -187,7 +187,9 @@ def build_kernel_autosync(matrix_size: int, kernel_name: str):
             pto.store(c_l0, sv_out)
 
     tri_inv_trick_fp16_autosync.__name__ = kernel_name
-    return to_ir_module(meta_data=make_meta_data(matrix_size))(tri_inv_trick_fp16_autosync)
+    return to_ir_module(meta_data=make_meta_data(matrix_size))(
+        tri_inv_trick_fp16_autosync
+    )
 
 
 def build_kernel_manualsync(matrix_size: int, kernel_name: str):
@@ -327,7 +329,9 @@ def build_kernel_manualsync(matrix_size: int, kernel_name: str):
             pto.store(c_l0, sv_out)
 
     tri_inv_trick_fp16_manualsync.__name__ = kernel_name
-    return to_ir_module(meta_data=make_meta_data(matrix_size))(tri_inv_trick_fp16_manualsync)
+    return to_ir_module(meta_data=make_meta_data(matrix_size))(
+        tri_inv_trick_fp16_manualsync
+    )
 
 
 def build_kernel(manual_sync: bool, matrix_size: int, kernel_name: str):
