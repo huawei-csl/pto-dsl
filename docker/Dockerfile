@@ -22,9 +22,10 @@ ARG CACHE_BURST=1
 
 # ARG ARCH=x86_64
 ARG ARCH=aarch64
-ARG RELEASE_REPO=huawei-csl/PTOAS
-ARG RELEASE_TAG=0.8
-ARG WHEEL_NAME=ptoas-${RELEASE_TAG}-cp311-none-manylinux_2_34_${ARCH}.whl
+ARG RELEASE_REPO=zhangstevenunity/PTOAS
+ARG RELEASE_VER=0.9
+ARG RELEASE_TAG=v${RELEASE_VER}
+ARG WHEEL_NAME=ptoas-${RELEASE_VER}-cp311-none-manylinux_2_34_${ARCH}.whl
 ARG CLI_TAR_NAME=ptoas-bin-${ARCH}.tar.gz
 
 WORKDIR /installers/
