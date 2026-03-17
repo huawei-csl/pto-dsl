@@ -226,13 +226,19 @@ def _build_kernel_impl(manual_sync: bool, matrix_size: int, kernel_name: str):
                 sizes=[matrix_size_c, matrix_size_c],
             )
             pto.load(sv_i_neg, i_neg_l1)
+            pto.record_wait_pair("LOAD", "MOV_M2L", event_id=0)
             # Prepare identity and zero in L1.
             tile.mov(i_neg_l1, a_l0[0])
             tile.mov(i_neg_l1, b_l0[0])
+            pto.record_wait_pair("MOV_M2L", "MATMUL", event_id=0)
             tile.matmul(a_l0[0], b_l0[0], c_l0[0])  # I
+            pto.record_wait_pair("MATMUL", "MOV_V2M", event_id=0)
             tile.mov(c_l0[0], i_l1)
+            pto.record_wait_pair("MOV_V2M", "MOV_M2L", event_id=0)
             tile.mov(i_l1, b_l0[0])
+            pto.record_wait_pair("MOV_M2L", "MATMUL", event_id=0)
             tile.matmul_acc(c_l0[0], a_l0[0], b_l0[0], c_l0[0])  # 0
+            pto.record_wait_pair("MATMUL", "MOV_V2M", event_id=0)
             tile.mov(c_l0[0], zero_l1)
 
             # Build-time unrolled block sizes: 16,32,64,...,<matrix_size
@@ -258,13 +264,17 @@ def _build_kernel_impl(manual_sync: bool, matrix_size: int, kernel_name: str):
                 )
 
                 pto.load(sv_m, y_l1)
+                pto.record_wait_pair("LOAD", "MOV_M2L", event_id=0)
                 # M_neg <- (-I) @ M
                 tile.mov(y_l1, b_l0[0])
                 tile.mov(i_neg_l1, a_l0[0])
+                pto.record_wait_pair("MOV_M2L", "MATMUL", event_id=0)
                 tile.matmul(a_l0[0], b_l0[0], c_l0[0])
+                pto.record_wait_pair("MATMUL", "MOV_V2M", event_id=0)
                 tile.mov(c_l0[0], m_neg_l1)
 
                 # a_l0[1], b_l0[1] <- diagonal fractals of M
+                pto.record_wait_pair("MATMUL", "MOV_M2L", event_id=0)
                 tile.mov(zero_l1, a_l0[1])
                 tile.mov(zero_l1, b_l0[1])
                 _copy_diagonal_fractals_to_l0(
@@ -273,6 +283,7 @@ def _build_kernel_impl(manual_sync: bool, matrix_size: int, kernel_name: str):
                 _copy_diagonal_fractals_to_l0(
                     y_l1, l0b_fractal_type, matrix_size, dst_base_addr_bytes=b1_base
                 )
+                pto.record_wait_pair("MOV_M2L", "MATMUL", event_id=0)
 
                 # Y <- diag(M) @ diag(M)
                 tile.matmul(a_l0[1], b_l0[1], c_l0[1])
@@ -281,30 +292,38 @@ def _build_kernel_impl(manual_sync: bool, matrix_size: int, kernel_name: str):
                 # X <- I - diag(M)
                 tile.mov(i_neg_l1, b_l0[0])
                 tile.mov(i_neg_l1, a_l0[0])
+                pto.record_wait_pair("MOV_M2L", "MATMUL", event_id=0)
                 tile.matmul(a_l0[1], b_l0[0], c_l0[0])  # diag(M_neg)
                 tile.matmul_acc(c_l0[0], a_l0[0], b_l0[0], c_l0[0])  # + I
+                pto.record_wait_pair("MATMUL", "MOV_V2M", event_id=0)
                 tile.mov(c_l0[0], x_l1)
 
                 # Inv-trick phase over fractal blocks (FractalSize=16).
                 for loop_i in (c1, c2, c4):
                     tile.mov(i_l1, b_l0[0])
                     tile.mov(x_l1, a_l0[0])
+                    pto.record_wait_pair("MOV_M2L", "MATMUL", event_id=0)
                     tile.matmul(a_l0[0], b_l0[0], c_l0[0])  # X
 
                     tile.mov(y_l1, b_l0[1])
                     with pto.if_context(loop_i < fractal_quarter):
                         tile.mov(y_l1, a_l0[1])
+                        pto.record_wait_pair("MOV_M2L", "MATMUL", event_id=0)
                         tile.matmul(a_l0[1], b_l0[1], c_l0[1])  # Y^2
+                        pto.record_wait_pair("MATMUL", "MOV_V2M", event_id=0)
                         tile.mov(c_l0[1], y_l1)
 
                     tile.matmul_acc(c_l0[0], a_l0[0], b_l0[1], c_l0[0])  # X + X@Y
                     with pto.if_context(loop_i < fractal_half):
+                        pto.record_wait_pair("MATMUL", "MOV_V2M", event_id=0)
                         tile.mov(c_l0[0], x_l1)
 
                 # Unrolled recursion phase.
+                pto.record_wait_pair("MOV_V2M", "MOV_M2L", event_id=0)
                 tile.mov(m_neg_l1, b_l0[1])  # fixed rhs for LX @ (-M)
                 tile.mov(i_l1, a_l0[0])  # fixed lhs for I
                 for block_size in recursion_blocks:
+                    pto.record_wait_pair("MATMUL", "MOV_M2L", event_id=0)
                     tile.mov(zero_l1, a_l0[1])
                     _copy_odd_even_blocks_to_l0(
                         x_l1,
@@ -315,12 +334,15 @@ def _build_kernel_impl(manual_sync: bool, matrix_size: int, kernel_name: str):
                         dst_base_addr_bytes=a1_base,
                     )  # LX
                     tile.mov(i_l1, b_l0[0])
+                    pto.record_wait_pair("MOV_M2L", "MATMUL", event_id=0)
 
                     tile.matmul(a_l0[0], b_l0[0], c_l0[0])  # I
                     tile.matmul(a_l0[1], b_l0[0], c_l0[1])  # LX
                     tile.matmul_acc(c_l0[0], a_l0[1], b_l0[1], c_l0[0])  # Y
+                    pto.record_wait_pair("MATMUL", "MOV_V2M", event_id=0)
                     tile.mov(c_l0[0], y_l1)
 
+                    pto.record_wait_pair("MATMUL", "MOV_M2L", event_id=0)
                     tile.mov(zero_l1, b_l0[0])
                     _copy_odd_even_blocks_to_l0(
                         x_l1,
@@ -331,10 +353,13 @@ def _build_kernel_impl(manual_sync: bool, matrix_size: int, kernel_name: str):
                         dst_base_addr_bytes=b0_base,
                     )  # RX
                     tile.mov(y_l1, a_l0[1])
+                    pto.record_wait_pair("MOV_M2L", "MATMUL", event_id=0)
                     tile.matmul_acc(c_l0[1], a_l0[1], b_l0[0], c_l0[1])  # Y@RX + LX
                     if block_size < (matrix_size // 2):
+                        pto.record_wait_pair("MATMUL", "MOV_V2M", event_id=0)
                         tile.mov(c_l0[1], x_l1)
 
+                pto.record_wait_pair("MATMUL", "STORE_ACC", event_id=0)
                 pto.store(c_l0[final_c_idx], sv_out)
 
     tri_inv_rec_unroll_fp16.__name__ = kernel_name
