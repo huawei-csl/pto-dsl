@@ -181,7 +181,8 @@ def build_kernel_autosync(matrix_size: int, kernel_name: str):
 
             # Mirror C++ `for (i = 1; i < max_block_size; i *= 2)`.
             # TODO: simplify this code logic
-            for loop_i in (c1, c2, c4, c8, c16, c32):  # here only considers max_block_size up to 64
+            for loop_i in (c1, c2, c4, c8, c16, c32):
+                # here only considers max_block_size up to 64
                 with pto.if_context(loop_i < max_block_size):
                     run_iteration(loop_i)
 
@@ -323,7 +324,8 @@ def build_kernel_manualsync(matrix_size: int, kernel_name: str):
 
             # Mirror C++ `for (i = 1; i < max_block_size; i *= 2)`.
             # TODO: simplify this code logic
-            for loop_i in (c1, c2, c4, c8, c16, c32):  # here only considers max_block_size up to 64
+            for loop_i in (c1, c2, c4, c8, c16, c32):
+                # here only considers max_block_size up to 64
                 with pto.if_context(loop_i < max_block_size):
                     run_iteration(loop_i)
 
