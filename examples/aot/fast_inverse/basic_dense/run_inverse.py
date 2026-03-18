@@ -124,6 +124,7 @@ def run_test(lib, n):
             f"{len(failures)} cases failed. First: {failures[0]}",
             stacklevel=2,
         )
+    return failures
 
 
 if __name__ == "__main__":
@@ -139,13 +140,45 @@ if __name__ == "__main__":
         "--lib-path",
         type=str,
         default="./inverse_lib.so",
-        help="Shared library path produced by compile.sh.",
+        help="Single-buffer shared library path produced by compile.sh.",
+    )
+    parser.add_argument(
+        "--double-lib-path",
+        type=str,
+        default="./inverse_lib_db.so",
+        help="Double-buffer shared library path produced by compile.sh.",
+    )
+    parser.add_argument(
+        "--variant",
+        type=str,
+        choices=("single", "double", "both"),
+        default="both",
+        help="Which kernel variant(s) to validate.",
     )
     args = parser.parse_args()
 
     device = get_test_device()
     torch.npu.set_device(device)
 
-    kernel_lib = load_lib(args.lib_path)
-    run_test(kernel_lib, n=args.matrix_size)
-    print(f"Finished tests for n={args.matrix_size} with {args.lib_path}.")
+    single_failures = []
+    double_failures = []
+
+    if args.variant in ("single", "both"):
+        print(f"\n=== validating single buffer: {args.lib_path} ===")
+        single_lib = load_lib(args.lib_path)
+        single_failures = run_test(single_lib, n=args.matrix_size)
+
+    if args.variant in ("double", "both"):
+        print(f"\n=== validating double buffer: {args.double_lib_path} ===")
+        double_lib = load_lib(args.double_lib_path)
+        double_failures = run_test(double_lib, n=args.matrix_size)
+
+    if args.variant == "both":
+        print(
+            "\ncomparison summary: "
+            f"single_fail={len(single_failures)}, double_fail={len(double_failures)}"
+        )
+    elif args.variant == "single":
+        print(f"\nfinished single-buffer tests for n={args.matrix_size}.")
+    else:
+        print(f"\nfinished double-buffer tests for n={args.matrix_size}.")

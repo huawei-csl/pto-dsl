@@ -3,15 +3,26 @@ set -euo pipefail
 
 ARTIFACT_DIR="./build_artifacts"
 MATRIX_SIZE="${1:-64}"
+VARIANT="${2:-single}"
+
+if [[ "${VARIANT}" != "single" && "${VARIANT}" != "double" ]]; then
+    echo "Usage: bash compile.sh [matrix_size] [single|double]"
+    exit 1
+fi
+
+SUFFIX=""
+BUILDER_ARGS=(--matrix-size "${MATRIX_SIZE}")
+if [[ "${VARIANT}" == "double" ]]; then
+    SUFFIX="_db"
+    BUILDER_ARGS+=(--double-buffer)
+fi
 
 mkdir -p "${ARTIFACT_DIR}"
-rm -f "${ARTIFACT_DIR}/inverse.pto" "${ARTIFACT_DIR}/inverse.cpp" inverse_lib.so
+rm -f "${ARTIFACT_DIR}/inverse${SUFFIX}.pto" "${ARTIFACT_DIR}/inverse${SUFFIX}.cpp" "inverse_lib${SUFFIX}.so"
 
-python ./inverse_builder.py \
-    --matrix-size "${MATRIX_SIZE}" \
-    > "${ARTIFACT_DIR}/inverse.pto"
+python ./inverse_builder.py "${BUILDER_ARGS[@]}" > "${ARTIFACT_DIR}/inverse${SUFFIX}.pto"
 
-ptoas --enable-insert-sync "${ARTIFACT_DIR}/inverse.pto" -o "${ARTIFACT_DIR}/inverse.cpp"
+ptoas --enable-insert-sync "${ARTIFACT_DIR}/inverse${SUFFIX}.pto" -o "${ARTIFACT_DIR}/inverse${SUFFIX}.cpp"
 
 PTO_LIB_PATH=/sources/pto-isa
 # PTO_LIB_PATH=$ASCEND_TOOLKIT_HOME
@@ -28,6 +39,6 @@ bisheng \
     -mllvm -cce-aicore-dcci-insert-for-scalar=false \
     --npu-arch=dav-2201 -DMEMORY_BASE \
     -std=gnu++17 \
-    -DKERNEL_CPP="\"${ARTIFACT_DIR}/inverse.cpp\"" \
+    -DKERNEL_CPP="\"${ARTIFACT_DIR}/inverse${SUFFIX}.cpp\"" \
     ./caller.cpp \
-    -o ./inverse_lib.so
+    -o "./inverse_lib${SUFFIX}.so"

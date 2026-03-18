@@ -72,6 +72,7 @@ def benchmark_kernel_seconds(kernel_launch_fn, warmup: int, iters: int) -> float
 def run_benchmark(
     lib,
     *,
+    label: str,
     matrix_size: int,
     batch_sizes: list[int],
     warmup: int,
@@ -81,6 +82,7 @@ def run_benchmark(
     stream_ptr = torch.npu.current_stream()._as_parameter_
     bandwidth_gib_s = []
 
+    print(f"\n=== benchmark {label} ===")
     for batch in batch_sizes:
         inp = dense_stable_matrix(n=matrix_size, batch=batch).to(device)
         inp_fp16 = inp.to(torch.float16).contiguous()
@@ -108,23 +110,30 @@ def run_benchmark(
         gib_s = io_bytes / avg_s / (1024**3)
         bandwidth_gib_s.append(gib_s)
         print(
-            f"batch={batch:5d} | {avg_s * 1e3:.3f} ms | {gib_s:.2f} GiB/s | "
-            f"traffic={total_traffic_gib:.4f} GiB"
+            f"{label:>6s} | batch={batch:5d} | {avg_s * 1e3:.3f} ms | "
+            f"{gib_s:.2f} GiB/s | traffic={total_traffic_gib:.4f} GiB"
         )
 
     return bandwidth_gib_s
 
 
-def plot_results(batch_sizes: list[int], bandwidth_gib_s: list[float], out_png: str, n: int) -> None:
+def plot_results(
+    batch_sizes: list[int],
+    single_bw_gib_s: list[float],
+    double_bw_gib_s: list[float],
+    out_png: str,
+    n: int,
+) -> None:
     if plt is None:
         print("Warning: matplotlib is not installed; skipping plot generation.")
         return
 
     plt.figure(figsize=(8, 5))
-    plt.plot(batch_sizes, bandwidth_gib_s, "o-", label="inverse kernel")
+    plt.plot(batch_sizes, single_bw_gib_s, "o-", label="single buffer")
+    plt.plot(batch_sizes, double_bw_gib_s, "s-", label="double buffer")
     plt.xlabel("Batch size")
     plt.ylabel("Bandwidth (GiB/s)")
-    plt.title(f"Fast Inverse Bandwidth vs Batch Size (n={n})")
+    plt.title(f"Fast Inverse Bandwidth Comparison (n={n})")
     plt.xscale("log", base=2)
     plt.xticks(batch_sizes, [str(x) for x in batch_sizes])
     plt.grid(True, linestyle="--", alpha=0.6)
@@ -166,7 +175,13 @@ if __name__ == "__main__":
         "--lib-path",
         type=str,
         default="./inverse_lib.so",
-        help="Shared library path produced by compile.sh.",
+        help="Single-buffer shared library path produced by compile.sh.",
+    )
+    parser.add_argument(
+        "--double-lib-path",
+        type=str,
+        default="./inverse_lib_db.so",
+        help="Double-buffer shared library path produced by compile.sh.",
     )
     parser.add_argument(
         "--out-png",
@@ -179,12 +194,32 @@ if __name__ == "__main__":
     device = get_test_device()
     torch.npu.set_device(device)
 
-    kernel_lib = load_lib(args.lib_path)
-    bw = run_benchmark(
-        kernel_lib,
+    single_lib = load_lib(args.lib_path)
+    double_lib = load_lib(args.double_lib_path)
+
+    bw_single = run_benchmark(
+        single_lib,
+        label="single",
         matrix_size=args.matrix_size,
         batch_sizes=args.batch_sizes,
         warmup=args.warmup,
         iters=args.iters,
     )
-    plot_results(args.batch_sizes, bw, args.out_png, args.matrix_size)
+    bw_double = run_benchmark(
+        double_lib,
+        label="double",
+        matrix_size=args.matrix_size,
+        batch_sizes=args.batch_sizes,
+        warmup=args.warmup,
+        iters=args.iters,
+    )
+
+    print("\n=== speedup (double / single) ===")
+    for batch, single_bw, double_bw in zip(args.batch_sizes, bw_single, bw_double):
+        speedup = double_bw / single_bw if single_bw > 0 else float("nan")
+        print(
+            f"batch={batch:5d} | single={single_bw:8.2f} GiB/s | "
+            f"double={double_bw:8.2f} GiB/s | speedup={speedup:.3f}x"
+        )
+
+    plot_results(args.batch_sizes, bw_single, bw_double, args.out_png, args.matrix_size)
