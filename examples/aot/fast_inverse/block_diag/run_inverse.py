@@ -114,8 +114,9 @@ def check_case(
     ftol: float,
     blockdiag_size=16,
 ):
-    block_dim_x_list = [1, 3, 8, 16, 32]
-    block_dim_y_list = [1, 2, 4]
+    # Include non-multiples of 24 and large-batch cases (e.g. 27/99/135).
+    block_dim_x_list = [1, 3, 9, 11, 15, 32]
+    block_dim_y_list = [1, 3, 9]
     failures = []
     passes = 0
     for block_dim_x in block_dim_x_list:

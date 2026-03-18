@@ -69,6 +69,13 @@ def build_kernel(matrix_size: int):
             block_idx = s.index_cast(pto.get_block_idx())
             num_cores = s.index_cast(pto.get_block_num())
             total_rows = batch_size * n_c
+            base = batch_size // num_cores
+            rem = batch_size % num_cores
+            lt_rem = s.lt(block_idx, rem)
+            min_bid_rem = s.min_u(block_idx, rem)
+            b_start = block_idx * base + min_bid_rem
+            length = base + s.select(lt_rem, c1, c0)
+            b_end = s.min_u(b_start + length, batch_size)
 
             tv_m = pto.as_tensor(
                 in_tensor_type, ptr=in_ptr, shape=[total_rows, n_c], strides=[n_c, c1]
@@ -91,7 +98,7 @@ def build_kernel(matrix_size: int):
             b_l0 = pto.alloc_tile(l0b_tile_type)
             c_l0 = pto.alloc_tile(l0c_tile_type)
 
-            for b_idx in pto.range(block_idx, batch_size, num_cores):
+            for b_idx in pto.range(b_start, b_end, c1):
                 row_offset = b_idx * n_c
                 sv_m = pto.slice_view(
                     in_subtensor, source=tv_m, offsets=[row_offset, c0], sizes=[n_c, n_c]

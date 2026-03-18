@@ -152,7 +152,7 @@ def run_test(lib, n):
     ill_offdiag = ill_offdiag_for_tests(n)
     atol, rtol, ftol = UNIFORM_ATOL, UNIFORM_RTOL, UNIFORM_FTOL
 
-    for batch in [1, 8, 24, 48]:
+    for batch in [1, 8, 24, 27, 48, 99, 135]:
         failure = check_case(
             lib,
             matrix_gen=lambda n, batch: structured_random_matrix(
@@ -167,7 +167,7 @@ def run_test(lib, n):
         if failure is not None:
             failures.append(failure)
 
-    for batch in [1, 24, 48]:
+    for batch in [1, 24, 27, 48, 99, 135]:
         failure = check_case(
             lib,
             matrix_gen=lambda n, batch: ill_matrix(n=n, batch=batch, offdiag=ill_offdiag),
@@ -180,7 +180,7 @@ def run_test(lib, n):
         if failure is not None:
             failures.append(failure)
 
-    total = 7
+    total = 13
     print(f"summary: n={n}, pass={total - len(failures)}, fail={len(failures)}, total={total}")
     report_precision_like_note(lib, n)
 
