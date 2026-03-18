@@ -1,5 +1,6 @@
 import argparse
 import ctypes
+import math
 import random
 import warnings
 from typing import Callable
@@ -28,7 +29,7 @@ def load_lib(lib_path):
         ctypes.c_void_p,  # in
         ctypes.c_void_p,  # identity_neg
         ctypes.c_uint32,  # matrix_size
-        ctypes.c_uint32,  # block_size for block-diag-matrices
+        ctypes.c_uint32,  # log2(block_size) for block-diag-matrices
     ]
     lib.call_kernel.restype = None
     return lib
@@ -79,6 +80,7 @@ def run_kernel(lib, inp, blockdiag_size=16):
     # Run true matrix sizes directly (e.g., 32x32, 64x64) without padding.
     run_n = n
     inp_run = inp_fp16
+    log2_blocksize = int(math.log2(blockdiag_size))
 
     out = torch.zeros_like(inp_run, dtype=torch.float32, device=inp_run.device)
     identity_neg = torch.zeros(
@@ -94,7 +96,7 @@ def run_kernel(lib, inp, blockdiag_size=16):
         torch_to_ctypes(inp_run),
         torch_to_ctypes(identity_neg),
         run_n,
-        blockdiag_size,
+        log2_blocksize,
     )
     torch.npu.synchronize()
     return out
@@ -135,7 +137,9 @@ def check_case(
                     n, block_dim_x, block_dim_y, block_size=blockdiag_size
                 ).to(device)
                 ref = reference_inverse(inp).to(torch.float64)
-                out = run_kernel(lib, inp).cpu().to(torch.float64)
+                out = run_kernel(lib, inp, blockdiag_size=blockdiag_size).cpu().to(
+                    torch.float64
+                )
 
                 frob_error = torch.sqrt(
                     torch.sum((ref - out) * (ref - out)) / torch.sum(ref * ref)

@@ -77,19 +77,14 @@ def build_kernel_autosync(matrix_size: int, kernel_name: str):
         in_ptr: "in_ptr_type",
         i_neg_ptr: "in_ptr_type",
         matrix_size_i32: "i32",
-        max_block_size_i32: "i32",
+        log2_blocksize_i32: "i32",
     ) -> None:
         with pto.cube_section():
             c0 = const(0)
             c1 = const(1)
-            c2 = const(2)
-            c4 = const(4)
-            c8 = const(8)
-            c16 = const(16)
-            c32 = const(32)
             matrix_size_c = const(matrix_size)
 
-            max_block_size = s.index_cast(max_block_size_i32)
+            log2_blocksize = s.index_cast(log2_blocksize_i32)
             block_idx = s.index_cast(pto.get_block_idx())
             num_blocks = s.index_cast(pto.get_block_num())
 
@@ -165,7 +160,7 @@ def build_kernel_autosync(matrix_size: int, kernel_name: str):
             tile.matmul(a_l0, b_l0, c_l0)
             tile.mov(c_l0, i_l1)
 
-            def run_iteration(iter_i):
+            def run_iteration(update_y):
                 tile.mov(x_l1, a_l0)
                 tile.mov(i_l1, b_l0)
                 tile.matmul(a_l0, b_l0, c_l0)
@@ -173,18 +168,16 @@ def build_kernel_autosync(matrix_size: int, kernel_name: str):
                 tile.mov(y_l1, b_l0)
                 tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)
 
-                with pto.if_context(iter_i < (max_block_size // c2)):
+                with pto.if_context(update_y):
                     tile.mov(c_l0, x_l1)
                     tile.mov(y_l1, a_l0)
                     tile.matmul(a_l0, b_l0, c_l0)
                     tile.mov(c_l0, y_l1)
 
-            # Mirror C++ `for (i = 1; i < max_block_size; i *= 2)`.
-            # TODO: simplify this code logic
-            for loop_i in (c1, c2, c4, c8, c16, c32):
-                # here only considers max_block_size up to 64
-                with pto.if_context(loop_i < max_block_size):
-                    run_iteration(loop_i)
+            # Execute exactly log2(max_block_size) iterations.
+            # Y update is skipped only on the last iteration.
+            for iter_idx in pto.range(c0, log2_blocksize, c1):
+                run_iteration(iter_idx + c1 < log2_blocksize)
 
             pto.store(c_l0, sv_out)
 
@@ -200,19 +193,14 @@ def build_kernel_manualsync(matrix_size: int, kernel_name: str):
         in_ptr: "in_ptr_type",
         i_neg_ptr: "in_ptr_type",
         matrix_size_i32: "i32",
-        max_block_size_i32: "i32",
+        log2_blocksize_i32: "i32",
     ) -> None:
         with pto.cube_section():
             c0 = const(0)
             c1 = const(1)
-            c2 = const(2)
-            c4 = const(4)
-            c8 = const(8)
-            c16 = const(16)
-            c32 = const(32)
             matrix_size_c = const(matrix_size)
 
-            max_block_size = s.index_cast(max_block_size_i32)
+            log2_blocksize = s.index_cast(log2_blocksize_i32)
             block_idx = s.index_cast(pto.get_block_idx())
             num_blocks = s.index_cast(pto.get_block_num())
 
@@ -300,7 +288,7 @@ def build_kernel_manualsync(matrix_size: int, kernel_name: str):
             tile.mov(c_l0, i_l1)
             pto.record_wait_pair("MOV_V2M", "MOV_M2L", event_id=0)
 
-            def run_iteration(iter_i):
+            def run_iteration(update_y):
                 tile.mov(x_l1, a_l0)
                 tile.mov(i_l1, b_l0)
                 pto.record_wait_pair("MOV_M2L", "MATMUL", event_id=0)
@@ -311,7 +299,7 @@ def build_kernel_manualsync(matrix_size: int, kernel_name: str):
                 pto.record_wait_pair("MOV_M2L", "MATMUL", event_id=0)
                 tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)
 
-                with pto.if_context(iter_i < (max_block_size // c2)):
+                with pto.if_context(update_y):
                     pto.record_wait_pair("MATMUL", "MOV_V2M", event_id=0)
                     tile.mov(c_l0, x_l1)
                     pto.record_wait_pair("MOV_V2M", "MOV_M2L", event_id=0)
@@ -322,12 +310,10 @@ def build_kernel_manualsync(matrix_size: int, kernel_name: str):
                     tile.mov(c_l0, y_l1)
                     pto.record_wait_pair("MOV_V2M", "MOV_M2L", event_id=0)
 
-            # Mirror C++ `for (i = 1; i < max_block_size; i *= 2)`.
-            # TODO: simplify this code logic
-            for loop_i in (c1, c2, c4, c8, c16, c32):
-                # here only considers max_block_size up to 64
-                with pto.if_context(loop_i < max_block_size):
-                    run_iteration(loop_i)
+            # Execute exactly log2(max_block_size) iterations.
+            # Y update is skipped only on the last iteration.
+            for iter_idx in pto.range(c0, log2_blocksize, c1):
+                run_iteration(iter_idx + c1 < log2_blocksize)
 
             pto.record_wait_pair("MATMUL", "STORE_ACC", event_id=0)
             pto.store(c_l0, sv_out)

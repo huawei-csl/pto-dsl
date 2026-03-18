@@ -43,7 +43,7 @@ extern "C" void call_kernel(
     uint8_t *tensor_in,
     uint8_t *identity_in,
     uint32_t matrix_size,
-    uint32_t max_block_size)
+    uint32_t log2_blocksize)
 {
     switch (matrix_size) {
     case 16:
@@ -52,7 +52,7 @@ extern "C" void call_kernel(
             reinterpret_cast<half *>(tensor_in),
             reinterpret_cast<half *>(identity_in),
             static_cast<int32_t>(matrix_size),
-            static_cast<int32_t>(max_block_size));
+            static_cast<int32_t>(log2_blocksize));
         break;
     case 32:
         KERNEL_FN_32<<<blockDim, nullptr, stream>>>(
@@ -60,7 +60,7 @@ extern "C" void call_kernel(
             reinterpret_cast<half *>(tensor_in),
             reinterpret_cast<half *>(identity_in),
             static_cast<int32_t>(matrix_size),
-            static_cast<int32_t>(max_block_size));
+            static_cast<int32_t>(log2_blocksize));
         break;
     case 64:
         KERNEL_FN_64<<<blockDim, nullptr, stream>>>(
@@ -68,7 +68,7 @@ extern "C" void call_kernel(
             reinterpret_cast<half *>(tensor_in),
             reinterpret_cast<half *>(identity_in),
             static_cast<int32_t>(matrix_size),
-            static_cast<int32_t>(max_block_size));
+            static_cast<int32_t>(log2_blocksize));
         break;
     case 96:
         KERNEL_FN_96<<<blockDim, nullptr, stream>>>(
@@ -76,7 +76,7 @@ extern "C" void call_kernel(
             reinterpret_cast<half *>(tensor_in),
             reinterpret_cast<half *>(identity_in),
             static_cast<int32_t>(matrix_size),
-            static_cast<int32_t>(max_block_size));
+            static_cast<int32_t>(log2_blocksize));
         break;
     case 128:
         KERNEL_FN_128<<<blockDim, nullptr, stream>>>(
@@ -84,7 +84,7 @@ extern "C" void call_kernel(
             reinterpret_cast<half *>(tensor_in),
             reinterpret_cast<half *>(identity_in),
             static_cast<int32_t>(matrix_size),
-            static_cast<int32_t>(max_block_size));
+            static_cast<int32_t>(log2_blocksize));
         break;
     default:
         break;
