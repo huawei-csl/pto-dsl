@@ -14,7 +14,6 @@ from ptodsl.test_util import get_test_device
 random.seed(42)
 torch.manual_seed(42)
 np.random.seed(42)
-PERSISTENT_BLOCK_DIM = 24
 
 
 def torch_to_ctypes(tensor):
@@ -24,12 +23,12 @@ def torch_to_ctypes(tensor):
 def load_lib(lib_path):
     lib = ctypes.CDLL(lib_path)
     lib.call_kernel.argtypes = [
-        ctypes.c_uint32,  # blockDim (fixed core count)
+        ctypes.c_uint32,  # blockDim
         ctypes.c_void_p,  # stream
         ctypes.c_void_p,  # out
         ctypes.c_void_p,  # in
         ctypes.c_void_p,  # identity_neg
-        ctypes.c_uint32,  # runtime batch_size
+        ctypes.c_uint32,  # matrix_size
         ctypes.c_uint32,  # log2(block_size) for block-diag-matrices
     ]
     lib.call_kernel.restype = None
@@ -76,7 +75,7 @@ def blockdiag_random_matrix(n, block_dim_x, block_dim_y, block_size=16):
 def run_kernel(lib, inp, blockdiag_size=16):
     inp_fp16 = inp.to(torch.float16).contiguous()
     n = int(inp_fp16.shape[-1])
-    batch_size = int(inp_fp16.shape[0] * inp_fp16.shape[1])
+    block_dim = int(inp_fp16.shape[0] * inp_fp16.shape[1])
 
     # Run true matrix sizes directly (e.g., 32x32, 64x64) without padding.
     run_n = n
@@ -91,12 +90,12 @@ def run_kernel(lib, inp, blockdiag_size=16):
 
     stream_ptr = torch.npu.current_stream()._as_parameter_
     lib.call_kernel(
-        PERSISTENT_BLOCK_DIM,
+        block_dim,
         stream_ptr,
         torch_to_ctypes(out),
         torch_to_ctypes(inp_run),
         torch_to_ctypes(identity_neg),
-        batch_size,
+        run_n,
         log2_blocksize,
     )
     torch.npu.synchronize()
@@ -127,9 +126,8 @@ def check_case(
         n_list = [64, 128]
     else:
         raise ValueError("blockdiag_size must be 16/32/64")
-    # Include non-multiples of 24 and large-batch cases (e.g. 27/99/135).
-    block_dim_x_list = [1, 3, 9, 11, 15, 32]
-    block_dim_y_list = [1, 3, 9]
+    block_dim_x_list = [1, 3, 7, 16]
+    block_dim_y_list = [1, 2, 4, 16]
     failures = []
     passes = 0
     for n in n_list:
