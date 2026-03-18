@@ -93,12 +93,15 @@ def build_single_buffer_kernel(matrix_size: int):
                 in_subtensor, source=tv_i_neg, offsets=[c0, c0], sizes=[n_c, n_c]
             )
 
+            i_neg_l1 = pto.alloc_tile(l1_tile_type)
             x_l1 = pto.alloc_tile(l1_tile_type)
             y_l1 = pto.alloc_tile(l1_tile_type)
             i_l1 = pto.alloc_tile(l1_tile_type)
             a_l0 = pto.alloc_tile(l0a_tile_type)
             b_l0 = pto.alloc_tile(l0b_tile_type)
             c_l0 = pto.alloc_tile(l0c_tile_type)
+
+            pto.load(sv_i_neg, i_neg_l1)
 
             for b_idx in pto.range(b_start, b_end, c1):
                 row_offset = b_idx * n_c
@@ -111,17 +114,16 @@ def build_single_buffer_kernel(matrix_size: int):
 
                 # in_ptr carries A = M - I, where M is the dense matrix to invert.
                 pto.load(sv_m, y_l1)
-                pto.load(sv_i_neg, x_l1)
 
                 tile.mov(y_l1, a_l0)
                 tile.mov(y_l1, b_l0)
                 tile.matmul(a_l0, b_l0, c_l0)
                 tile.mov(c_l0, y_l1)  # y = A @ A
 
-                tile.mov(x_l1, b_l0)
+                tile.mov(i_neg_l1, b_l0)
                 tile.matmul(a_l0, b_l0, c_l0)  # c = -A
 
-                tile.mov(x_l1, a_l0)
+                tile.mov(i_neg_l1, a_l0)
                 tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)  # c = I - A
                 tile.mov(c_l0, x_l1)  # x = I - A
 
@@ -195,16 +197,19 @@ def build_double_buffer_kernel(matrix_size: int):
             )
 
             # Memory footprint (fp16=2B, fp32=4B):
-            # - L1: 2*X + 2*Y + I = 5 * (n*n*2B); n=128 -> 160KiB (< 512KiB limit)
+            # - L1: 2*X + 2*Y + I + (-I) = 6 * (n*n*2B); n=128 -> 192KiB (< 512KiB limit)
             # - L0A: 2*A = 2 * (n*n*2B); n=128 -> 64KiB (at 64KiB limit)
             # - L0B: 2*B = 2 * (n*n*2B); n=128 -> 64KiB (at 64KiB limit)
             # - L0C: 1*C = 1 * (n*n*4B); n=128 -> 64KiB (< 128KiB limit)
+            i_neg_l1 = pto.alloc_tile(l1_tile_type)
             x_l1 = [pto.alloc_tile(l1_tile_type), pto.alloc_tile(l1_tile_type)]
             y_l1 = [pto.alloc_tile(l1_tile_type), pto.alloc_tile(l1_tile_type)]
             i_l1 = pto.alloc_tile(l1_tile_type)
             a_l0 = [pto.alloc_tile(l0a_tile_type), pto.alloc_tile(l0a_tile_type)]
             b_l0 = [pto.alloc_tile(l0b_tile_type), pto.alloc_tile(l0b_tile_type)]
             c_l0 = pto.alloc_tile(l0c_tile_type)
+
+            pto.load(sv_i_neg, i_neg_l1)
 
             for b_idx in pto.range(b_start, b_end, c1):
                 row_offset = b_idx * n_c
@@ -217,7 +222,6 @@ def build_double_buffer_kernel(matrix_size: int):
 
                 # in_ptr carries A = M - I, where M is the dense matrix to invert.
                 pto.load(sv_m, y_l1[0])
-                pto.load(sv_i_neg, x_l1[0])
 
                 # Bootstrap from ping buffer 0.
                 tile.mov(y_l1[0], a_l0[0])
@@ -225,10 +229,10 @@ def build_double_buffer_kernel(matrix_size: int):
                 tile.matmul(a_l0[0], b_l0[0], c_l0)
                 tile.mov(c_l0, y_l1[0])  # y = A @ A
 
-                tile.mov(x_l1[0], b_l0[0])
+                tile.mov(i_neg_l1, b_l0[0])
                 tile.matmul(a_l0[0], b_l0[0], c_l0)  # c = -A
 
-                tile.mov(x_l1[0], a_l0[0])
+                tile.mov(i_neg_l1, a_l0[0])
                 tile.matmul_acc(c_l0, a_l0[0], b_l0[0], c_l0)  # c = I - A
                 tile.mov(c_l0, x_l1[0])  # x = I - A
 
