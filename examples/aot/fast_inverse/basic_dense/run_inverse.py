@@ -15,7 +15,10 @@ torch.manual_seed(42)
 np.random.seed(42)
 
 SUPPORTED_MATRIX_SIZES = (16, 32, 64, 128)
-PERSISTENT_BLOCK_DIM = 24
+try:
+    PERSISTENT_BLOCK_DIM = int(torch.npu.get_device_properties("npu").cube_core_num)
+except Exception:
+    PERSISTENT_BLOCK_DIM = 24
 
 
 def torch_to_ctypes(tensor):
