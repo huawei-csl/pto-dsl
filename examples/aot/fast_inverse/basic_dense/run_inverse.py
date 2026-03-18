@@ -15,6 +15,7 @@ torch.manual_seed(42)
 np.random.seed(42)
 
 SUPPORTED_MATRIX_SIZES = (16, 32, 64, 128)
+PERSISTENT_BLOCK_DIM = 24
 
 
 def torch_to_ctypes(tensor):
@@ -24,12 +25,12 @@ def torch_to_ctypes(tensor):
 def load_lib(lib_path):
     lib = ctypes.CDLL(lib_path)
     lib.call_kernel.argtypes = [
-        ctypes.c_uint32,  # blockDim (batch)
+        ctypes.c_uint32,  # blockDim (fixed core count)
         ctypes.c_void_p,  # stream
         ctypes.c_void_p,  # out
         ctypes.c_void_p,  # in_delta (M - I)
         ctypes.c_void_p,  # identity_neg
-        ctypes.c_uint32,  # matrix_size
+        ctypes.c_uint32,  # runtime batch_size
         ctypes.c_uint32,  # log2(matrix_size)
     ]
     lib.call_kernel.restype = None
@@ -56,12 +57,12 @@ def run_kernel(lib, inp):
 
     stream_ptr = torch.npu.current_stream()._as_parameter_
     lib.call_kernel(
-        batch,
+        PERSISTENT_BLOCK_DIM,
         stream_ptr,
         torch_to_ctypes(out),
         torch_to_ctypes(in_delta),
         torch_to_ctypes(identity_neg),
-        n,
+        batch,
         log2_blocksize,
     )
     torch.npu.synchronize()
@@ -100,7 +101,8 @@ def check_case(lib, n, batch, atol, rtol, ftol):
 
 def run_test(lib, n):
     failures = []
-    for batch in [1, 2, 4, 8, 16]:
+    batch_list = [1, 8, 24, 27, 48, 96, 99, 135]
+    for batch in batch_list:
         failure = check_case(
             lib,
             n=n,
@@ -112,7 +114,8 @@ def run_test(lib, n):
         if failure is not None:
             failures.append(failure)
 
-    print(f"summary: n={n}, pass={5 - len(failures)}, fail={len(failures)}, total=5")
+    total = len(batch_list)
+    print(f"summary: n={n}, pass={total - len(failures)}, fail={len(failures)}, total={total}")
     if failures:
         warnings.warn(
             f"{len(failures)} cases failed. First: {failures[0]}",

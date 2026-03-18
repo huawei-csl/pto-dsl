@@ -14,6 +14,8 @@ This demo implements one-level 2x2 block inversion for `inv(I + A)` with input s
 - `inv(I + A11)` and `inv(I + A22)` are computed by the same fast recurrence used in
   the `basic_dense` / `block_diag` demos.
 - `A21` block is recovered by `-inv(I + A22) @ A21 @ inv(I + A11)`.
+- launch uses persistent-kernel style with fixed `blockDim=24`; each core loops over
+  multiple batch items when `batch > 24`.
 
 `run_inverse.py` includes:
 - correctness checks on structured random / ill-conditioned generators

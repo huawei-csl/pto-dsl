@@ -65,11 +65,10 @@ def build_kernel(matrix_size: int):
             n_c = const(matrix_size)
 
             log2_blocksize = s.index_cast(log2_blocksize_i32)
+            batch_size = s.index_cast(matrix_size_i32)
             block_idx = s.index_cast(pto.get_block_idx())
-            num_blocks = s.index_cast(pto.get_block_num())
-
-            total_rows = num_blocks * n_c
-            row_offset = block_idx * n_c
+            num_cores = s.index_cast(pto.get_block_num())
+            total_rows = batch_size * n_c
 
             tv_m = pto.as_tensor(
                 in_tensor_type, ptr=in_ptr, shape=[total_rows, n_c], strides=[n_c, c1]
@@ -81,14 +80,8 @@ def build_kernel(matrix_size: int):
                 in_tensor_type, ptr=i_neg_ptr, shape=[n_c, n_c], strides=[n_c, c1]
             )
 
-            sv_m = pto.slice_view(
-                in_subtensor, source=tv_m, offsets=[row_offset, c0], sizes=[n_c, n_c]
-            )
             sv_i_neg = pto.slice_view(
                 in_subtensor, source=tv_i_neg, offsets=[c0, c0], sizes=[n_c, n_c]
-            )
-            sv_out = pto.slice_view(
-                out_subtensor, source=tv_out, offsets=[row_offset, c0], sizes=[n_c, n_c]
             )
 
             x_l1 = pto.alloc_tile(l1_tile_type)
@@ -98,40 +91,49 @@ def build_kernel(matrix_size: int):
             b_l0 = pto.alloc_tile(l0b_tile_type)
             c_l0 = pto.alloc_tile(l0c_tile_type)
 
-            pto.load(sv_m, y_l1)
-            pto.load(sv_i_neg, x_l1)
+            for b_idx in pto.range(block_idx, batch_size, num_cores):
+                row_offset = b_idx * n_c
+                sv_m = pto.slice_view(
+                    in_subtensor, source=tv_m, offsets=[row_offset, c0], sizes=[n_c, n_c]
+                )
+                sv_out = pto.slice_view(
+                    out_subtensor, source=tv_out, offsets=[row_offset, c0], sizes=[n_c, n_c]
+                )
 
-            tile.mov(y_l1, a_l0)
-            tile.mov(y_l1, b_l0)
+                pto.load(sv_m, y_l1)
+                pto.load(sv_i_neg, x_l1)
 
-            tile.matmul(a_l0, b_l0, c_l0)
-            tile.mov(c_l0, y_l1)
+                tile.mov(y_l1, a_l0)
+                tile.mov(y_l1, b_l0)
 
-            tile.mov(x_l1, b_l0)
-            tile.matmul(a_l0, b_l0, c_l0)
+                tile.matmul(a_l0, b_l0, c_l0)
+                tile.mov(c_l0, y_l1)
 
-            tile.mov(x_l1, a_l0)
-            tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)
-            tile.mov(c_l0, x_l1)
-
-            tile.matmul(a_l0, b_l0, c_l0)
-            tile.mov(c_l0, i_l1)
-
-            for iter_idx in pto.range(c0, log2_blocksize, c1):
-                tile.mov(x_l1, a_l0)
-                tile.mov(i_l1, b_l0)
+                tile.mov(x_l1, b_l0)
                 tile.matmul(a_l0, b_l0, c_l0)
 
-                tile.mov(y_l1, b_l0)
+                tile.mov(x_l1, a_l0)
                 tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)
+                tile.mov(c_l0, x_l1)
 
-                with pto.if_context(iter_idx + c1 < log2_blocksize):
-                    tile.mov(c_l0, x_l1)
-                    tile.mov(y_l1, a_l0)
+                tile.matmul(a_l0, b_l0, c_l0)
+                tile.mov(c_l0, i_l1)
+
+                for iter_idx in pto.range(c0, log2_blocksize, c1):
+                    tile.mov(x_l1, a_l0)
+                    tile.mov(i_l1, b_l0)
                     tile.matmul(a_l0, b_l0, c_l0)
-                    tile.mov(c_l0, y_l1)
 
-            pto.store(c_l0, sv_out)
+                    tile.mov(y_l1, b_l0)
+                    tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)
+
+                    with pto.if_context(iter_idx + c1 < log2_blocksize):
+                        tile.mov(c_l0, x_l1)
+                        tile.mov(y_l1, a_l0)
+                        tile.matmul(a_l0, b_l0, c_l0)
+                        tile.mov(c_l0, y_l1)
+
+                pto.store(c_l0, sv_out)
 
     return tri_inv_trick_fp16
 

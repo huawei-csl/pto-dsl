@@ -15,6 +15,7 @@ torch.manual_seed(42)
 np.random.seed(42)
 
 SUPPORTED_MATRIX_SIZES = (16, 32, 64, 128)
+PERSISTENT_BLOCK_DIM = 24
 UNIFORM_ATOL = 1.5e-1
 UNIFORM_RTOL = 1.5e-1
 UNIFORM_FTOL = 2.5e-1  # TODO: seems too big
@@ -27,12 +28,12 @@ def torch_to_ctypes(tensor):
 def load_lib(lib_path):
     lib = ctypes.CDLL(lib_path)
     lib.call_kernel.argtypes = [
-        ctypes.c_uint32,  # blockDim (batch)
+        ctypes.c_uint32,  # blockDim (fixed core count)
         ctypes.c_void_p,  # stream
         ctypes.c_void_p,  # out
         ctypes.c_void_p,  # in_delta
         ctypes.c_void_p,  # identity_neg_half
-        ctypes.c_uint32,  # matrix_size
+        ctypes.c_uint32,  # runtime batch_size
         ctypes.c_uint32,  # log2(matrix_size)
     ]
     lib.call_kernel.restype = None
@@ -94,12 +95,12 @@ def run_kernel(lib, inp_delta):
 
     stream_ptr = torch.npu.current_stream()._as_parameter_
     lib.call_kernel(
-        batch,
+        PERSISTENT_BLOCK_DIM,
         stream_ptr,
         torch_to_ctypes(out),
         torch_to_ctypes(inp_fp16),
         torch_to_ctypes(identity_neg_half),
-        n,
+        batch,
         log2_blocksize,
     )
     torch.npu.synchronize()
@@ -151,7 +152,7 @@ def run_test(lib, n):
     ill_offdiag = ill_offdiag_for_tests(n)
     atol, rtol, ftol = UNIFORM_ATOL, UNIFORM_RTOL, UNIFORM_FTOL
 
-    for batch in [1, 4, 16]:
+    for batch in [1, 8, 24, 48]:
         failure = check_case(
             lib,
             matrix_gen=lambda n, batch: structured_random_matrix(
@@ -166,7 +167,7 @@ def run_test(lib, n):
         if failure is not None:
             failures.append(failure)
 
-    for batch in [1, 4]:
+    for batch in [1, 24, 48]:
         failure = check_case(
             lib,
             matrix_gen=lambda n, batch: ill_matrix(n=n, batch=batch, offdiag=ill_offdiag),
@@ -179,7 +180,8 @@ def run_test(lib, n):
         if failure is not None:
             failures.append(failure)
 
-    print(f"summary: n={n}, pass={5 - len(failures)}, fail={len(failures)}, total=5")
+    total = 7
+    print(f"summary: n={n}, pass={total - len(failures)}, fail={len(failures)}, total={total}")
     report_precision_like_note(lib, n)
 
     if failures:

@@ -71,14 +71,12 @@ def build_kernel(matrix_size: int):
             n_c = const(matrix_size)
             h_c = const(matrix_size // 2)
 
-            _ = matrix_size_i32  # kept for ABI compatibility
             log2_half = s.index_cast(log2_blocksize_i32) - c1
+            batch_size = s.index_cast(matrix_size_i32)
             block_idx = s.index_cast(pto.get_block_idx())
-            num_blocks = s.index_cast(pto.get_block_num())
+            num_cores = s.index_cast(pto.get_block_num())
 
-            total_rows = num_blocks * n_c
-            row_offset = block_idx * n_c
-            row_offset_h = row_offset + h_c
+            total_rows = batch_size * n_c
 
             tv_in = pto.as_tensor(
                 in_tensor_type, ptr=in_ptr, shape=[total_rows, n_c], strides=[n_c, c1]
@@ -91,41 +89,6 @@ def build_kernel(matrix_size: int):
             )
             sv_i_neg = pto.slice_view(
                 in_subtensor_h, source=tv_i_neg, offsets=[c0, c0], sizes=[h_c, h_c]
-            )
-
-            sv_a11 = pto.slice_view(
-                in_subtensor_h, source=tv_in, offsets=[row_offset, c0], sizes=[h_c, h_c]
-            )
-            sv_a21 = pto.slice_view(
-                in_subtensor_h,
-                source=tv_in,
-                offsets=[row_offset_h, c0],
-                sizes=[h_c, h_c],
-            )
-            sv_a22 = pto.slice_view(
-                in_subtensor_h,
-                source=tv_in,
-                offsets=[row_offset_h, h_c],
-                sizes=[h_c, h_c],
-            )
-
-            sv_out11 = pto.slice_view(
-                out_subtensor_h,
-                source=tv_out,
-                offsets=[row_offset, c0],
-                sizes=[h_c, h_c],
-            )
-            sv_out21 = pto.slice_view(
-                out_subtensor_h,
-                source=tv_out,
-                offsets=[row_offset_h, c0],
-                sizes=[h_c, h_c],
-            )
-            sv_out22 = pto.slice_view(
-                out_subtensor_h,
-                source=tv_out,
-                offsets=[row_offset_h, h_c],
-                sizes=[h_c, h_c],
             )
 
             x11_l1 = pto.alloc_tile(l1_tile_type)
@@ -148,86 +111,124 @@ def build_kernel(matrix_size: int):
             tile.matmul(a_l0, b_l0, c_l0)
             tile.mov(c_l0, pos_i_l1)
 
-            # Invert (I + A11) with the fast recurrence.
-            pto.load(sv_a11, y11_l1)
-            tile.mov(y11_l1, a_l0)
-            tile.mov(y11_l1, b_l0)
-            tile.matmul(a_l0, b_l0, c_l0)
-            tile.mov(c_l0, y11_l1)  # y = A11 @ A11
+            for b_idx in pto.range(block_idx, batch_size, num_cores):
+                row_offset = b_idx * n_c
+                row_offset_h = row_offset + h_c
+                sv_a11 = pto.slice_view(
+                    in_subtensor_h, source=tv_in, offsets=[row_offset, c0], sizes=[h_c, h_c]
+                )
+                sv_a21 = pto.slice_view(
+                    in_subtensor_h,
+                    source=tv_in,
+                    offsets=[row_offset_h, c0],
+                    sizes=[h_c, h_c],
+                )
+                sv_a22 = pto.slice_view(
+                    in_subtensor_h,
+                    source=tv_in,
+                    offsets=[row_offset_h, h_c],
+                    sizes=[h_c, h_c],
+                )
 
-            tile.mov(y11_l1, a_l0)
-            tile.mov(neg_i_l1, b_l0)
-            tile.matmul(a_l0, b_l0, c_l0)  # -A11
-            tile.mov(neg_i_l1, a_l0)
-            tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)  # I - A11
-            tile.mov(c_l0, x11_l1)
+                sv_out11 = pto.slice_view(
+                    out_subtensor_h,
+                    source=tv_out,
+                    offsets=[row_offset, c0],
+                    sizes=[h_c, h_c],
+                )
+                sv_out21 = pto.slice_view(
+                    out_subtensor_h,
+                    source=tv_out,
+                    offsets=[row_offset_h, c0],
+                    sizes=[h_c, h_c],
+                )
+                sv_out22 = pto.slice_view(
+                    out_subtensor_h,
+                    source=tv_out,
+                    offsets=[row_offset_h, h_c],
+                    sizes=[h_c, h_c],
+                )
 
-            for iter_idx in pto.range(c0, log2_half, c1):
-                tile.mov(x11_l1, a_l0)
-                tile.mov(pos_i_l1, b_l0)
-                tile.matmul(a_l0, b_l0, c_l0)
-
+                # Invert (I + A11) with the fast recurrence.
+                pto.load(sv_a11, y11_l1)
+                tile.mov(y11_l1, a_l0)
                 tile.mov(y11_l1, b_l0)
-                tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)
-
-                with pto.if_context(iter_idx + c1 < log2_half):
-                    tile.mov(c_l0, x11_l1)
-                    tile.mov(y11_l1, a_l0)
-                    tile.matmul(a_l0, b_l0, c_l0)
-                    tile.mov(c_l0, y11_l1)
-
-            tile.mov(c_l0, x11_l1)
-            pto.store(c_l0, sv_out11)
-
-            # Invert (I + A22) with the fast recurrence.
-            pto.load(sv_a22, y22_l1)
-            tile.mov(y22_l1, a_l0)
-            tile.mov(y22_l1, b_l0)
-            tile.matmul(a_l0, b_l0, c_l0)
-            tile.mov(c_l0, y22_l1)  # y = A22 @ A22
-
-            tile.mov(y22_l1, a_l0)
-            tile.mov(neg_i_l1, b_l0)
-            tile.matmul(a_l0, b_l0, c_l0)  # -A22
-            tile.mov(neg_i_l1, a_l0)
-            tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)  # I - A22
-            tile.mov(c_l0, x22_l1)
-
-            for iter_idx in pto.range(c0, log2_half, c1):
-                tile.mov(x22_l1, a_l0)
-                tile.mov(pos_i_l1, b_l0)
                 tile.matmul(a_l0, b_l0, c_l0)
+                tile.mov(c_l0, y11_l1)  # y = A11 @ A11
 
-                tile.mov(y22_l1, b_l0)
-                tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)
+                tile.mov(y11_l1, a_l0)
+                tile.mov(neg_i_l1, b_l0)
+                tile.matmul(a_l0, b_l0, c_l0)  # -A11
+                tile.mov(neg_i_l1, a_l0)
+                tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)  # I - A11
+                tile.mov(c_l0, x11_l1)
 
-                with pto.if_context(iter_idx + c1 < log2_half):
-                    tile.mov(c_l0, x22_l1)
-                    tile.mov(y22_l1, a_l0)
+                for iter_idx in pto.range(c0, log2_half, c1):
+                    tile.mov(x11_l1, a_l0)
+                    tile.mov(pos_i_l1, b_l0)
                     tile.matmul(a_l0, b_l0, c_l0)
-                    tile.mov(c_l0, y22_l1)
 
-            tile.mov(c_l0, x22_l1)
-            pto.store(c_l0, sv_out22)
+                    tile.mov(y11_l1, b_l0)
+                    tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)
 
-            # A21 term in block inversion:
-            # X21 = - X22 @ A21 @ X11
-            pto.load(sv_a21, a21_l1)
+                    with pto.if_context(iter_idx + c1 < log2_half):
+                        tile.mov(c_l0, x11_l1)
+                        tile.mov(y11_l1, a_l0)
+                        tile.matmul(a_l0, b_l0, c_l0)
+                        tile.mov(c_l0, y11_l1)
 
-            tile.mov(x22_l1, a_l0)
-            tile.mov(a21_l1, b_l0)
-            tile.matmul(a_l0, b_l0, c_l0)
-            tile.mov(c_l0, tmp_l1)
+                tile.mov(c_l0, x11_l1)
+                pto.store(c_l0, sv_out11)
 
-            tile.mov(tmp_l1, a_l0)
-            tile.mov(x11_l1, b_l0)
-            tile.matmul(a_l0, b_l0, c_l0)
-            tile.mov(c_l0, tmp_l1)
+                # Invert (I + A22) with the fast recurrence.
+                pto.load(sv_a22, y22_l1)
+                tile.mov(y22_l1, a_l0)
+                tile.mov(y22_l1, b_l0)
+                tile.matmul(a_l0, b_l0, c_l0)
+                tile.mov(c_l0, y22_l1)  # y = A22 @ A22
 
-            tile.mov(neg_i_l1, a_l0)
-            tile.mov(tmp_l1, b_l0)
-            tile.matmul(a_l0, b_l0, c_l0)
-            pto.store(c_l0, sv_out21)
+                tile.mov(y22_l1, a_l0)
+                tile.mov(neg_i_l1, b_l0)
+                tile.matmul(a_l0, b_l0, c_l0)  # -A22
+                tile.mov(neg_i_l1, a_l0)
+                tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)  # I - A22
+                tile.mov(c_l0, x22_l1)
+
+                for iter_idx in pto.range(c0, log2_half, c1):
+                    tile.mov(x22_l1, a_l0)
+                    tile.mov(pos_i_l1, b_l0)
+                    tile.matmul(a_l0, b_l0, c_l0)
+
+                    tile.mov(y22_l1, b_l0)
+                    tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)
+
+                    with pto.if_context(iter_idx + c1 < log2_half):
+                        tile.mov(c_l0, x22_l1)
+                        tile.mov(y22_l1, a_l0)
+                        tile.matmul(a_l0, b_l0, c_l0)
+                        tile.mov(c_l0, y22_l1)
+
+                tile.mov(c_l0, x22_l1)
+                pto.store(c_l0, sv_out22)
+
+                # A21 term in block inversion:
+                # X21 = - X22 @ A21 @ X11
+                pto.load(sv_a21, a21_l1)
+
+                tile.mov(x22_l1, a_l0)
+                tile.mov(a21_l1, b_l0)
+                tile.matmul(a_l0, b_l0, c_l0)
+                tile.mov(c_l0, tmp_l1)
+
+                tile.mov(tmp_l1, a_l0)
+                tile.mov(x11_l1, b_l0)
+                tile.matmul(a_l0, b_l0, c_l0)
+                tile.mov(c_l0, tmp_l1)
+
+                tile.mov(neg_i_l1, a_l0)
+                tile.mov(tmp_l1, b_l0)
+                tile.matmul(a_l0, b_l0, c_l0)
+                pto.store(c_l0, sv_out21)
 
     return tri_inv_block2x2_fp16
 

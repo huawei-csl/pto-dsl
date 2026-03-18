@@ -16,6 +16,7 @@ torch.manual_seed(42)
 np.random.seed(42)
 
 SUPPORTED_MATRIX_SIZES = (16, 32, 64, 96, 128)
+PERSISTENT_BLOCK_DIM = 24
 
 
 def torch_to_ctypes(tensor):
@@ -25,12 +26,12 @@ def torch_to_ctypes(tensor):
 def load_lib(lib_path):
     lib = ctypes.CDLL(lib_path)
     lib.call_kernel.argtypes = [
-        ctypes.c_uint32,  # blockDim
+        ctypes.c_uint32,  # blockDim (fixed core count)
         ctypes.c_void_p,  # stream
         ctypes.c_void_p,  # out
         ctypes.c_void_p,  # in
         ctypes.c_void_p,  # identity_neg
-        ctypes.c_uint32,  # matrix_size
+        ctypes.c_uint32,  # runtime batch_size
         ctypes.c_uint32,  # log2(block_size) for block-diag-matrices
     ]
     lib.call_kernel.restype = None
@@ -72,7 +73,7 @@ def blockdiag_random_matrix(n, block_dim_x, block_dim_y, block_size=16):
 def run_kernel(lib, inp, blockdiag_size=16):
     inp_fp16 = inp.to(torch.float16).contiguous()
     n = int(inp_fp16.shape[-1])
-    block_dim = int(inp_fp16.shape[0] * inp_fp16.shape[1])
+    batch_size = int(inp_fp16.shape[0] * inp_fp16.shape[1])
     log2_blocksize = int(math.log2(blockdiag_size))
 
     out = torch.zeros_like(inp_fp16, dtype=torch.float32, device=inp_fp16.device)
@@ -81,12 +82,12 @@ def run_kernel(lib, inp, blockdiag_size=16):
 
     stream_ptr = torch.npu.current_stream()._as_parameter_
     lib.call_kernel(
-        block_dim,
+        PERSISTENT_BLOCK_DIM,
         stream_ptr,
         torch_to_ctypes(out),
         torch_to_ctypes(inp_fp16),
         torch_to_ctypes(identity_neg),
-        n,
+        batch_size,
         log2_blocksize,
     )
     torch.npu.synchronize()
@@ -113,8 +114,8 @@ def check_case(
     ftol: float,
     blockdiag_size=16,
 ):
-    block_dim_x_list = [1, 3, 7, 16]
-    block_dim_y_list = [1, 2, 4, 16]
+    block_dim_x_list = [1, 3, 8, 16, 32]
+    block_dim_y_list = [1, 2, 4]
     failures = []
     passes = 0
     for block_dim_x in block_dim_x_list:

@@ -64,13 +64,20 @@ def build_kernel(matrix_size: int):
             c1 = const(1)
             n_c = const(matrix_size)
 
-            _ = matrix_size_i32  # kept for ABI compatibility
+            batch_size = s.index_cast(matrix_size_i32)
             log2_blocksize = s.index_cast(log2_blocksize_i32)
             block_idx = s.index_cast(pto.get_block_idx())
-            num_blocks = s.index_cast(pto.get_block_num())
+            num_cores = s.index_cast(pto.get_block_num())
+            total_rows = batch_size * n_c
 
-            total_rows = num_blocks * n_c
-            row_offset = block_idx * n_c
+            # Persistent-kernel work split: base + remainder.
+            base = batch_size // num_cores
+            rem = batch_size % num_cores
+            lt_rem = s.lt(block_idx, rem)
+            min_bid_rem = s.min_u(block_idx, rem)
+            b_start = block_idx * base + min_bid_rem
+            length = base + s.select(lt_rem, c1, c0)
+            b_end = s.min_u(b_start + length, batch_size)
 
             tv_m = pto.as_tensor(
                 in_tensor_type, ptr=in_ptr, shape=[total_rows, n_c], strides=[n_c, c1]
@@ -82,14 +89,8 @@ def build_kernel(matrix_size: int):
                 in_tensor_type, ptr=i_neg_ptr, shape=[n_c, n_c], strides=[n_c, c1]
             )
 
-            sv_m = pto.slice_view(
-                in_subtensor, source=tv_m, offsets=[row_offset, c0], sizes=[n_c, n_c]
-            )
             sv_i_neg = pto.slice_view(
                 in_subtensor, source=tv_i_neg, offsets=[c0, c0], sizes=[n_c, n_c]
-            )
-            sv_out = pto.slice_view(
-                out_subtensor, source=tv_out, offsets=[row_offset, c0], sizes=[n_c, n_c]
             )
 
             x_l1 = pto.alloc_tile(l1_tile_type)
@@ -99,43 +100,52 @@ def build_kernel(matrix_size: int):
             b_l0 = pto.alloc_tile(l0b_tile_type)
             c_l0 = pto.alloc_tile(l0c_tile_type)
 
-            # in_ptr carries A = M - I, where M is the dense matrix to invert.
-            pto.load(sv_m, y_l1)
-            pto.load(sv_i_neg, x_l1)
+            for b_idx in pto.range(b_start, b_end, c1):
+                row_offset = b_idx * n_c
+                sv_m = pto.slice_view(
+                    in_subtensor, source=tv_m, offsets=[row_offset, c0], sizes=[n_c, n_c]
+                )
+                sv_out = pto.slice_view(
+                    out_subtensor, source=tv_out, offsets=[row_offset, c0], sizes=[n_c, n_c]
+                )
 
-            tile.mov(y_l1, a_l0)
-            tile.mov(y_l1, b_l0)
-            tile.matmul(a_l0, b_l0, c_l0)
-            tile.mov(c_l0, y_l1)  # y = A @ A
+                # in_ptr carries A = M - I, where M is the dense matrix to invert.
+                pto.load(sv_m, y_l1)
+                pto.load(sv_i_neg, x_l1)
 
-            tile.mov(x_l1, b_l0)
-            tile.matmul(a_l0, b_l0, c_l0)  # c = -A
-
-            tile.mov(x_l1, a_l0)
-            tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)  # c = I - A
-            tile.mov(c_l0, x_l1)  # x = I - A
-
-            tile.matmul(a_l0, b_l0, c_l0)
-            tile.mov(c_l0, i_l1)  # i = I
-
-            # Mirrors:
-            # for i in range(log2_c - 1):
-            #     X, Y = (X + X @ Y, Y @ Y)
-            for iter_idx in pto.range(c0, log2_blocksize, c1):
-                tile.mov(x_l1, a_l0)
-                tile.mov(i_l1, b_l0)
-                tile.matmul(a_l0, b_l0, c_l0)
-
+                tile.mov(y_l1, a_l0)
                 tile.mov(y_l1, b_l0)
-                tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)  # x + x @ y
+                tile.matmul(a_l0, b_l0, c_l0)
+                tile.mov(c_l0, y_l1)  # y = A @ A
 
-                with pto.if_context(iter_idx + c1 < log2_blocksize):
-                    tile.mov(c_l0, x_l1)
-                    tile.mov(y_l1, a_l0)
+                tile.mov(x_l1, b_l0)
+                tile.matmul(a_l0, b_l0, c_l0)  # c = -A
+
+                tile.mov(x_l1, a_l0)
+                tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)  # c = I - A
+                tile.mov(c_l0, x_l1)  # x = I - A
+
+                tile.matmul(a_l0, b_l0, c_l0)
+                tile.mov(c_l0, i_l1)  # i = I
+
+                # Mirrors:
+                # for i in range(log2_c - 1):
+                #     X, Y = (X + X @ Y, Y @ Y)
+                for iter_idx in pto.range(c0, log2_blocksize, c1):
+                    tile.mov(x_l1, a_l0)
+                    tile.mov(i_l1, b_l0)
                     tile.matmul(a_l0, b_l0, c_l0)
-                    tile.mov(c_l0, y_l1)  # y = y @ y
 
-            pto.store(c_l0, sv_out)
+                    tile.mov(y_l1, b_l0)
+                    tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)  # x + x @ y
+
+                    with pto.if_context(iter_idx + c1 < log2_blocksize):
+                        tile.mov(c_l0, x_l1)
+                        tile.mov(y_l1, a_l0)
+                        tile.matmul(a_l0, b_l0, c_l0)
+                        tile.mov(c_l0, y_l1)  # y = y @ y
+
+                pto.store(c_l0, sv_out)
 
     return tri_inv_trick_fp16
 
