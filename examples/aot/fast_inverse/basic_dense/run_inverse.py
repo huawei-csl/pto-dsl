@@ -102,9 +102,8 @@ def check_case(lib, n, batch, atol, rtol, ftol):
     return msg
 
 
-def run_test(lib, n):
+def run_test(lib, n, batch_list):
     failures = []
-    batch_list = [1, 8, 24, 27, 48, 96, 99, 135]
     for batch in batch_list:
         failure = check_case(
             lib,
@@ -159,6 +158,9 @@ if __name__ == "__main__":
 
     device = get_test_device()
     torch.npu.set_device(device)
+    single_batch_list = [1, 8, 24, 27, 48, 96, 99, 135]
+    # The double-buffer kernel pipelines work in batch pairs.
+    double_batch_list = [2, 8, 24, 28, 48, 96, 100, 136]
 
     single_failures = []
     double_failures = []
@@ -166,12 +168,16 @@ if __name__ == "__main__":
     if args.variant in ("single", "both"):
         print(f"\n=== validating single buffer: {args.lib_path} ===")
         single_lib = load_lib(args.lib_path)
-        single_failures = run_test(single_lib, n=args.matrix_size)
+        single_failures = run_test(
+            single_lib, n=args.matrix_size, batch_list=single_batch_list
+        )
 
     if args.variant in ("double", "both"):
         print(f"\n=== validating double buffer: {args.double_lib_path} ===")
         double_lib = load_lib(args.double_lib_path)
-        double_failures = run_test(double_lib, n=args.matrix_size)
+        double_failures = run_test(
+            double_lib, n=args.matrix_size, batch_list=double_batch_list
+        )
 
     if args.variant == "both":
         print(

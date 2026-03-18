@@ -102,6 +102,11 @@ def build_single_buffer_kernel(matrix_size: int):
             c_l0 = pto.alloc_tile(l0c_tile_type)
 
             pto.load(sv_i_neg, i_neg_l1)
+            # I = (-I) @ (-I) is batch-invariant, so compute it once.
+            tile.mov(i_neg_l1, a_l0)
+            tile.mov(i_neg_l1, b_l0)
+            tile.matmul(a_l0, b_l0, c_l0)
+            tile.mov(c_l0, i_l1)
 
             for b_idx in pto.range(b_start, b_end, c1):
                 row_offset = b_idx * n_c
@@ -127,9 +132,6 @@ def build_single_buffer_kernel(matrix_size: int):
                 tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)  # c = I - A
                 tile.mov(c_l0, x_l1)  # x = I - A
 
-                tile.matmul(a_l0, b_l0, c_l0)
-                tile.mov(c_l0, i_l1)  # i = I
-
                 # Mirrors:
                 # for i in range(log2_c - 1):
                 #     X, Y = (X + X @ Y, Y @ Y)
@@ -153,6 +155,8 @@ def build_single_buffer_kernel(matrix_size: int):
 
 
 def build_double_buffer_kernel(matrix_size: int):
+    log2_steps = matrix_size.bit_length() - 1
+
     @to_ir_module(meta_data=make_meta_data(matrix_size))
     def tri_inv_trick_fp16(
         out_ptr: "out_ptr_type",
@@ -168,19 +172,19 @@ def build_double_buffer_kernel(matrix_size: int):
             n_c = const(matrix_size)
 
             batch_size = s.index_cast(matrix_size_i32)
-            log2_blocksize = s.index_cast(log2_blocksize_i32)
             block_idx = s.index_cast(pto.get_block_idx())
             num_cores = s.index_cast(pto.get_block_num())
+            pair_count = batch_size // c2
             total_rows = batch_size * n_c
 
-            # Persistent-kernel work split: base + remainder.
-            base = batch_size // num_cores
-            rem = batch_size % num_cores
+            # Persistent-kernel work split over batch pairs.
+            base = pair_count // num_cores
+            rem = pair_count % num_cores
             lt_rem = s.lt(block_idx, rem)
             min_bid_rem = s.min_u(block_idx, rem)
-            b_start = block_idx * base + min_bid_rem
+            pair_start = block_idx * base + min_bid_rem
             length = base + s.select(lt_rem, c1, c0)
-            b_end = s.min_u(b_start + length, batch_size)
+            pair_end = s.min_u(pair_start + length, pair_count)
 
             tv_m = pto.as_tensor(
                 in_tensor_type, ptr=in_ptr, shape=[total_rows, n_c], strides=[n_c, c1]
@@ -211,59 +215,73 @@ def build_double_buffer_kernel(matrix_size: int):
 
             pto.load(sv_i_neg, i_neg_l1)
 
-            for b_idx in pto.range(b_start, b_end, c1):
-                row_offset = b_idx * n_c
-                sv_m = pto.slice_view(
+            def make_in_view(row_offset):
+                return pto.slice_view(
                     in_subtensor, source=tv_m, offsets=[row_offset, c0], sizes=[n_c, n_c]
                 )
-                sv_out = pto.slice_view(
+
+            def make_out_view(row_offset):
+                return pto.slice_view(
                     out_subtensor, source=tv_out, offsets=[row_offset, c0], sizes=[n_c, n_c]
                 )
 
+            def run_batch(slot, sv_out):
                 # in_ptr carries A = M - I, where M is the dense matrix to invert.
-                pto.load(sv_m, y_l1[0])
+                tile.mov(y_l1[slot], a_l0[slot])
+                tile.mov(y_l1[slot], b_l0[slot])
+                tile.matmul(a_l0[slot], b_l0[slot], c_l0)
+                tile.mov(c_l0, y_l1[slot])  # y = A @ A
 
-                # Bootstrap from ping buffer 0.
-                tile.mov(y_l1[0], a_l0[0])
-                tile.mov(y_l1[0], b_l0[0])
-                tile.matmul(a_l0[0], b_l0[0], c_l0)
-                tile.mov(c_l0, y_l1[0])  # y = A @ A
+                tile.mov(i_neg_l1, b_l0[slot])
+                tile.matmul(a_l0[slot], b_l0[slot], c_l0)  # c = -A
 
-                tile.mov(i_neg_l1, b_l0[0])
-                tile.matmul(a_l0[0], b_l0[0], c_l0)  # c = -A
+                tile.mov(i_neg_l1, a_l0[slot])
+                tile.matmul_acc(c_l0, a_l0[slot], b_l0[slot], c_l0)  # c = I - A
+                tile.mov(c_l0, x_l1[slot])  # x = I - A
 
-                tile.mov(i_neg_l1, a_l0[0])
-                tile.matmul_acc(c_l0, a_l0[0], b_l0[0], c_l0)  # c = I - A
-                tile.mov(c_l0, x_l1[0])  # x = I - A
+                # Static unrolling keeps the per-slot recurrence simple.
+                for iter_idx in range(log2_steps):
+                    tile.mov(x_l1[slot], a_l0[slot])
+                    tile.mov(i_l1, b_l0[slot])
+                    tile.matmul(a_l0[slot], b_l0[slot], c_l0)
 
-                tile.matmul(a_l0[0], b_l0[0], c_l0)
-                tile.mov(c_l0, i_l1)  # i = I
+                    tile.mov(y_l1[slot], b_l0[slot])
+                    tile.matmul_acc(c_l0, a_l0[slot], b_l0[slot], c_l0)  # x + x @ y
 
-                # Mirrors:
-                # for i in range(log2_c - 1):
-                #     X, Y = (X + X @ Y, Y @ Y)
-                for iter_idx in pto.range(c0, log2_blocksize, c1):
-                    def run_iter(curr: int, nxt: int):
-                        tile.mov(x_l1[curr], a_l0[curr])
-                        tile.mov(i_l1, b_l0[curr])
-                        tile.matmul(a_l0[curr], b_l0[curr], c_l0)
-
-                        tile.mov(y_l1[curr], b_l0[curr])
-                        tile.matmul_acc(c_l0, a_l0[curr], b_l0[curr], c_l0)  # x + x @ y
-
-                        with pto.if_context(iter_idx + c1 < log2_blocksize):
-                            tile.mov(c_l0, x_l1[nxt])
-                            tile.mov(y_l1[curr], a_l0[curr])
-                            tile.matmul(a_l0[curr], b_l0[curr], c_l0)
-                            tile.mov(c_l0, y_l1[nxt])  # y = y @ y
-
-                    is_curr0 = (iter_idx % c2) == c0
-                    with pto.if_context(is_curr0, has_else=True) as branch:
-                        run_iter(0, 1)
-                    with branch.else_context():
-                        run_iter(1, 0)
+                    if iter_idx + 1 < log2_steps:
+                        tile.mov(c_l0, x_l1[slot])
+                        tile.mov(y_l1[slot], a_l0[slot])
+                        tile.matmul(a_l0[slot], b_l0[slot], c_l0)
+                        tile.mov(c_l0, y_l1[slot])  # y = y @ y
 
                 pto.store(c_l0, sv_out)
+
+            # I = (-I) @ (-I) is batch-invariant, so compute it once.
+            tile.mov(i_neg_l1, a_l0[0])
+            tile.mov(i_neg_l1, b_l0[0])
+            tile.matmul(a_l0[0], b_l0[0], c_l0)
+            tile.mov(c_l0, i_l1)
+
+            # This pipeline assumes the runtime batch size is even.
+            with pto.if_context(pair_start < pair_end):
+                first_pair_row_offset = pair_start * c2 * n_c
+                pto.load(make_in_view(first_pair_row_offset), y_l1[0])
+
+                for pair_idx in pto.range(pair_start, pair_end, c1):
+                    pair_row_offset = pair_idx * c2 * n_c
+                    sv_out0 = make_out_view(pair_row_offset)
+                    sv_out1 = make_out_view(pair_row_offset + n_c)
+
+                    # Preload the second matrix of the current pair before slot 0 compute.
+                    pto.load(make_in_view(pair_row_offset + n_c), y_l1[1])
+                    run_batch(0, sv_out0)
+
+                    # While slot 1 computes, slot 0 already holds the next pair's first matrix.
+                    with pto.if_context(pair_idx + c1 < pair_end):
+                        next_pair_row_offset = (pair_idx + c1) * c2 * n_c
+                        pto.load(make_in_view(next_pair_row_offset), y_l1[0])
+
+                    run_batch(1, sv_out1)
 
     return tri_inv_trick_fp16
 
