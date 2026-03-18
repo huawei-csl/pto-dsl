@@ -1,0 +1,184 @@
+import argparse
+import ctypes
+import math
+import random
+import warnings
+
+import numpy as np
+import torch
+import torch_npu  # noqa: F401
+
+from ptodsl.test_util import get_test_device
+
+random.seed(42)
+torch.manual_seed(42)
+np.random.seed(42)
+
+SUPPORTED_MATRIX_SIZES = (16, 32, 64, 128)
+
+
+def torch_to_ctypes(tensor):
+    return ctypes.c_void_p(tensor.data_ptr())
+
+
+def load_lib(lib_path):
+    lib = ctypes.CDLL(lib_path)
+    lib.call_kernel.argtypes = [
+        ctypes.c_uint32,  # blockDim (batch)
+        ctypes.c_void_p,  # stream
+        ctypes.c_void_p,  # out
+        ctypes.c_void_p,  # in_delta
+        ctypes.c_void_p,  # identity_neg_half
+        ctypes.c_uint32,  # matrix_size
+        ctypes.c_uint32,  # log2(matrix_size)
+    ]
+    lib.call_kernel.restype = None
+    return lib
+
+
+def ill_matrix(n, batch, offdiag=0.5):
+    out = np.zeros((batch, n, n), dtype=np.float32)
+    for b in range(batch):
+        out[b] = offdiag * np.tril(np.ones((n, n), dtype=np.float32), k=-1)
+    return torch.from_numpy(out)
+
+
+def structured_random_matrix(n, batch, scale=0.1):
+    h = n // 2
+    out = np.zeros((batch, n, n), dtype=np.float32)
+    for b in range(batch):
+        a11 = scale * np.tril(np.random.uniform(-1.0, 1.0, size=(h, h)).astype(np.float32), k=-1)
+        a22 = scale * np.tril(np.random.uniform(-1.0, 1.0, size=(h, h)).astype(np.float32), k=-1)
+        a21 = scale * np.random.uniform(-1.0, 1.0, size=(h, h)).astype(np.float32)
+        out[b, :h, :h] = a11
+        out[b, h:, h:] = a22
+        out[b, h:, :h] = a21
+    return torch.from_numpy(out)
+
+
+def run_kernel(lib, inp_delta):
+    inp_fp16 = inp_delta.to(torch.float16).contiguous()
+    n = int(inp_fp16.shape[-1])
+    batch = int(inp_fp16.shape[0])
+    h = n // 2
+    log2_blocksize = int(math.log2(n))
+
+    identity_neg_half = torch.zeros((h, h), dtype=torch.float16, device=inp_fp16.device)
+    identity_neg_half.fill_diagonal_(-1)
+    out = torch.zeros((batch, n, n), dtype=torch.float32, device=inp_fp16.device)
+
+    stream_ptr = torch.npu.current_stream()._as_parameter_
+    lib.call_kernel(
+        batch,
+        stream_ptr,
+        torch_to_ctypes(out),
+        torch_to_ctypes(inp_fp16),
+        torch_to_ctypes(identity_neg_half),
+        n,
+        log2_blocksize,
+    )
+    torch.npu.synchronize()
+    return out
+
+
+def reference_inverse(inp_delta):
+    n = inp_delta.shape[-1]
+    identity = np.eye(n, dtype=np.float64)
+    inp_cpu = inp_delta.cpu().numpy().astype(np.float64)
+    return torch.from_numpy(np.linalg.inv(inp_cpu + identity))
+
+
+def check_case(lib, matrix_gen, n, batch, atol, rtol, ftol):
+    inp_delta = matrix_gen(n=n, batch=batch).to(device)
+    ref = reference_inverse(inp_delta).to(torch.float64)
+    out = run_kernel(lib, inp_delta).cpu().to(torch.float64)
+
+    frob_error = torch.sqrt(torch.sum((ref - out) ** 2) / torch.sum(ref**2))
+    allclose_ok = np.allclose(out.numpy(), ref.numpy(), atol=atol, rtol=rtol)
+    frob_ok = bool(frob_error <= ftol)
+
+    nan_count = int(torch.isnan(out).sum().item())
+    inf_count = int(torch.isinf(out).sum().item())
+
+    if allclose_ok and frob_ok:
+        print(f"[pass] n={n}, batch={batch}, frob={float(frob_error):.3e}")
+        return None
+
+    msg = (
+        f"[fail] n={n}, batch={batch}, frob={float(frob_error):.3e}, "
+        f"nan={nan_count}, inf={inf_count}"
+    )
+    print(msg)
+    return msg
+
+
+def report_precision_like_note(lib, n):
+    inp_delta = ill_matrix(n=n, batch=1, offdiag=0.5).to(device)
+    ref = reference_inverse(inp_delta).cpu().to(torch.float64)
+    out = run_kernel(lib, inp_delta).cpu().to(torch.float64)
+    error = torch.linalg.norm(out - ref).item()
+    print(f"c={n} | error = {error:.3e}")
+
+
+def run_test(lib, n):
+    failures = []
+
+    for batch in [1, 4, 16]:
+        failure = check_case(
+            lib,
+            matrix_gen=structured_random_matrix,
+            n=n,
+            batch=batch,
+            atol=5e-3,
+            rtol=8e-2,
+            ftol=7e-3,
+        )
+        if failure is not None:
+            failures.append(failure)
+
+    for batch in [1, 4]:
+        failure = check_case(
+            lib,
+            matrix_gen=ill_matrix,
+            n=n,
+            batch=batch,
+            atol=1.5e-2,
+            rtol=1.5e-1,
+            ftol=2.5e-2,
+        )
+        if failure is not None:
+            failures.append(failure)
+
+    print(f"summary: n={n}, pass={5 - len(failures)}, fail={len(failures)}, total=5")
+    report_precision_like_note(lib, n)
+
+    if failures:
+        warnings.warn(
+            f"{len(failures)} cases failed. First: {failures[0]}",
+            stacklevel=2,
+        )
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--matrix-size",
+        type=int,
+        choices=SUPPORTED_MATRIX_SIZES,
+        default=64,
+        help="Only validate this matrix size n.",
+    )
+    parser.add_argument(
+        "--lib-path",
+        type=str,
+        default="./inverse_lib.so",
+        help="Shared library path produced by compile.sh.",
+    )
+    args = parser.parse_args()
+
+    device = get_test_device()
+    torch.npu.set_device(device)
+
+    kernel_lib = load_lib(args.lib_path)
+    run_test(kernel_lib, n=args.matrix_size)
+    print(f"Finished tests for n={args.matrix_size} with {args.lib_path}.")
