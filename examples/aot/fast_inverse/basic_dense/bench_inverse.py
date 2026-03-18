@@ -20,7 +20,7 @@ torch.manual_seed(42)
 np.random.seed(42)
 
 SUPPORTED_MATRIX_SIZES = (16, 32, 64, 128)
-DEFAULT_BATCH_SIZES = [2**k for k in range(4, 13)]  # 16, 32, ..., 4096
+DEFAULT_BATCH_SIZES = [2**k for k in range(4, 16)]  # 16, 32, ..., 32768
 try:
     PERSISTENT_BLOCK_DIM = int(torch.npu.get_device_properties("npu").cube_core_num)
 except Exception:
@@ -79,7 +79,7 @@ def run_benchmark(
 ):
     log2_blocksize = int(math.log2(matrix_size))
     stream_ptr = torch.npu.current_stream()._as_parameter_
-    bandwidth_mib_s = []
+    bandwidth_gib_s = []
 
     for batch in batch_sizes:
         inp = dense_stable_matrix(n=matrix_size, batch=batch).to(device)
@@ -104,26 +104,26 @@ def run_benchmark(
 
         avg_s = benchmark_kernel_seconds(launch_only, warmup=warmup, iters=iters)
         io_bytes = inverse_io_bytes(in_delta, out)
-        total_traffic_mib = io_bytes / (1024**2)
-        mib_s = io_bytes / avg_s / (1024**2)
-        bandwidth_mib_s.append(mib_s)
+        total_traffic_gib = io_bytes / (1024**3)
+        gib_s = io_bytes / avg_s / (1024**3)
+        bandwidth_gib_s.append(gib_s)
         print(
-            f"batch={batch:4d} | {avg_s * 1e3:.3f} ms | {mib_s:.2f} MiB/s | "
-            f"traffic={total_traffic_mib:.2f} MiB"
+            f"batch={batch:5d} | {avg_s * 1e3:.3f} ms | {gib_s:.2f} GiB/s | "
+            f"traffic={total_traffic_gib:.4f} GiB"
         )
 
-    return bandwidth_mib_s
+    return bandwidth_gib_s
 
 
-def plot_results(batch_sizes: list[int], bandwidth_mib_s: list[float], out_png: str, n: int) -> None:
+def plot_results(batch_sizes: list[int], bandwidth_gib_s: list[float], out_png: str, n: int) -> None:
     if plt is None:
         print("Warning: matplotlib is not installed; skipping plot generation.")
         return
 
     plt.figure(figsize=(8, 5))
-    plt.plot(batch_sizes, bandwidth_mib_s, "o-", label="inverse kernel")
+    plt.plot(batch_sizes, bandwidth_gib_s, "o-", label="inverse kernel")
     plt.xlabel("Batch size")
-    plt.ylabel("Bandwidth (MiB/s)")
+    plt.ylabel("Bandwidth (GiB/s)")
     plt.title(f"Fast Inverse Bandwidth vs Batch Size (n={n})")
     plt.xscale("log", base=2)
     plt.xticks(batch_sizes, [str(x) for x in batch_sizes])
