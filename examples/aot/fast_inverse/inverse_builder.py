@@ -8,51 +8,26 @@ const = s.const
 SUPPORTED_MATRIX_SIZES = (16, 32, 64, 96, 128)
 
 
-def make_meta_data(matrix_size: int):
+def make_meta_data(n: int):  # input matrix size
     def meta_data():
-        # Match the hand-written kernel:
-        # - MAT/LEFT/RIGHT tiles are fp16
-        # - ACC and global output are fp32
-        # This enables legal TMOV Acc(fp32) -> Mat(fp16) lowering.
         in_dtype = pto.float16
         out_dtype = pto.float32
         i32 = pto.int32
 
         in_ptr_type = pto.PtrType(in_dtype)
         out_ptr_type = pto.PtrType(out_dtype)
-
         in_tensor_type = pto.TensorType(rank=2, dtype=in_dtype)
         out_tensor_type = pto.TensorType(rank=2, dtype=out_dtype)
-        in_subtensor = pto.SubTensorType(
-            shape=[matrix_size, matrix_size], dtype=in_dtype
-        )
-        out_subtensor = pto.SubTensorType(
-            shape=[matrix_size, matrix_size], dtype=out_dtype
-        )
+        in_subtensor = pto.SubTensorType(shape=[n, n], dtype=in_dtype)
+        out_subtensor = pto.SubTensorType(shape=[n, n], dtype=out_dtype)
         l1_tile_type = pto.TileBufType(
-            shape=[matrix_size, matrix_size],
-            valid_shape=[matrix_size, matrix_size],
-            dtype=in_dtype,
-            memory_space="MAT",
-        )
+            shape=[n, n], valid_shape=[n, n], dtype=in_dtype, memory_space="MAT")
         l0a_tile_type = pto.TileBufType(
-            shape=[matrix_size, matrix_size],
-            valid_shape=[matrix_size, matrix_size],
-            dtype=in_dtype,
-            memory_space="LEFT",
-        )
+            shape=[n, n], valid_shape=[n, n], dtype=in_dtype, memory_space="LEFT")
         l0b_tile_type = pto.TileBufType(
-            shape=[matrix_size, matrix_size],
-            valid_shape=[matrix_size, matrix_size],
-            dtype=in_dtype,
-            memory_space="RIGHT",
-        )
+            shape=[n, n], valid_shape=[n, n], dtype=in_dtype, memory_space="RIGHT")
         l0c_tile_type = pto.TileBufType(
-            shape=[matrix_size, matrix_size],
-            valid_shape=[matrix_size, matrix_size],
-            dtype=out_dtype,
-            memory_space="ACC",
-        )
+            shape=[n, n], valid_shape=[n, n], dtype=out_dtype, memory_space="ACC")
 
         return {
             "in_ptr_type": in_ptr_type,
@@ -82,56 +57,32 @@ def build_kernel_autosync(matrix_size: int, kernel_name: str):
         with pto.cube_section():
             c0 = const(0)
             c1 = const(1)
-            matrix_size_c = const(matrix_size)
+            n_c = const(matrix_size)
 
             log2_blocksize = s.index_cast(log2_blocksize_i32)
             block_idx = s.index_cast(pto.get_block_idx())
             num_blocks = s.index_cast(pto.get_block_num())
 
-            total_rows = num_blocks * matrix_size_c
-            row_offset = block_idx * matrix_size_c
+            total_rows = num_blocks * n_c
+            row_offset = block_idx * n_c
 
             # Keep the runtime signature unchanged while emitting
             # compile-time-specialized tile/subtensor types.
             _ = matrix_size_i32
 
             tv_m = pto.as_tensor(
-                in_tensor_type,
-                ptr=in_ptr,
-                shape=[total_rows, matrix_size_c],
-                strides=[matrix_size_c, c1],
-            )
+                in_tensor_type, ptr=in_ptr, shape=[total_rows, n_c], strides=[n_c, c1])
             tv_out = pto.as_tensor(
-                out_tensor_type,
-                ptr=out_ptr,
-                shape=[total_rows, matrix_size_c],
-                strides=[matrix_size_c, c1],
-            )
+                out_tensor_type, ptr=out_ptr, shape=[total_rows, n_c], strides=[n_c, c1])
             tv_i_neg = pto.as_tensor(
-                in_tensor_type,
-                ptr=i_neg_ptr,
-                shape=[matrix_size_c, matrix_size_c],
-                strides=[matrix_size_c, c1],
-            )
+                in_tensor_type, ptr=i_neg_ptr, shape=[n_c, n_c], strides=[n_c, c1])
 
             sv_m = pto.slice_view(
-                in_subtensor,
-                source=tv_m,
-                offsets=[row_offset, c0],
-                sizes=[matrix_size_c, matrix_size_c],
-            )
+                in_subtensor, source=tv_m, offsets=[row_offset, c0], sizes=[n_c, n_c])
             sv_i_neg = pto.slice_view(
-                in_subtensor,
-                source=tv_i_neg,
-                offsets=[c0, c0],
-                sizes=[matrix_size_c, matrix_size_c],
-            )
+                in_subtensor, source=tv_i_neg, offsets=[c0, c0], sizes=[n_c, n_c])
             sv_out = pto.slice_view(
-                out_subtensor,
-                source=tv_out,
-                offsets=[row_offset, c0],
-                sizes=[matrix_size_c, matrix_size_c],
-            )
+                out_subtensor, source=tv_out, offsets=[row_offset, c0], sizes=[n_c, n_c])
 
             x_l1 = pto.alloc_tile(l1_tile_type)
             y_l1 = pto.alloc_tile(l1_tile_type)
@@ -144,7 +95,6 @@ def build_kernel_autosync(matrix_size: int, kernel_name: str):
             pto.load(sv_i_neg, x_l1)
 
             tile.mov(y_l1, a_l0)
-
             tile.mov(y_l1, b_l0)
 
             tile.matmul(a_l0, b_l0, c_l0)
@@ -195,56 +145,32 @@ def build_kernel_manualsync(matrix_size: int, kernel_name: str):
         with pto.cube_section():
             c0 = const(0)
             c1 = const(1)
-            matrix_size_c = const(matrix_size)
+            n_c = const(matrix_size)
 
             log2_blocksize = s.index_cast(log2_blocksize_i32)
             block_idx = s.index_cast(pto.get_block_idx())
             num_blocks = s.index_cast(pto.get_block_num())
 
-            total_rows = num_blocks * matrix_size_c
-            row_offset = block_idx * matrix_size_c
+            total_rows = num_blocks * n_c
+            row_offset = block_idx * n_c
 
             # Keep the runtime signature unchanged while emitting
             # compile-time-specialized tile/subtensor types.
             _ = matrix_size_i32
 
             tv_m = pto.as_tensor(
-                in_tensor_type,
-                ptr=in_ptr,
-                shape=[total_rows, matrix_size_c],
-                strides=[matrix_size_c, c1],
-            )
+                in_tensor_type, ptr=in_ptr, shape=[total_rows, n_c], strides=[n_c, c1])
             tv_out = pto.as_tensor(
-                out_tensor_type,
-                ptr=out_ptr,
-                shape=[total_rows, matrix_size_c],
-                strides=[matrix_size_c, c1],
-            )
+                out_tensor_type, ptr=out_ptr, shape=[total_rows, n_c], strides=[n_c, c1])
             tv_i_neg = pto.as_tensor(
-                in_tensor_type,
-                ptr=i_neg_ptr,
-                shape=[matrix_size_c, matrix_size_c],
-                strides=[matrix_size_c, c1],
-            )
+                in_tensor_type, ptr=i_neg_ptr, shape=[n_c, n_c], strides=[n_c, c1])
 
             sv_m = pto.slice_view(
-                in_subtensor,
-                source=tv_m,
-                offsets=[row_offset, c0],
-                sizes=[matrix_size_c, matrix_size_c],
-            )
+                in_subtensor, source=tv_m, offsets=[row_offset, c0], sizes=[n_c, n_c])
             sv_i_neg = pto.slice_view(
-                in_subtensor,
-                source=tv_i_neg,
-                offsets=[c0, c0],
-                sizes=[matrix_size_c, matrix_size_c],
-            )
+                in_subtensor, source=tv_i_neg, offsets=[c0, c0], sizes=[n_c, n_c])
             sv_out = pto.slice_view(
-                out_subtensor,
-                source=tv_out,
-                offsets=[row_offset, c0],
-                sizes=[matrix_size_c, matrix_size_c],
-            )
+                out_subtensor, source=tv_out, offsets=[row_offset, c0], sizes=[n_c, n_c])
 
             x_l1 = pto.alloc_tile(l1_tile_type)
             y_l1 = pto.alloc_tile(l1_tile_type)
