@@ -66,10 +66,6 @@ def build_kernel_autosync(matrix_size: int, kernel_name: str):
             total_rows = num_blocks * n_c
             row_offset = block_idx * n_c
 
-            # Keep the runtime signature unchanged while emitting
-            # compile-time-specialized tile/subtensor types.
-            _ = matrix_size_i32
-
             tv_m = pto.as_tensor(
                 in_tensor_type, ptr=in_ptr, shape=[total_rows, n_c], strides=[n_c, c1])
             tv_out = pto.as_tensor(
@@ -153,10 +149,6 @@ def build_kernel_manualsync(matrix_size: int, kernel_name: str):
 
             total_rows = num_blocks * n_c
             row_offset = block_idx * n_c
-
-            # Keep the runtime signature unchanged while emitting
-            # compile-time-specialized tile/subtensor types.
-            _ = matrix_size_i32
 
             tv_m = pto.as_tensor(
                 in_tensor_type, ptr=in_ptr, shape=[total_rows, n_c], strides=[n_c, c1])
