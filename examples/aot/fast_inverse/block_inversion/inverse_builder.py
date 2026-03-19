@@ -142,25 +142,23 @@ def build_kernel(matrix_size: int):
             c_l0 = pto.alloc_tile(l0c_tile_type)
 
             # Build +/- identity tiles for half-size blocks.
+            # Also seed x11 = x22 = I for the recurrence below.
             pto.load(sv_i_neg, neg_i_l1)
             tile.mov(neg_i_l1, a_l0)
             tile.mov(neg_i_l1, b_l0)
             tile.matmul(a_l0, b_l0, c_l0)
             tile.mov(c_l0, pos_i_l1)
+            tile.mov(c_l0, x11_l1)  # x11 = I
+            tile.mov(c_l0, x22_l1)  # x22 = I
 
-            # Invert (I + A11) with the fast recurrence.
+            # Invert (I + A11): start the recurrence with y11 = -A11, x11 = I.
+            # The loop then computes x_{k+1} = x_k(I + y_k), y_{k+1} = y_k^2
+            # which gives (I + A11)^{-1} after log2_half steps.
             pto.load(sv_a11, y11_l1)
             tile.mov(y11_l1, a_l0)
-            tile.mov(y11_l1, b_l0)
-            tile.matmul(a_l0, b_l0, c_l0)
-            tile.mov(c_l0, y11_l1)  # y = A11 @ A11
-
-            tile.mov(y11_l1, a_l0)
             tile.mov(neg_i_l1, b_l0)
-            tile.matmul(a_l0, b_l0, c_l0)  # -A11
-            tile.mov(neg_i_l1, a_l0)
-            tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)  # I - A11
-            tile.mov(c_l0, x11_l1)
+            tile.matmul(a_l0, b_l0, c_l0)  # c = -A11
+            tile.mov(c_l0, y11_l1)          # y11 = -A11
 
             for iter_idx in pto.range(c0, log2_half, c1):
                 tile.mov(x11_l1, a_l0)
@@ -179,19 +177,12 @@ def build_kernel(matrix_size: int):
             tile.mov(c_l0, x11_l1)
             pto.store(c_l0, sv_out11)
 
-            # Invert (I + A22) with the fast recurrence.
+            # Invert (I + A22): start with y22 = -A22, x22 = I (already set above).
             pto.load(sv_a22, y22_l1)
             tile.mov(y22_l1, a_l0)
-            tile.mov(y22_l1, b_l0)
-            tile.matmul(a_l0, b_l0, c_l0)
-            tile.mov(c_l0, y22_l1)  # y = A22 @ A22
-
-            tile.mov(y22_l1, a_l0)
             tile.mov(neg_i_l1, b_l0)
-            tile.matmul(a_l0, b_l0, c_l0)  # -A22
-            tile.mov(neg_i_l1, a_l0)
-            tile.matmul_acc(c_l0, a_l0, b_l0, c_l0)  # I - A22
-            tile.mov(c_l0, x22_l1)
+            tile.matmul(a_l0, b_l0, c_l0)  # c = -A22
+            tile.mov(c_l0, y22_l1)          # y22 = -A22
 
             for iter_idx in pto.range(c0, log2_half, c1):
                 tile.mov(x22_l1, a_l0)
