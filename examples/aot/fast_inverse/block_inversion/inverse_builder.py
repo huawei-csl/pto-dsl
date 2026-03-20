@@ -157,8 +157,12 @@ def build_kernel(matrix_size: int):
                     sizes=[h_c, h_c],
                 )
 
-                tile.mov(pos_i_l1, x11_l1)  # x11 = I
-                tile.mov(pos_i_l1, x22_l1)  # x22 = I
+                # Reset x11/x22 to identity for each batch item using supported routes.
+                tile.mov(pos_i_l1, a_l0)
+                tile.mov(pos_i_l1, b_l0)
+                tile.matmul(a_l0, b_l0, c_l0)
+                tile.mov(c_l0, x11_l1)  # x11 = I
+                tile.mov(c_l0, x22_l1)  # x22 = I
 
                 # Invert (I + A11): start the recurrence with y11 = -A11, x11 = I.
                 # The loop then computes x_{k+1} = x_k(I + y_k), y_{k+1} = y_k^2
