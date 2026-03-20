@@ -133,6 +133,13 @@ def main() -> int:
     found = len(example_list)
     results: list[dict[str, str]] = []
 
+    def display_path(path: Path) -> str:
+        try:
+            return str(path.relative_to(repo_root))
+        except ValueError:
+            # In CI we may intentionally write outside repo root (e.g. /tmp).
+            return str(path)
+
     for idx, example in enumerate(example_list, start=1):
         rel_dir = Path(str(example["example_dir"]))
         example_dir = aot_dir / rel_dir
@@ -260,7 +267,7 @@ def main() -> int:
             {
                 "name": example_name,
                 "status": "OK",
-                "reason": f"collected to {dst.relative_to(repo_root)}",
+                "reason": f"collected to {display_path(dst)}",
             }
         )
 
