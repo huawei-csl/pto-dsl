@@ -15,14 +15,9 @@ torch.manual_seed(42)
 np.random.seed(42)
 
 SUPPORTED_MATRIX_SIZES = (16, 32, 64, 128)
-try:
-    PERSISTENT_BLOCK_DIM = int(torch.npu.get_device_properties("npu").cube_core_num)
-except Exception:
-    PERSISTENT_BLOCK_DIM = 24
-
-UNIFORM_ATOL = 1.5e-1
-UNIFORM_RTOL = 1.5e-1
-UNIFORM_FTOL = 2.5e-1  # TODO: seems too big
+UNIFORM_ATOL = 1e-3
+UNIFORM_RTOL = 1e-3
+UNIFORM_FTOL = 1e-3
 
 
 def torch_to_ctypes(tensor):
@@ -69,10 +64,10 @@ def structured_scale_by_n(n):
     # medium sizes are very accurate, while the hardest ill-conditioned cases
     # degrade only at larger n.
     return {
-        16: 0.10,
-        32: 0.08,
-        64: 0.05,
-        128: 0.03,
+        16: 0.2,
+        32: 0.15,
+        64: 0.1,
+        128: 0.05,
     }[n]
 
 
@@ -80,9 +75,9 @@ def ill_offdiag_for_tests(n):
     # Use a smaller scale for bigger sizes.
     return {
         16: 0.2,
-        32: 0.1,
-        64: 0.05,
-        128: 0.02,
+        32: 0.15,
+        64: 0.1,
+        128: 0.05,
     }[n]
 
 
