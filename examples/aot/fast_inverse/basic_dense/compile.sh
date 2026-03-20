@@ -8,13 +8,10 @@ if [[ $# -gt 1 ]]; then
     exit 1
 fi
 
-BUILDER_ARGS=(--matrix-size "${MATRIX_SIZE}")
-
 mkdir -p "${ARTIFACT_DIR}"
 rm -f "${ARTIFACT_DIR}/inverse.pto" "${ARTIFACT_DIR}/inverse.cpp" "inverse_lib.so"
 
-python ./inverse_builder.py "${BUILDER_ARGS[@]}" > "${ARTIFACT_DIR}/inverse.pto"
-
+python ./inverse_builder.py --matrix-size "${MATRIX_SIZE}" > "${ARTIFACT_DIR}/inverse.pto"
 ptoas --enable-insert-sync "${ARTIFACT_DIR}/inverse.pto" -o "${ARTIFACT_DIR}/inverse.cpp"
 
 PTO_LIB_PATH=/sources/pto-isa
