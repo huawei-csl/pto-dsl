@@ -72,31 +72,31 @@
     "cpp_file": "hadamard_manual_sync.cpp"
   },
   {
-    "example_dir": "fast_inverse",
+    "example_dir": "fast_inverse/basic_dense",
     "compile_script": "compile.sh",
     "py_source": "inverse_builder.py",
-    "py_command": "python ./inverse_builder.py --matrix-size 16 --kernel-name tri_inv_trick_fp16_16 > ./inverse_auto_sync_16.pto",
-    "ptoas_command": "ptoas --enable-insert-sync ./inverse_auto_sync_16.pto -o ./inverse_auto_sync_16.cpp",
-    "pto_file": "inverse_auto_sync_16.pto",
-    "cpp_file": "inverse_auto_sync_16.cpp"
+    "py_command": "python ./inverse_builder.py --matrix-size 64 > ./inverse_basic_dense_64.pto",
+    "ptoas_command": "ptoas --enable-insert-sync ./inverse_basic_dense_64.pto -o ./inverse_basic_dense_64.cpp",
+    "pto_file": "inverse_basic_dense_64.pto",
+    "cpp_file": "inverse_basic_dense_64.cpp"
   },
   {
-    "example_dir": "fast_inverse",
+    "example_dir": "fast_inverse/block_inversion",
     "compile_script": "compile.sh",
     "py_source": "inverse_builder.py",
-    "py_command": "python ./inverse_builder.py --manual-sync --matrix-size 16 --kernel-name tri_inv_trick_fp16_16 > ./inverse_manual_sync_16.pto",
-    "ptoas_command": "ptoas ./inverse_manual_sync_16.pto -o ./inverse_manual_sync_16.cpp",
-    "pto_file": "inverse_manual_sync_16.pto",
-    "cpp_file": "inverse_manual_sync_16.cpp"
+    "py_command": "python ./inverse_builder.py --matrix-size 64 > ./inverse_block_inversion_64.pto",
+    "ptoas_command": "ptoas --enable-insert-sync ./inverse_block_inversion_64.pto -o ./inverse_block_inversion_64.cpp",
+    "pto_file": "inverse_block_inversion_64.pto",
+    "cpp_file": "inverse_block_inversion_64.cpp"
   },
   {
-    "example_dir": "fast_inverse",
+    "example_dir": "fast_inverse/basic_dense",
     "compile_script": "compile.sh",
     "py_source": "inverse_builder.py",
-    "py_command": "python ./inverse_builder.py --matrix-size 128 --kernel-name tri_inv_trick_fp16_128 > ./inverse_auto_sync_128.pto",
-    "ptoas_command": "ptoas --enable-insert-sync ./inverse_auto_sync_128.pto -o ./inverse_auto_sync_128.cpp",
-    "pto_file": "inverse_auto_sync_128.pto",
-    "cpp_file": "inverse_auto_sync_128.cpp"
+    "py_command": "python ./inverse_builder.py --matrix-size 128 > ./inverse_basic_dense_128.pto",
+    "ptoas_command": "ptoas --enable-insert-sync ./inverse_basic_dense_128.pto -o ./inverse_basic_dense_128.cpp",
+    "pto_file": "inverse_basic_dense_128.pto",
+    "cpp_file": "inverse_basic_dense_128.cpp"
   },
   {
     "example_dir": "matmul_optimization_guide",
