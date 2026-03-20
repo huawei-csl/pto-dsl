@@ -2,18 +2,13 @@
 bash compile.sh 64   # build -> inverse_lib.so
 
 # Validate correctness
-python run_inverse.py \
-  --matrix-size 64 \
-  --lib-path ./inverse_lib.so
+python run_inverse.py --matrix-size 64
 
 # Another matrix size
-python run_inverse.py --matrix-size 128 --lib-path ./inverse_lib.so
+python run_inverse.py --matrix-size 128
 
 # Measure effective bandwidth
-python bench_inverse.py \
-  --matrix-size 64 \
-  --lib-path ./inverse_lib.so \
-  --out-png bench_inverse_bandwidth.png
+python bench_inverse.py --matrix-size 64 --out-png bench_inverse_bandwidth.png
 ```
 
 `bench_inverse.py` reports and plots bandwidth using only:
