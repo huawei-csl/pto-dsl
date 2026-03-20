@@ -140,8 +140,10 @@ def run_test(lib, n):
     structured_scale = structured_scale_by_n(n)
     ill_offdiag = ill_offdiag_for_tests(n)
     atol, rtol, ftol = UNIFORM_ATOL, UNIFORM_RTOL, UNIFORM_FTOL
+    structured_batches = [1, 4, 16, 24, 27, 48, 96, 99, 135]
+    ill_batches = [1, 4, 27]
 
-    for batch in [1, 4, 16, 24, 27, 48, 96, 99, 135]:
+    for batch in structured_batches:
         failure = check_case(
             lib,
             matrix_gen=lambda n, batch: structured_random_matrix(
@@ -156,7 +158,7 @@ def run_test(lib, n):
         if failure is not None:
             failures.append(failure)
 
-    for batch in [1, 4, 27]:
+    for batch in ill_batches:
         failure = check_case(
             lib,
             matrix_gen=lambda n, batch: ill_matrix(n=n, batch=batch, offdiag=ill_offdiag),
@@ -169,7 +171,11 @@ def run_test(lib, n):
         if failure is not None:
             failures.append(failure)
 
-    print(f"summary: n={n}, pass={5 - len(failures)}, fail={len(failures)}, total=5")
+    total_cases = len(structured_batches) + len(ill_batches)
+    print(
+        f"summary: n={n}, pass={total_cases - len(failures)}, "
+        f"fail={len(failures)}, total={total_cases}"
+    )
 
     if failures:
         warnings.warn(
