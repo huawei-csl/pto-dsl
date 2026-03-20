@@ -2,7 +2,7 @@ This directory holds the 3rd-party repos that are used internally by PTO-DSL:
 - https://github.com/zhangstevenunity/PTOAS: implements "ptoas" command line tool, the PTO MLIR dialect and its Python bindings, and the InjectSync pass to insert set_flag/wait_flag for "auto-sync" mode. Important files are:
     - `PTOAS/include/PTO/IR/PTOOps.td` defines the MLIR PTO dialect
     - `PTOAS/python/pto/dialects/pto.py` has low-level Python wrappers of PTO MLIR python binding (more Pythonic wrappers are in pto-dsl package)
-    - `PTOAS/lib/PTO/Transforms/PTOToEmitC.cpp` the compile pass that converts `*.pto` IR to C++ source code based on PTO-ISA headers. 
+    - `PTOAS/lib/PTO/Transforms/PTOToEmitC.cpp` the compile pass that converts `*.pto` IR to C++ source code based on PTO-ISA headers.
 - https://gitcode.com/cann/pto-isa: header-only library that defined the C++ APIs of PTO-ISA. It is the target API set for the `PTOToEmitC` pass in PTOAS. Important files are:
     - `pto-isa/include/pto/common/pto_instr.hpp` the top-level interface
     - `pto-isa/include/pto/common/*` common type definitions
