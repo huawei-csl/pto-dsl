@@ -49,8 +49,12 @@ def structured_random_matrix(n, batch, scale=0.1):
     h = n // 2
     out = np.zeros((batch, n, n), dtype=np.float32)
     for b in range(batch):
-        a11 = scale * np.tril(np.random.uniform(-1.0, 1.0, size=(h, h)).astype(np.float32), k=-1)
-        a22 = scale * np.tril(np.random.uniform(-1.0, 1.0, size=(h, h)).astype(np.float32), k=-1)
+        a11 = scale * np.tril(
+            np.random.uniform(-1.0, 1.0, size=(h, h)).astype(np.float32), k=-1
+        )
+        a22 = scale * np.tril(
+            np.random.uniform(-1.0, 1.0, size=(h, h)).astype(np.float32), k=-1
+        )
         a21 = scale * np.random.uniform(-1.0, 1.0, size=(h, h)).astype(np.float32)
         out[b, :h, :h] = a11
         out[b, h:, h:] = a22
@@ -161,7 +165,9 @@ def run_test(lib, n):
     for batch in ill_batches:
         failure = check_case(
             lib,
-            matrix_gen=lambda n, batch: ill_matrix(n=n, batch=batch, offdiag=ill_offdiag),
+            matrix_gen=lambda n, batch: ill_matrix(
+                n=n, batch=batch, offdiag=ill_offdiag
+            ),
             n=n,
             batch=batch,
             atol=atol,

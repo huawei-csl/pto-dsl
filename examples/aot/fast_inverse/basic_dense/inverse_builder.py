@@ -111,10 +111,16 @@ def build_kernel(matrix_size: int):
             for b_idx in pto.range(b_start, b_end, c1):
                 row_offset = b_idx * n_c
                 sv_m = pto.slice_view(
-                    in_subtensor, source=tv_m, offsets=[row_offset, c0], sizes=[n_c, n_c]
+                    in_subtensor,
+                    source=tv_m,
+                    offsets=[row_offset, c0],
+                    sizes=[n_c, n_c],
                 )
                 sv_out = pto.slice_view(
-                    out_subtensor, source=tv_out, offsets=[row_offset, c0], sizes=[n_c, n_c]
+                    out_subtensor,
+                    source=tv_out,
+                    offsets=[row_offset, c0],
+                    sizes=[n_c, n_c],
                 )
 
                 # in_ptr carries A = M - I, where M is the dense matrix to invert.

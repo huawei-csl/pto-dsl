@@ -117,7 +117,9 @@ def run_test(lib, n, batch_list):
             failures.append(failure)
 
     total = len(batch_list)
-    print(f"summary: n={n}, pass={total - len(failures)}, fail={len(failures)}, total={total}")
+    print(
+        f"summary: n={n}, pass={total - len(failures)}, fail={len(failures)}, total={total}"
+    )
     if failures:
         warnings.warn(
             f"{len(failures)} cases failed. First: {failures[0]}",

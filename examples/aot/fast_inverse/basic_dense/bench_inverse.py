@@ -37,9 +37,9 @@ def _dtype_nbytes(dtype: torch.dtype) -> int:
 
 def inverse_io_bytes(in_delta: torch.Tensor, out: torch.Tensor) -> int:
     # Requested traffic model: read in_delta + write out only.
-    return in_delta.numel() * _dtype_nbytes(in_delta.dtype) + out.numel() * _dtype_nbytes(
-        out.dtype
-    )
+    return in_delta.numel() * _dtype_nbytes(
+        in_delta.dtype
+    ) + out.numel() * _dtype_nbytes(out.dtype)
 
 
 def load_lib(lib_path):
@@ -66,7 +66,9 @@ def dense_stable_matrix(n, batch, scale=0.02):
 
 def benchmark_kernel_seconds(kernel_launch_fn, warmup: int, iters: int) -> float:
     # Measure kernel launch only (preparation is done outside this function).
-    return do_bench(kernel_launch_fn, warmup_iters=warmup, benchmark_iters=iters, unit="s")
+    return do_bench(
+        kernel_launch_fn, warmup_iters=warmup, benchmark_iters=iters, unit="s"
+    )
 
 
 def run_benchmark(
