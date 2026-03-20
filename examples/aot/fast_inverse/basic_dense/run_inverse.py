@@ -139,52 +139,15 @@ if __name__ == "__main__":
         "--lib-path",
         type=str,
         default="./inverse_lib.so",
-        help="Single-buffer shared library path produced by compile.sh.",
-    )
-    parser.add_argument(
-        "--double-lib-path",
-        type=str,
-        default="./inverse_lib_db.so",
-        help="Double-buffer shared library path produced by compile.sh.",
-    )
-    parser.add_argument(
-        "--variant",
-        type=str,
-        choices=("single", "double", "both"),
-        default="both",
-        help="Which kernel variant(s) to validate.",
+        help="Shared library path produced by compile.sh.",
     )
     args = parser.parse_args()
 
     device = get_test_device()
     torch.npu.set_device(device)
-    single_batch_list = [1, 8, 24, 27, 48, 96, 99, 135]
-    # The double-buffer kernel pipelines work in batch pairs.
-    double_batch_list = [2, 8, 24, 28, 48, 96, 100, 136]
+    batch_list = [1, 8, 24, 27, 48, 96, 99, 135]
 
-    single_failures = []
-    double_failures = []
-
-    if args.variant in ("single", "both"):
-        print(f"\n=== validating single buffer: {args.lib_path} ===")
-        single_lib = load_lib(args.lib_path)
-        single_failures = run_test(
-            single_lib, n=args.matrix_size, batch_list=single_batch_list
-        )
-
-    if args.variant in ("double", "both"):
-        print(f"\n=== validating double buffer: {args.double_lib_path} ===")
-        double_lib = load_lib(args.double_lib_path)
-        double_failures = run_test(
-            double_lib, n=args.matrix_size, batch_list=double_batch_list
-        )
-
-    if args.variant == "both":
-        print(
-            "\ncomparison summary: "
-            f"single_fail={len(single_failures)}, double_fail={len(double_failures)}"
-        )
-    elif args.variant == "single":
-        print(f"\nfinished single-buffer tests for n={args.matrix_size}.")
-    else:
-        print(f"\nfinished double-buffer tests for n={args.matrix_size}.")
+    print(f"\n=== validating kernel: {args.lib_path} ===")
+    lib = load_lib(args.lib_path)
+    failures = run_test(lib, n=args.matrix_size, batch_list=batch_list)
+    print(f"\nfinished tests for n={args.matrix_size}, failures={len(failures)}.")
