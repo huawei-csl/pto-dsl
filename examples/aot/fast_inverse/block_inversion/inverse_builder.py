@@ -62,7 +62,6 @@ def build_kernel(matrix_size: int):
         out_ptr: "out_ptr_type",
         in_ptr: "in_ptr_type",
         i_neg_ptr: "in_ptr_type",
-        matrix_size_i32: "i32",
         log2_blocksize_i32: "i32",
     ) -> None:
         with pto.cube_section():

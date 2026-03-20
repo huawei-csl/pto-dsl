@@ -32,7 +32,6 @@ def load_lib(lib_path):
         ctypes.c_void_p,  # out
         ctypes.c_void_p,  # in_delta
         ctypes.c_void_p,  # identity_neg_half
-        ctypes.c_uint32,  # matrix_size
         ctypes.c_uint32,  # log2(matrix_size)
     ]
     lib.call_kernel.restype = None
@@ -99,7 +98,6 @@ def run_kernel(lib, inp_delta):
         torch_to_ctypes(out),
         torch_to_ctypes(inp_fp16),
         torch_to_ctypes(identity_neg_half),
-        n,
         log2_blocksize,
     )
     torch.npu.synchronize()
