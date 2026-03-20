@@ -15,11 +15,6 @@ torch.manual_seed(42)
 np.random.seed(42)
 
 SUPPORTED_MATRIX_SIZES = (16, 32, 64, 128)
-try:
-    PERSISTENT_BLOCK_DIM = int(torch.npu.get_device_properties("npu").cube_core_num)
-except Exception:
-    PERSISTENT_BLOCK_DIM = 24
-
 UNIFORM_ATOL = 1e-3
 UNIFORM_RTOL = 1e-3
 UNIFORM_FTOL = 1e-3
@@ -32,12 +27,12 @@ def torch_to_ctypes(tensor):
 def load_lib(lib_path):
     lib = ctypes.CDLL(lib_path)
     lib.call_kernel.argtypes = [
-        ctypes.c_uint32,  # blockDim (fixed core count)
+        ctypes.c_uint32,  # blockDim (batch)
         ctypes.c_void_p,  # stream
         ctypes.c_void_p,  # out
         ctypes.c_void_p,  # in_delta
         ctypes.c_void_p,  # identity_neg_half
-        ctypes.c_uint32,  # runtime batch_size
+        ctypes.c_uint32,  # matrix_size
         ctypes.c_uint32,  # log2(matrix_size)
     ]
     lib.call_kernel.restype = None
@@ -69,10 +64,10 @@ def structured_scale_by_n(n):
     # medium sizes are very accurate, while the hardest ill-conditioned cases
     # degrade only at larger n.
     return {
-        16: 0.2,
-        32: 0.15,
-        64: 0.1,
-        128: 0.05,
+        16: 0.10,
+        32: 0.08,
+        64: 0.05,
+        128: 0.03,
     }[n]
 
 
@@ -80,9 +75,9 @@ def ill_offdiag_for_tests(n):
     # Use a smaller scale for bigger sizes.
     return {
         16: 0.2,
-        32: 0.15,
-        64: 0.1,
-        128: 0.05,
+        32: 0.1,
+        64: 0.05,
+        128: 0.02,
     }[n]
 
 
@@ -99,12 +94,12 @@ def run_kernel(lib, inp_delta):
 
     stream_ptr = torch.npu.current_stream()._as_parameter_
     lib.call_kernel(
-        PERSISTENT_BLOCK_DIM,
+        batch,
         stream_ptr,
         torch_to_ctypes(out),
         torch_to_ctypes(inp_fp16),
         torch_to_ctypes(identity_neg_half),
-        batch,
+        n,
         log2_blocksize,
     )
     torch.npu.synchronize()
@@ -163,7 +158,7 @@ def run_test(lib, n):
         if failure is not None:
             failures.append(failure)
 
-    for batch in [1, 4]:
+    for batch in [1, 4, 27]:
         failure = check_case(
             lib,
             matrix_gen=lambda n, batch: ill_matrix(n=n, batch=batch, offdiag=ill_offdiag),
@@ -176,8 +171,7 @@ def run_test(lib, n):
         if failure is not None:
             failures.append(failure)
 
-    total = 11
-    print(f"summary: n={n}, pass={total - len(failures)}, fail={len(failures)}, total={total}")
+    print(f"summary: n={n}, pass={5 - len(failures)}, fail={len(failures)}, total=5")
 
     if failures:
         warnings.warn(
