@@ -46,8 +46,9 @@ jobs:
       image: quay.io/ascend/cann:8.5.0-910b-ubuntu22.04-py3.11
 
     env:
-      RELEASE_REPO: huawei-csl/PTOAS
-      RELEASE_TAG: 20260309
+      RELEASE_REPO: zhangstevenunity/PTOAS
+      RELEASE_VER: 0.9
+      RELEASE_TAG: v0.9
       CLI_DIR: /installers/ptoas-cli
       PTOISA_COMMIT: 672ee54cb8905bb9f9abbe80ec26ed2054b7a0cc
 
@@ -66,7 +67,7 @@ jobs:
 
       - name: Install ptoas wheel
         run: |
-          WHEEL_NAME=ptoas-0.1.1-cp311-none-manylinux_2_34_${{ matrix.arch }}.whl
+          WHEEL_NAME=ptoas-${RELEASE_VER}-cp311-none-manylinux_2_34_${{ matrix.arch }}.whl
           wget https://github.com/${RELEASE_REPO}/releases/download/${RELEASE_TAG}/${WHEEL_NAME}
           pip install ./${WHEEL_NAME}
           python -c "import mlir.ir; from mlir.dialects import pto"
