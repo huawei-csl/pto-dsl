@@ -115,10 +115,6 @@ def build_kernel(matrix_size: int):
             # Build +/- identity tiles for half-size blocks.
             # Also seed x11 = x22 = I for the recurrence below.
             pto.load(sv_i_neg, neg_i_l1)
-            tile.mov(neg_i_l1, a_l0)
-            tile.mov(neg_i_l1, b_l0)
-            tile.matmul(a_l0, b_l0, c_l0)
-            tile.mov(c_l0, pos_i_l1)
 
             for b_idx in pto.range(b_start, b_end, c1):
                 row_offset = b_idx * n_c
@@ -157,10 +153,10 @@ def build_kernel(matrix_size: int):
                     sizes=[h_c, h_c],
                 )
 
-                # Reset x11/x22 to identity for each batch item using supported routes.
-                tile.mov(pos_i_l1, a_l0)
-                tile.mov(pos_i_l1, b_l0)
+                tile.mov(neg_i_l1, a_l0)
+                tile.mov(neg_i_l1, b_l0)
                 tile.matmul(a_l0, b_l0, c_l0)
+                tile.mov(c_l0, pos_i_l1)
                 tile.mov(c_l0, x11_l1)  # x11 = I
                 tile.mov(c_l0, x22_l1)  # x22 = I
 
