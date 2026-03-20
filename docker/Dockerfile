@@ -15,6 +15,13 @@ RUN pip install --no-cache-dir \
     pytest pybind11 nanobind setuptools wheel \
     ipython jupyterlab matplotlib pandas
 
+# certain operations need latest isa header, not CANN 8.5.0 default
+# header on 2026/03/16
+ARG PTOISA_COMMIT=313817be696792a4e16a7ea5994ec98e34391613
+WORKDIR /sources
+RUN git clone https://gitcode.com/cann/pto-isa.git \
+    && cd pto-isa && git checkout $PTOISA_COMMIT
+
 # cache above layers unrelated to ptoas version change
 
 # change this ununsed arg if need to force rebuild later lines
@@ -54,10 +61,3 @@ RUN ptoas ./tmatmulk.pto -o ./tmatmulk.cpp
 
 RUN python ./abs.py > ./abs.pto
 RUN ptoas --enable-insert-sync ./abs.pto -o ./abs.cpp
-
-# certain operations need latest isa header, not CANN 8.5.0 default
-# header on 2026/03/16
-ARG PTOISA_COMMIT=313817be696792a4e16a7ea5994ec98e34391613
-WORKDIR /sources
-RUN git clone https://gitcode.com/cann/pto-isa.git \
-    && cd pto-isa && git checkout $PTOISA_COMMIT
