@@ -137,14 +137,6 @@ def check_case(lib, matrix_gen, n, batch, atol, rtol, ftol):
     return msg
 
 
-def report_precision_like_note(lib, n):
-    inp_delta = ill_matrix(n=n, batch=1, offdiag=0.5).to(device)
-    ref = reference_inverse(inp_delta).cpu().to(torch.float64)
-    out = run_kernel(lib, inp_delta).cpu().to(torch.float64)
-    error = torch.linalg.norm(out - ref).item()
-    print(f"c={n} | error = {error:.3e}")
-
-
 def run_test(lib, n):
     failures = []
     structured_scale = structured_scale_by_n(n)
@@ -180,7 +172,6 @@ def run_test(lib, n):
             failures.append(failure)
 
     print(f"summary: n={n}, pass={5 - len(failures)}, fail={len(failures)}, total=5")
-    report_precision_like_note(lib, n)
 
     if failures:
         warnings.warn(
