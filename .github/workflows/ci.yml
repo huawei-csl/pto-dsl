@@ -103,3 +103,9 @@ jobs:
           pytest -v -m "not require_npu" ./tests/npu
         env:
           TORCH_DEVICE_BACKEND_AUTOLOAD: "0"
+
+      - name: Run example translation collection check
+        run: |
+          python ./.agent/skills/translate_cpp2py/scripts/collect_example_translate.py \
+            --repo-root . \
+            --out-dir /tmp/example_translation
