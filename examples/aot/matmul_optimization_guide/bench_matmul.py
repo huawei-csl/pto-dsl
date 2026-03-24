@@ -342,6 +342,8 @@ def main():
                 args.warmup,
                 args.repeat,
             )
+            del a_list, b_list
+            torch.npu.empty_cache()
 
             flops = 2.0 * m * n * k
             double_auto_swizzle_tflops = flops / double_auto_swizzle_us / 1e6

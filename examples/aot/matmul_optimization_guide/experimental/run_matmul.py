@@ -106,7 +106,7 @@ def run_case(matmul_abt, a, b, c_ref, *, block_dim, swizzle_direction, swizzle_c
         swizzle_count=swizzle_count,
     )
     torch.npu.synchronize()
-    return CaseResult(
+    result = CaseResult(
         m=int(a.shape[0]),
         n=int(b.shape[0]),
         k=int(a.shape[1]),
@@ -116,6 +116,9 @@ def run_case(matmul_abt, a, b, c_ref, *, block_dim, swizzle_direction, swizzle_c
         max_absdiff=float((c - c_ref).abs().max().item()),
         mean_absdiff=float((c - c_ref).abs().mean().item()),
     )
+    del c
+    torch.npu.empty_cache()
+    return result
 
 
 def test_matmul():
@@ -168,6 +171,9 @@ def test_matmul():
                             )
                         ):
                             global_worst = result
+
+            del a, b, c_ref
+            torch.npu.empty_cache()
 
             print(
                 f"(m, n, k)=({m}, {n}, {k}) "

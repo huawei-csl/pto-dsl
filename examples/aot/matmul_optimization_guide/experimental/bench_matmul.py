@@ -429,6 +429,9 @@ def main():
                     }
                 )
 
+            del a_list, b_list, c, c_ref
+            torch.npu.empty_cache()
+
             if no_swizzle_time_us is None or no_swizzle_tflops is None:
                 raise RuntimeError(
                     "No no-swizzle baseline result found "
