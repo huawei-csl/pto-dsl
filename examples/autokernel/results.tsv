@@ -1,0 +1,46 @@
+commit	tflops	status	description
+1a5ff47	242.7	keep	baseline
+42ae5a6	240.7	discard	force full-256 n tile path
+d59ad0c	136.7	discard	linear mapping for swizzle_direction=1
+d94fa3c	240.2	discard	hoist swizzle-direction branch outside li loop
+76873e1	236.4	discard	disable serpentine flip in swizzle_nz
+3a34cfe	235.0	discard	force swizzle count to 1
+83faec5	246.5	keep	force swizzle count to 2
+b010b6b	244.5	discard	hoist swizzle-direction branch outside li loop (swizzle=2)
+28ad761	244.0	discard	disable serpentine flip with swizzle=2
+75774f2	246.6	keep	force swizzle count to 5
+ef5c881	252.7	keep	interleaved nz swizzle with n-dependent row shift
+f44ee12	140.6	discard	row-skew nz swizzle by cyclic n offset
+f48f17f	253.9	keep	interleaved nz swizzle with swizzle count 7
+5da8331	248.9	discard	interleaved nz swizzle with swizzle count 9
+53a01b8	253.2	discard	interleaved nz swizzle with block-phase row shift
+77e5e8e	207.3	discard	force zn swizzle family
+bd63a8a	249.8	discard	affine interleaved nz swizzle (3*m_base + shift)
+7f4c21a	192.9	discard	halve n tile width to 128
+c10fef6	156.9	discard	halve m tile height to 64
+94ccb12	0.0	crash	increase m tile height to 256 (mat overflow)
+f041431	0.0	crash	k microtile 128 with 4-phase inner loop (ptoas assert)
+8325dcc	246.9	discard	interleaved nz swizzle with swizzle count 6
+0f38485	253.6	discard	interleaved nz swizzle with swizzle count 11
+49f1850	0.0	crash	overlap b mte2 loads and remove store-acc cross-tile stall (l0c conflict)
+2a9b8d4	251.2	discard	preload both b gm->l1 chunks before inner compute
+b524792	0.0	crash	paired acc double-buffer store synchronization (ptoas assert)
+3c02730	203.4	discard	prefetch next a tile at start of k-step
+3158dc9	236.1	discard	k_tile 128 with 4-way b segment pipeline
+f456690	251.2	discard	ping-pong b pipeline with overlapped prefetch/compute
+91cd902	257.7	keep	prefetch next a at phase7 release point
+e825c5d	255.9	discard	stack b ping-pong prefetch on phase7-a overlap
+2cf076a	257.5	discard	delay store->matmul wait until first matmul
+a2dd260	257.3	discard	stage b1 prefetch at end of h0 compute
+150f41e	255.4	discard	stage b1 prefetch at h0 quarter2
+ee71e10	257.7	discard	move next-a prefetch from phase7 to phase6
+3865a3e	256.3	discard	move next-a prefetch from phase7 to phase5
+5974035	255.2	discard	prefetch b1 after h0 quarter3 matmul dispatch
+447ee20	0.0	crash	true acc ping-pong with per-buffer store/matmul sync (ptoas assert)
+4aea19e	0.0	crash	lightweight acc double-buffer with dynamic event wrappers (ptoas assert)
+86f9328	0.0	crash	cross-k b0 prefetch at phase7 with ping-pong reuse (syntax error)
+c6db674	256.9	discard	cross-k b0 prefetch at phase7 with ping-pong reuse
+ef88239	250.9	discard	defer phase7 a-prefetch until after matmul dispatch
+45f5702	0.0	discard	remove next-id load gate in phase7 a-prefetch (timeout)
+f68aa97	0.0	crash	cross-k b1 prefetch at phase7 (compile guard bug)
+3d6e1ac	193.0	discard	cross-k b1 prefetch at phase7
