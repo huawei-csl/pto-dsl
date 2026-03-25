@@ -95,6 +95,8 @@ def __getattr__(name):
         return IntegerType.get_signless(32)
     if name == "int16":
         return IntegerType.get_signless(16)
+    if name == "uint32":
+        return IntegerType.get_unsigned(32)
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 

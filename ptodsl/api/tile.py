@@ -1,5 +1,6 @@
+from mlir.dialects import arith as _arith
 from mlir.dialects import pto as _pto
-from mlir.ir import BoolAttr
+from mlir.ir import BoolAttr, IntegerType
 
 from .scalar import _unwrap
 
@@ -142,6 +143,20 @@ def col_expand(src, dst):
     _pto.TColExpandOp(src=src, dst=dst)
 
 
+def mrgsort(src, dst, block_len):
+    i32 = IntegerType.get_signless(32)
+    block_len_i32 = _arith.IndexCastOp(i32, _unwrap(block_len)).result
+    _pto.TMrgSortOp(srcs=[src], dsts=[dst], blockLen=block_len_i32)
+
+
+def sort32(src, dst, idx):
+    """TSORT32: sort src tile within 32-element blocks, writing interleaved
+    (score, index) pairs to dst. idx is an input tile of uint32 indices
+    attached to each src element. For float16 src, dst must have 4x the
+    columns of src (each element expands to 4 float16 words)."""
+    _pto.TSort32Op(src, dst, idx)
+
+
 def subset(source, offsets, sizes):
     offset_vals = [_unwrap(v) for v in offsets]
     return _pto.subset(source, offset_vals, sizes)
@@ -183,5 +198,7 @@ __all__ = [
     "col_max",
     "col_prod",
     "col_expand",
+    "mrgsort",
+    "sort32",
     "subset",
 ]
