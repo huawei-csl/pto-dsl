@@ -327,6 +327,31 @@ def test_scalar_ptr_ops_present_in_ir():
     assert "pto.store_scalar" in text
 
 
+def tile_scalar_io_meta_data():
+    dtype = pto.float32
+    cfg = pto.TileConfig()
+    tile_buf = pto.TileType(shape=[1, 16], valid_shape=[1, 16], dtype=dtype, memory_space="VEC", config=cfg)
+    return {
+        "tile_buf": tile_buf,
+    }
+
+
+def tile_scalar_io_kernel() -> None:
+    c0 = pto.const(0)
+    c1 = pto.const(1)
+    with pto.vector_section():
+        tile = pto.alloc_tile(tile_buf)
+        val = pto.get_val(pto.float32, tile, c0)
+        pto.set_val(tile, c1, val)
+
+
+def test_tile_scalar_io_ops_present_in_ir():
+    module = to_ir_module(meta_data=tile_scalar_io_meta_data)(tile_scalar_io_kernel)
+    text = str(module)
+    assert "pto.tgetval" in text
+    assert "pto.tsetval" in text
+
+
 def scalar_tile_meta_data():
     dtype = pto.float32
     ptr = pto.PtrType(dtype)

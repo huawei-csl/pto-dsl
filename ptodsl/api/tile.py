@@ -121,6 +121,14 @@ def extract(source, index_row, index_col, out):
     _pto.TExtractOp(src=source, indexRow=_unwrap(index_row), indexCol=_unwrap(index_col), dst=out)
 
 
+def get_val(result_type, source, offset):
+    return _pto.TGetValOp(dst=result_type, src=source, offset=_unwrap(offset)).result
+
+
+def set_val(dest, offset, value):
+    _pto.TSetValOp(dst=dest, offset=_unwrap(offset), val=_unwrap(value))
+
+
 def row_sum(src, tmp, dst):
     _pto.TRowSumOp(src=src, tmp=tmp, dst=dst)
 
@@ -225,6 +233,8 @@ __all__ = [
     "gemv_acc",
     "gemv_bias",
     "extract",
+    "get_val",
+    "set_val",
     "row_sum",
     "row_min",
     "row_max",

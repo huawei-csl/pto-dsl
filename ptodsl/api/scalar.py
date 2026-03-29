@@ -25,16 +25,28 @@ def _is_float_type(ty):
     return text.startswith("f") or text == "bf16"
 
 
+def _coerce_scalar_like(value, reference_type=None):
+    if isinstance(value, Value):
+        return value.raw
+    if reference_type is not None and isinstance(value, (bool, int, float)):
+        return const(value, dtype=reference_type).raw
+    return value
+
+
 def _binary_op(lhs, rhs, int_ctor, float_ctor):
-    lhs = _unwrap(lhs)
-    rhs = _unwrap(rhs)
+    lhs_ref = lhs.type if isinstance(lhs, Value) else None
+    rhs_ref = rhs.type if isinstance(rhs, Value) else None
+    lhs = _coerce_scalar_like(lhs, rhs_ref)
+    rhs = _coerce_scalar_like(rhs, lhs_ref)
     ctor = float_ctor if _is_float_type(lhs.type) else int_ctor
     return Value(ctor(lhs, rhs).result)
 
 
 def _cmp_op(lhs, rhs, int_predicate, float_predicate):
-    lhs = _unwrap(lhs)
-    rhs = _unwrap(rhs)
+    lhs_ref = lhs.type if isinstance(lhs, Value) else None
+    rhs_ref = rhs.type if isinstance(rhs, Value) else None
+    lhs = _coerce_scalar_like(lhs, rhs_ref)
+    rhs = _coerce_scalar_like(rhs, lhs_ref)
     if _is_float_type(lhs.type):
         return Value(arith.CmpFOp(float_predicate, lhs, rhs).result)
     return Value(arith.CmpIOp(int_predicate, lhs, rhs).result)

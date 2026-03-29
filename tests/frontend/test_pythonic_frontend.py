@@ -157,3 +157,21 @@ def test_if_without_else_can_still_carry_values():
     ir = str(module)
     assert "scf.if" in ir
     assert "else" in ir
+
+
+def test_static_python_range_can_guard_on_compile_time_iv():
+    def guarded_meta():
+        return {"i32": pto.int32}
+
+    def guarded_kernel() -> "i32":
+        total = pto.const(0, dtype=pto.int32)
+        for i in range(4):
+            if i < 2:
+                total = total + i
+        return total
+
+    module = to_ir_module(meta_data=guarded_meta)(guarded_kernel)
+    ir = str(module)
+    assert "scf.for" not in ir
+    assert "scf.if" not in ir
+    assert "arith.constant 1" in ir

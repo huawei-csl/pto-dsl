@@ -271,7 +271,7 @@ class AstLowerer:
             static_values = self._static_range_values(args)
             if static_values is not None:
                 for iv in static_values:
-                    self._bind_assignment(stmt.target, const(iv), env)
+                    self._bind_assignment(stmt.target, iv, env)
                     env, terminated = self.lower_statements(stmt.body, env)
                     if terminated:
                         return env, True
