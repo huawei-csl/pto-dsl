@@ -3,6 +3,7 @@ from contextlib import contextmanager
 from mlir.dialects import scf
 from mlir.ir import InsertionPoint
 
+from .._constexpr import const_expr, range_constexpr
 from .scalar import Value, _unwrap
 
 
@@ -48,5 +49,4 @@ def cond(condition, then_builder, else_builder):
         scf.YieldOp([])
     return op
 
-
-__all__ = ["cond", "range", "if_context"]
+__all__ = ["cond", "const_expr", "range", "range_constexpr", "if_context"]

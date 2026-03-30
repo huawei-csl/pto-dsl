@@ -2,9 +2,31 @@ from mlir.dialects import arith
 from mlir.ir import F16Type, F32Type, IndexType, IntegerType
 
 
+class LazyTypeAlias:
+    def __init__(self, name, resolver):
+        self._name = name
+        self._resolver = resolver
+
+    def resolve(self):
+        return self._resolver()
+
+    def __repr__(self):
+        return self._name
+
+    __str__ = __repr__
+
+
+def resolve_type(value):
+    if isinstance(value, LazyTypeAlias):
+        return value.resolve()
+    return value
+
+
 def _unwrap(value):
     if isinstance(value, Value):
-        return value.raw
+        return _unwrap(value.raw)
+    if hasattr(value, "raw"):
+        return _unwrap(value.raw)
     return value
 
 
@@ -86,17 +108,17 @@ def __getattr__(name):
     # TODO: add more builtin dtype aliases (for example float16/bfloat16/int8/int64)
     # when they are validated against PTO type support.
     if name == "bool":
-        return IntegerType.get_signless(1)
+        return LazyTypeAlias(name, lambda: IntegerType.get_signless(1))
     if name == "float32":
-        return F32Type.get()
+        return LazyTypeAlias(name, lambda: F32Type.get())
     if name == "float16":
-        return F16Type.get()
+        return LazyTypeAlias(name, lambda: F16Type.get())
     if name == "int32":
-        return IntegerType.get_signless(32)
+        return LazyTypeAlias(name, lambda: IntegerType.get_signless(32))
     if name == "int16":
-        return IntegerType.get_signless(16)
+        return LazyTypeAlias(name, lambda: IntegerType.get_signless(16))
     if name == "uint32":
-        return IntegerType.get_unsigned(32)
+        return LazyTypeAlias(name, lambda: IntegerType.get_unsigned(32))
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 
@@ -151,9 +173,9 @@ def select(cond, true_val, false_val):
 
 
 __all__ = [
+    "LazyTypeAlias",
     "Value",
     "_unwrap",
-    "wrap_value",
     "const",
     "index_cast",
     "ceil_div",
@@ -164,5 +186,7 @@ __all__ = [
     "lt",
     "gt",
     "ge",
+    "resolve_type",
     "select",
+    "wrap_value",
 ]

@@ -15,6 +15,13 @@ def _resolve_sync_op(sync_op):
     return sync_op
 
 
+def _resolve_sync_op_attr(sync_op):
+    resolved = _resolve_sync_op(sync_op)
+    if isinstance(resolved, _pto.SyncOpType):
+        return _pto.SyncOpTypeAttr.get(resolved)
+    return resolved
+
+
 def _resolve_event_id(event_id):
     if isinstance(event_id, int):
         if event_id < 0 or event_id > 7:
@@ -67,4 +74,8 @@ def barrier(sync_op):
     _pto.barrier(_resolve_sync_op(sync_op))
 
 
-__all__ = ["record_event", "wait_event", "record_wait_pair", "barrier"]
+def barrier_sync(sync_op):
+    _pto.barrier_sync(_resolve_sync_op_attr(sync_op))
+
+
+__all__ = ["record_event", "wait_event", "record_wait_pair", "barrier", "barrier_sync"]

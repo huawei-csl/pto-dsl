@@ -65,6 +65,33 @@ def test_generate_caller_cpp_maps_pointer_and_scalar_types():
     )
 
 
+def test_generate_caller_cpp_maps_mxfp8_pointer_and_scalar_types():
+    def mixed_mxfp8_kernel(
+        lhs: "ptr_e5m2",
+        lhs_scale: "ptr_e8m0",
+        alpha: "e4m3_type",
+    ) -> None:
+        return None
+
+    wrapper = JitWrapper(mixed_mxfp8_kernel, meta_data=lambda: {}, block_dim=4)
+    wrapper._arg_types = [
+        _FakeType("!pto.ptr<f8E5M2>"),
+        _FakeType("!pto.ptr<f8E8M0FNU>"),
+        _FakeType("f8E4M3FN"),
+    ]
+
+    caller_cpp = wrapper._generate_caller_cpp("generated.cpp")
+
+    assert (
+        'extern "C" void call_kernel(uint32_t blockDim, void *stream, uint8_t *lhs, '
+        "uint8_t *lhs_scale, uint8_t alpha)"
+    ) in caller_cpp
+    assert (
+        "mixed_mxfp8_kernel<<<blockDim, nullptr, stream>>>((float8_e5m2_t *)lhs, "
+        "(float8_e8m0_t *)lhs_scale, alpha);"
+    ) in caller_cpp
+
+
 def test_generate_caller_cpp_for_dynamic_1d_add_signature():
     def vec_add_1d_dynamic(
         arg0: "ptr_type",

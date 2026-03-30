@@ -1,7 +1,7 @@
 <div align="center">
 
 # PTO-DSL
-Pythonic interface and JIT compiler for [PTO-ISA](https://gitcode.com/cann/pto-isa)
+Pythonic interface and JIT compiler for [PTO-ISA](https://github.com/PTO-ISA/pto-isa)
 </div>
 
 PTO-DSL provides a programming abstraction similar to [cuTile](https://docs.nvidia.com/cuda/cutile-python/), but native to [NPU](https://www.hiascend.com/).
@@ -36,6 +36,37 @@ pip install -e .
 ## Usage
 
 See [examples](./examples) and [tests](./tests)
+
+Preferred frontend style keeps the existing low-level ops available, but adds a thinner
+object-centric layer for common tensor and tile flows:
+
+```python
+from ptodsl import pto, tile
+
+
+def vec_add(src0: "ptr_t", src1: "ptr_t", dst: "ptr_t", rows: "index_t", cols: "index_t"):
+    x = pto.make_tensor(src0, shape=[rows, cols], dtype=pto.float32)
+    y = pto.make_tensor(src1, shape=[rows, cols], dtype=pto.float32)
+    z = pto.make_tensor(dst, shape=[rows, cols], dtype=pto.float32)
+
+    x_tile = x.slice([0, 0], [32, 32])
+    y_tile = y.slice([0, 0], [32, 32])
+    z_tile = z.slice([0, 0], [32, 32])
+
+    with pto.vector_section():
+        tile_buf = pto.make_tile_buffer(pto.float32, [32, 32], space="VEC")
+        lhs = tile_buf.alloc()
+        rhs = tile_buf.alloc()
+        out = tile_buf.alloc()
+        lhs.load_from(x_tile)
+        rhs.load_from(y_tile)
+        tile.add(lhs, rhs, out)
+        out.store_to(z_tile)
+```
+
+The lower-level `PtrType`, `TensorType`, `SubTensorType`, `TileBufType`, `as_tensor`,
+`slice_view`, and `alloc_tile` APIs remain supported for cases where explicit control is
+preferred.
 
 ## Contribute
 
