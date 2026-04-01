@@ -86,11 +86,14 @@ def build_gather_kernel(
             tb1 = pto.alloc_tile(tile_buf_i32)
             tb2 = pto.alloc_tile(tile_buf_src)  # tmp
             tb3 = pto.alloc_tile(tile_buf_src)  # out
+            tb4 = pto.alloc_tile(
+                tile_buf_i32
+            )  # tmp scratch required by tgather index-form
 
             pto.load(sv0, tb0)
             pto.load(sv1, tb1)
 
-            tile.gather(tb0, tb2, tb1)  # index-gather: tb2[i,j] = tb0[tb1[i,j]]
+            tile.gather(tb0, tb2, tb1, tb4)  # index-gather: tb2[i,j] = tb0[tb1[i,j]]
             tile.gather(
                 tb2, tb3, mask_pattern=mask_pattern
             )  # mask-gather with configurable pattern
@@ -101,6 +104,7 @@ def build_gather_kernel(
             pto.store(tb3, sv2)
 
     _kernel.__name__ = fn_name
+
     return to_ir_module(meta_data=_meta_data)(_kernel)
 
 

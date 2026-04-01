@@ -34,8 +34,12 @@ def _binary_caller(op_name, ctype):
 #include "{op_name}_1d.cpp"
 
 #define ptoas_bitcast ptoas_bitcast_2d
+#define PTOAutoSyncTailMode PTOAutoSyncTailMode_2d
+#define ptoas_auto_sync_tail ptoas_auto_sync_tail_2d
 #include "{op_name}_2d.cpp"
 #undef ptoas_bitcast
+#undef PTOAutoSyncTailMode
+#undef ptoas_auto_sync_tail
 
 extern "C" void call_kernel_1d(
     void *stream, uint8_t *x, uint8_t *y, uint8_t *z, int32_t N)

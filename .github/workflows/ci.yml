@@ -47,10 +47,10 @@ jobs:
 
     env:
       RELEASE_REPO: zhangstevenunity/PTOAS
-      RELEASE_VER: 0.9
-      RELEASE_TAG: v0.9
+      RELEASE_VER: 0.19
+      RELEASE_TAG: v0.19
       CLI_DIR: /installers/ptoas-cli
-      PTOISA_COMMIT: 672ee54cb8905bb9f9abbe80ec26ed2054b7a0cc
+      PTOISA_COMMIT: 2ee948ef636863ed149f176d5327d9db5f349bb6
 
     steps:
       - name: Install system packages

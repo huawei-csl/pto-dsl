@@ -116,6 +116,9 @@ def build_gather_kernel(
             tb_src = pto.alloc_tile(tile_type)
             tb_idx = pto.alloc_tile(tile_i32)
             tb_tmp = pto.alloc_tile(tile_type)
+            tb_idx_scratch = pto.alloc_tile(
+                tile_i32
+            )  # tmp scratch required by tgather index-form
             tb_out = pto.alloc_tile(tile_type)
 
             # Skip whole core if its starting tile is already out-of-bound.
@@ -150,7 +153,7 @@ def build_gather_kernel(
                         pto.load(sv1, tb_idx)
 
                         # gather within tile by indices
-                        tile.gather(tb_src, tb_tmp, tb_idx)
+                        tile.gather(tb_src, tb_tmp, tb_idx, tb_idx_scratch)
 
                         tile.gather(tb_tmp, tb_out, mask_pattern=mask_pattern)
 

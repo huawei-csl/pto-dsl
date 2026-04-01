@@ -37,12 +37,12 @@ def max(lhs, rhs, out):
     _pto.TMaxOp(lhs, rhs, out)
 
 
-def gather(src, out, indices=None, *, mask_pattern=None):
+def gather(src, out, indices=None, tmp=None, *, mask_pattern=None):
     if mask_pattern is not None:
         mask = _pto.MaskPatternAttr.get(getattr(_pto.MaskPattern, mask_pattern))
         _pto.TGatherOp(src, out, maskPattern=mask)
     else:
-        _pto.TGatherOp(src, out, indices=indices)
+        _pto.TGatherOp(src, out, indices=indices, tmp=tmp)
 
 
 def exp(inp, out):
@@ -154,7 +154,7 @@ def sort32(src, dst, idx):
     (score, index) pairs to dst. idx is an input tile of uint32 indices
     attached to each src element. For float16 src, dst must have 4x the
     columns of src (each element expands to 4 float16 words)."""
-    _pto.TSort32Op(src, dst, idx)
+    _pto.TSort32Op(src, idx, dst)
 
 
 def subset(source, offsets, sizes):

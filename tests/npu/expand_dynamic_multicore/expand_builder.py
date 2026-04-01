@@ -21,6 +21,10 @@ def meta_data_expand(dtype="fp32"):
     subtensor_col_src = pto.SubTensorType(shape=[1, tile_cols], dtype=pto_dtype)
     # For row_expand: src slice is [tile_rows, 1] (one column of the input vector)
     subtensor_row_src = pto.SubTensorType(shape=[tile_rows, 1], dtype=pto_dtype)
+    # For fused row-expand: scalar slice [1, 1]
+    subtensor_scalar = pto.SubTensorType(shape=[1, 1], dtype=pto_dtype)
+    # For fused row-expand: single-row slice [1, tile_cols]
+    subtensor_row_dst = pto.SubTensorType(shape=[1, tile_cols], dtype=pto_dtype)
     # For loading/storing the 2D matrix
     subtensor_dst = pto.SubTensorType(shape=[tile_rows, tile_cols], dtype=pto_dtype)
 
@@ -39,6 +43,8 @@ def meta_data_expand(dtype="fp32"):
         "tensor2d_type": tensor2d_type,
         "subtensor_col_src": subtensor_col_src,
         "subtensor_row_src": subtensor_row_src,
+        "subtensor_scalar": subtensor_scalar,
+        "subtensor_row_dst": subtensor_row_dst,
         "subtensor_dst": subtensor_dst,
         "tile_type": tile_type,
         "tile_rows": tile_rows,
@@ -277,7 +283,7 @@ def _build_row_expand_fused(kind, dtype="fp32"):
                 # Load scalar x[row] into a [1, 1] tile: src1[0,0] = x[row]
                 tb_src1 = pto.alloc_tile(tile_type, valid_row=c1, valid_col=c1)
                 sv_x = pto.slice_view(
-                    subtensor_row_src,
+                    subtensor_scalar,
                     source=tv_x,
                     offsets=[row, c0],
                     sizes=[c1, c1],
@@ -288,13 +294,13 @@ def _build_row_expand_fused(kind, dtype="fp32"):
                     cols_this = s.min_u(c_tile_cols, n_cols - col)
 
                     sv_y = pto.slice_view(
-                        subtensor_dst,
+                        subtensor_row_dst,
                         source=tv_y,
                         offsets=[row, col],
                         sizes=[c1, cols_this],
                     )
                     sv_z = pto.slice_view(
-                        subtensor_dst,
+                        subtensor_row_dst,
                         source=tv_z,
                         offsets=[row, col],
                         sizes=[c1, cols_this],
