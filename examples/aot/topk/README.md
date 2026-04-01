@@ -28,7 +28,7 @@ Valid `N_COLS` values (with `SORT_BLOCK_LEN=32`):
 
 ## Pipeline (per row)
 
-```
+```text
 input row [1 x N_COLS]  -->  TSORT32          -->  sort buffer [1 x 2*N_COLS]
                                                     (interleaved score/idx pairs)
                              TMRGSORT x passes -->  fully sorted [1 x 2*N_COLS]
