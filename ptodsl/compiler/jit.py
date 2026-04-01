@@ -90,6 +90,7 @@ class JitWrapper:
         block_dim=20,
         enable_insert_sync=True,
         npu_arch="dav-2201",
+        enable_print=False,
     ):
         self._fn = fn
         self._meta_data = meta_data
@@ -102,6 +103,7 @@ class JitWrapper:
         )
         self._block_dim = block_dim
         self._enable_insert_sync = enable_insert_sync
+        self._enable_print = enable_print
         self._npu_arch = npu_arch
         self._compiled = False
         self._lib = None
@@ -146,7 +148,6 @@ class JitWrapper:
             )
         cmd = [
             "bisheng",
-            f"-I{toolkit_home}/include",
             "-fPIC",
             "-shared",
             "-D_FORTIFY_SOURCE=2",
@@ -171,10 +172,25 @@ class JitWrapper:
             f"--npu-arch={self._npu_arch}",
             "-DMEMORY_BASE",  # TODO: add switch for A5
             "-std=gnu++17",
+            f"-I{toolkit_home}/include",
+        ]
+        if self._enable_print:
+            pto_lib_path = os.environ.get("PTO_LIB_PATH", None)
+            if not pto_lib_path:
+                raise RuntimeError("Environment variable `PTO_LIB_PATH` is required for printing")
+
+            cmd.extend([
+                "-D_DEBUG",
+                "--cce-enable-print",
+                f"-I{toolkit_home}/aarch64-linux/pkg_inc/runtime/runtime", # rt.h header
+                f"-I{pto_lib_path}/include",
+            ])
+        
+        cmd.extend([
             str(caller_cpp_path),
             "-o",
             str(lib_path),
-        ]
+        ])
         subprocess.run(cmd, check=True, cwd=str(self._output_dir))
 
     def _resolve_runtime_arg_types(self):
@@ -285,6 +301,7 @@ def jit(
     block_dim=1,
     enable_insert_sync=True,
     npu_arch="dav-2201",
+    enable_print=False,
 ):
     def decorator(fn):
         return JitWrapper(
@@ -294,6 +311,7 @@ def jit(
             block_dim=block_dim,
             enable_insert_sync=enable_insert_sync,
             npu_arch=npu_arch,
+            enable_print=enable_print,
         )
 
     return decorator
