@@ -17,6 +17,8 @@ _OPS = {
     "mul": tile.mul,
     "div": tile.div,
     "or": tile.or_,
+    "and": tile.and_,
+    "xor": tile.xor,
     "max": tile.max,
     "min": tile.min,
 }

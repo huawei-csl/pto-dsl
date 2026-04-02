@@ -29,6 +29,14 @@ def or_(lhs, rhs, out):
     _pto.TOrOp(lhs, rhs, out)
 
 
+def and_(lhs, rhs, out):
+    _pto.TAndOp(lhs, rhs, out)
+
+
+def xor(lhs, rhs, out):
+    _pto.TXorOp(lhs, rhs, lhs, out)
+
+
 def min(lhs, rhs, out):
     _pto.TMinOp(lhs, rhs, out)
 
@@ -173,6 +181,8 @@ __all__ = [
     "div",
     "mul",
     "or_",
+    "and_",
+    "xor",
     "gather",
     "exp",
     "log",

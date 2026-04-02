@@ -19,7 +19,9 @@ BINARY_OPS = [
     ("div", lambda x, y: x / y),
     ("max", lambda x, y: torch.max(x, y)),
     ("min", lambda x, y: torch.min(x, y)),
-    # ("or", lambda x, y: x | y), #TODO add back bitwise or test after fixing int16 support in the builder
+    ("or", lambda x, y: x | y),
+    ("and", lambda x, y: x & y),
+    ("xor", lambda x, y: x ^ y),
 ]
 
 DTYPES = ["float32", "float16", "int16"]
@@ -27,7 +29,7 @@ DTYPES = ["float32", "float16", "int16"]
 # ops that only make sense for floating-point dtypes
 _FLOAT_ONLY_OPS = {"add", "sub", "mul", "div"}
 # ops that only make sense for int16
-_INT16_ONLY_OPS = {"or"}
+_INT16_ONLY_OPS = {"or", "and", "xor"}
 
 
 TORCH_DTYPES = {
