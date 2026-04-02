@@ -33,8 +33,8 @@ def and_(lhs, rhs, out):
     _pto.TAndOp(lhs, rhs, out)
 
 
-def xor(lhs, rhs, out):
-    _pto.TXorOp(lhs, rhs, lhs, out)
+def xor(lhs, rhs, tmp, out):
+    _pto.TXorOp(lhs, rhs, tmp, out)
 
 
 def min(lhs, rhs, out):

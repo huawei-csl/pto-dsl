@@ -1,7 +1,17 @@
+import inspect
+
 from ptodsl import pto, tile, to_ir_module
 from ptodsl import scalar as s
 
 const = s.const
+
+
+def _call_op(op_fn, src0, src1, tmp, dst):
+    """Call op_fn with (src0, src1, dst) or (src0, src1, tmp, dst) depending on arity."""
+    if len(inspect.signature(op_fn).parameters) == 4:
+        op_fn(src0, src1, tmp, dst)
+    else:
+        op_fn(src0, src1, dst)
 
 
 DTYPES = {
@@ -85,6 +95,7 @@ def build_binary_kernels(op_name, op_fn, dtype=None, tile_length=1024):
             tb0 = pto.alloc_tile(tile_type)
             tb1 = pto.alloc_tile(tile_type)
             tb2 = pto.alloc_tile(tile_type)
+            tb_tmp = pto.alloc_tile(tile_type)
 
             with pto.if_context(tile_offset_this_core < num_tiles_global):
                 tiles_end_this_core = tile_offset_this_core + num_tiles_per_core
@@ -121,7 +132,7 @@ def build_binary_kernels(op_name, op_fn, dtype=None, tile_length=1024):
 
                         pto.load(sv0, tb0)
                         pto.load(sv1, tb1)
-                        op_fn(tb0, tb1, tb2)
+                        _call_op(op_fn, tb0, tb1, tb_tmp, tb2)
                         pto.store(tb2, sv2)
 
     _1d.__name__ = f"vec_{op_name}_1d_dynamic"
@@ -169,6 +180,7 @@ def build_binary_kernels(op_name, op_fn, dtype=None, tile_length=1024):
             tb0 = pto.alloc_tile(tile_type)
             tb1 = pto.alloc_tile(tile_type)
             tb2 = pto.alloc_tile(tile_type)
+            tb_tmp = pto.alloc_tile(tile_type)
 
             with pto.if_context(row_start < rows):
                 rows_end = row_start + rows_per_core
@@ -204,7 +216,7 @@ def build_binary_kernels(op_name, op_fn, dtype=None, tile_length=1024):
 
                         pto.load(sv0, tb0)
                         pto.load(sv1, tb1)
-                        op_fn(tb0, tb1, tb2)
+                        _call_op(op_fn, tb0, tb1, tb_tmp, tb2)
                         pto.store(tb2, sv2)
 
     _2d.__name__ = f"vec_{op_name}_2d_dynamic"
