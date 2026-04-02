@@ -4,7 +4,17 @@ Usage:
   python caller.py --mode colexpand|rowexpand|rowexpand_mul|rowexpand_sub|rowexpand_div
 """
 
-_FUSED_MODES = {"rowexpand_mul", "rowexpand_sub", "rowexpand_div"}
+_FUSED_MODES = {
+    "colexpand_sub",
+    "colexpand_div",
+    "colexpand_mul",
+    "colexpand_min",
+    "colexpand_max",
+    "rowexpand_add",
+    "rowexpand_mul",
+    "rowexpand_sub",
+    "rowexpand_div",
+}
 
 
 def generate_caller(mode, dtype):
@@ -55,7 +65,13 @@ if __name__ == "__main__":
 
     MODES = [
         "colexpand",
+        "colexpand_sub",
+        "colexpand_div",
+        "colexpand_mul",
+        "colexpand_min",
+        "colexpand_max",
         "rowexpand",
+        "rowexpand_add",
         "rowexpand_mul",
         "rowexpand_sub",
         "rowexpand_div",

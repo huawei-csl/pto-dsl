@@ -24,7 +24,13 @@ BISHENG_FLAGS=(
 
 MODES=(
     colexpand
+    colexpand_sub
+    colexpand_div
+    colexpand_mul
+    colexpand_min
+    colexpand_max
     rowexpand
+    rowexpand_add
     rowexpand_mul
     rowexpand_sub
     rowexpand_div

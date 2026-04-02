@@ -1,7 +1,7 @@
 """Print MLIR IR for dynamic multicore col/row expand kernels.
 
 Usage:
-  python gen_ir.py --mode colexpand|rowexpand|rowexpand_mul|rowexpand_sub|rowexpand_div
+  python gen_ir.py --mode colexpand|colexpand_sub|colexpand_div|colexpand_mul|colexpand_min|colexpand_max|rowexpand|rowexpand_mul|rowexpand_sub|rowexpand_div
 """
 
 import argparse
@@ -12,7 +12,13 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from expand_builder import (
     build_col_expand,
+    build_col_expand_div,
+    build_col_expand_max,
+    build_col_expand_min,
+    build_col_expand_mul,
+    build_col_expand_sub,
     build_row_expand,
+    build_row_expand_add,
     build_row_expand_div,
     build_row_expand_mul,
     build_row_expand_sub,
@@ -20,7 +26,13 @@ from expand_builder import (
 
 _BUILDERS = {
     "colexpand": build_col_expand,
+    "colexpand_sub": build_col_expand_sub,
+    "colexpand_div": build_col_expand_div,
+    "colexpand_mul": build_col_expand_mul,
+    "colexpand_min": build_col_expand_min,
+    "colexpand_max": build_col_expand_max,
     "rowexpand": build_row_expand,
+    "rowexpand_add": build_row_expand_add,
     "rowexpand_mul": build_row_expand_mul,
     "rowexpand_sub": build_row_expand_sub,
     "rowexpand_div": build_row_expand_div,
