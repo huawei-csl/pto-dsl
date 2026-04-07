@@ -1,5 +1,3 @@
-from mlir.dialects import arith
-
 from ptodsl import pto, tile, to_ir_module
 from ptodsl import scalar as s
 
