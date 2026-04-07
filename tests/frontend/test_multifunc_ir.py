@@ -1,3 +1,15 @@
+from mlir.dialects import func, pto as _pto
+from mlir.ir import (
+    Attribute,
+    Context,
+    FlatSymbolRefAttr,
+    InsertionPoint,
+    Location,
+    Module,
+    Operation,
+    UnitAttr,
+)
+
 from ptodsl import pto, to_ir_module
 
 
@@ -13,7 +25,7 @@ def single_kernel(arg0: "ptr_ty") -> None:
 
 
 @to_ir_module(meta_data=meta_data, module=True)
-def build_module():
+def multi_kernel_module():
     @pto.func(kernel="vector")
     def worker(arg0: "ptr_ty") -> None:
         pass
@@ -23,17 +35,60 @@ def build_module():
         pto.call(worker, arg0)
 
 
-def test_old_single_function_builder():
-    text = str(single_kernel)
-    assert "func.func @single_kernel" in text
-    assert text.count("func.func @") == 1
-    assert "func.call" not in text
+def build_single_verbose():
+    with Context() as ctx, Location.unknown():
+        _pto.register_dialect(ctx, load=True)
+        module = Module.create()
+        ptr_ty = _pto.PtrType.get(pto.float32)
+        fn_ty = func.FunctionType.get([ptr_ty], [])
+
+        with InsertionPoint(module.body):
+            fn = func.FuncOp("single_kernel", fn_ty)
+            entry = fn.add_entry_block()
+
+        with InsertionPoint(entry):
+            func.ReturnOp([])
+
+        module.operation.verify()
+        return module
 
 
-def test_new_multi_function_builder():
-    text = str(build_module)
-    assert "func.func @worker" in text
-    assert "pto.kernel_kind = #pto.kernel_kind<vector>" in text
-    assert "func.func @entry" in text
-    assert "attributes {pto.entry}" in text
-    assert "call @worker" in text
+def build_multi_verbose():
+    with Context() as ctx, Location.unknown():
+        _pto.register_dialect(ctx, load=True)
+        module = Module.create()
+        ptr_ty = _pto.PtrType.get(pto.float32)
+        fn_ty = func.FunctionType.get([ptr_ty], [])
+
+        with InsertionPoint(module.body):
+            worker = func.FuncOp("worker", fn_ty)
+            entry = func.FuncOp("entry", fn_ty)
+
+        worker.operation.attributes["pto.kernel_kind"] = Attribute.parse(
+            "#pto.kernel_kind<vector>"
+        )
+        entry.operation.attributes["pto.entry"] = UnitAttr.get(ctx)
+
+        with InsertionPoint(worker.add_entry_block()):
+            func.ReturnOp([])
+
+        entry_block = entry.add_entry_block()
+        with InsertionPoint(entry_block):
+            arg0 = entry_block.arguments[0]
+            Operation.create(
+                "func.call",
+                operands=[arg0],
+                attributes={"callee": FlatSymbolRefAttr.get("worker")},
+            )
+            func.ReturnOp([])
+
+        module.operation.verify()
+        return module
+
+
+def test_old_single_function_builder_matches_raw_mlir():
+    assert str(single_kernel) == str(build_single_verbose())
+
+
+def test_new_multi_function_builder_matches_raw_mlir():
+    assert str(multi_kernel_module) == str(build_multi_verbose())
