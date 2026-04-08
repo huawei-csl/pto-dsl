@@ -60,8 +60,8 @@ def build_col_expand(dtype="fp32"):
 
     @to_ir_module(meta_data=_meta_data)
     def _kernel(
-        y_ptr: "ptr_type",
-        x_ptr: "ptr_type",
+        src_ptr: "ptr_type",
+        dst_ptr: "ptr_type",
         batch_i32: "index_dtype",
         n_cols_i32: "index_dtype",
     ) -> None:
@@ -81,16 +81,16 @@ def build_col_expand(dtype="fp32"):
             col_start = bid * cols_per_core
             col_end = s.min_u(col_start + cols_per_core, n_cols)
 
-            # y[n_cols] represented as 2D [1, n_cols] for uniform slice_view usage
-            tv_y = pto.as_tensor(
+            # src[n_cols] represented as 2D [1, n_cols] for uniform slice_view usage
+            tv_src = pto.as_tensor(
                 tensor2d_type,
-                ptr=y_ptr,
+                ptr=src_ptr,
                 shape=[c1, n_cols],
                 strides=[n_cols, c1],
             )
-            tv_x = pto.as_tensor(
+            tv_dst = pto.as_tensor(
                 tensor2d_type,
-                ptr=x_ptr,
+                ptr=dst_ptr,
                 shape=[batch, n_cols],
                 strides=[n_cols, c1],
             )
@@ -98,15 +98,15 @@ def build_col_expand(dtype="fp32"):
             for col in pto.range(col_start, col_end, c_tile_cols):
                 cols_this = s.min_u(c_tile_cols, col_end - col)
 
-                # Load one row of y into the src tile (valid_row=1)
+                # Load one row of src into the src tile (valid_row=1)
                 tb_src = pto.alloc_tile(tile_type, valid_row=c1, valid_col=cols_this)
-                sv_y = pto.slice_view(
+                sv_src = pto.slice_view(
                     subtensor_col_src,
-                    source=tv_y,
+                    source=tv_src,
                     offsets=[c0, col],
                     sizes=[c1, cols_this],
                 )
-                pto.load(sv_y, tb_src)
+                pto.load(sv_src, tb_src)
 
                 for row in pto.range(c0, batch, c_tile_rows):
                     rows_this = s.min_u(c_tile_rows, batch - row)
@@ -116,13 +116,13 @@ def build_col_expand(dtype="fp32"):
                     )
                     tile.col_expand(tb_src, tb_dst)
 
-                    sv_x = pto.slice_view(
+                    sv_dst = pto.slice_view(
                         subtensor_dst,
-                        source=tv_x,
+                        source=tv_dst,
                         offsets=[row, col],
                         sizes=[rows_this, cols_this],
                     )
-                    pto.store(tb_dst, sv_x)
+                    pto.store(tb_dst, sv_dst)
 
     return _kernel
 
@@ -345,10 +345,10 @@ def build_col_expand_max(dtype="fp32"):
 # src1 is a row-vector tile (valid_row=1, valid_col=rows_this)
 # so src1[0,i] = x[row+i] per the hardware op convention.
 _ROW_EXPAND_FUSED_OPS = {
-    "expand_add": tile.row_expand_add,
-    "expand_mul": tile.row_expand_mul,
-    "expand_sub": tile.row_expand_sub,
-    "expand_div": tile.row_expand_div,
+    "rowexpand_add": tile.row_expand_add,
+    "rowexpand_mul": tile.row_expand_mul,
+    "rowexpand_sub": tile.row_expand_sub,
+    "rowexpand_div": tile.row_expand_div,
 }
 
 
@@ -357,9 +357,10 @@ def _build_row_expand_fused(kind, dtype="fp32"):
     Fused row-expand: apply element-wise op between Y[i,j] and x[i].
 
     Semantics:
-        expand_mul: Y[i,j] *= x[i]
-        expand_sub: Y[i,j] -= x[i]
-        expand_div: Y[i,j] /= x[i]
+        expand_add: Z[i,j] = Y[i,j] + x[i]
+        expand_mul: Z[i,j] = Y[i,j] * x[i]
+        expand_sub: Z[i,j] = Y[i,j] - x[i]
+        expand_div: Z[i,j] = Y[i,j] / x[i]
 
     src1 tile is a scalar [1, 1]: src1[0,0] = x[row], one row at a time.
     """
@@ -457,19 +458,19 @@ def _build_row_expand_fused(kind, dtype="fp32"):
 
 
 def build_row_expand_add(dtype="fp32"):
-    return _build_row_expand_fused("expand_add", dtype=dtype)
+    return _build_row_expand_fused("rowexpand_add", dtype=dtype)
 
 
 def build_row_expand_mul(dtype="fp32"):
-    return _build_row_expand_fused("expand_mul", dtype=dtype)
+    return _build_row_expand_fused("rowexpand_mul", dtype=dtype)
 
 
 def build_row_expand_sub(dtype="fp32"):
-    return _build_row_expand_fused("expand_sub", dtype=dtype)
+    return _build_row_expand_fused("rowexpand_sub", dtype=dtype)
 
 
 def build_row_expand_div(dtype="fp32"):
-    return _build_row_expand_fused("expand_div", dtype=dtype)
+    return _build_row_expand_fused("rowexpand_div", dtype=dtype)
 
 
 if __name__ == "__main__":
