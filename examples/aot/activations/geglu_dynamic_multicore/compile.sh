@@ -5,8 +5,10 @@ rm -f geglu.pto geglu.cpp geglu_lib.so
 python ./geglu_builder.py > ./geglu.pto
 ptoas --enable-insert-sync ./geglu.pto -o ./geglu.cpp
 
+# CANN 8.5 headers don't have CompactMode, need latest pto-isa source
+PTO_LIB_PATH=/sources/pto-isa
 bisheng \
-    -I${ASCEND_TOOLKIT_HOME}/include \
+    -I${PTO_LIB_PATH}/include \
     -fPIC -shared -D_FORTIFY_SOURCE=2 -O2 -std=c++17 \
     -Wno-macro-redefined -Wno-ignored-attributes -fstack-protector-strong \
     -xcce -Xhost-start -Xhost-end \

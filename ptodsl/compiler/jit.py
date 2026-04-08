@@ -139,14 +139,15 @@ class JitWrapper:
         )
 
     def _compile_shared_library(self, caller_cpp_path, lib_path):
-        toolkit_home = os.environ.get("ASCEND_TOOLKIT_HOME")
-        if not toolkit_home:
+        # CANN 8.5 headers don't have CompactMode, need latest pto-isa source
+        pto_isa = os.environ.get("PTO_LIB_PATH")
+        if not pto_isa:
             raise RuntimeError(
-                "ASCEND_TOOLKIT_HOME is required to compile generated caller.cpp."
+                "PTO_LIB_PATH is required to compile generated caller.cpp."
             )
         cmd = [
             "bisheng",
-            f"-I{toolkit_home}/include",
+            f"-I{pto_isa}/include",
             "-fPIC",
             "-shared",
             "-D_FORTIFY_SOURCE=2",

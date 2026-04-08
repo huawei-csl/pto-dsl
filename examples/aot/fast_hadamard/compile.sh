@@ -13,8 +13,10 @@ ptoas --enable-insert-sync ./hadamard_auto_sync.pto -o ./hadamard_auto_sync.cpp
 python ./hadamard_builder.py --manual-sync > ./hadamard_manual_sync.pto
 ptoas ./hadamard_manual_sync.pto -o ./hadamard_manual_sync.cpp
 
+# CANN 8.5 headers don't have CompactMode, need latest pto-isa source
+PTO_LIB_PATH=/sources/pto-isa
 bisheng \
-    -I${ASCEND_TOOLKIT_HOME}/include \
+    -I${PTO_LIB_PATH}/include \
     -fPIC -shared -D_FORTIFY_SOURCE=2 -O2 -std=c++17 \
     -Wno-macro-redefined -Wno-ignored-attributes -fstack-protector-strong \
     -xcce -Xhost-start -Xhost-end \
@@ -29,7 +31,7 @@ bisheng \
     -o ./hadamard_auto_sync_lib.so
 
 bisheng \
-    -I${ASCEND_TOOLKIT_HOME}/include \
+    -I${PTO_LIB_PATH}/include \
     -fPIC -shared -D_FORTIFY_SOURCE=2 -O2 -std=c++17 \
     -Wno-macro-redefined -Wno-ignored-attributes -fstack-protector-strong \
     -xcce -Xhost-start -Xhost-end \

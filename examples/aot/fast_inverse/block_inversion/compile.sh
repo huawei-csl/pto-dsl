@@ -5,7 +5,7 @@ ARTIFACT_DIR="./build_artifacts"
 MATRIX_SIZE="${1:-64}"
 
 mkdir -p "${ARTIFACT_DIR}"
-rm -f "${ARTIFACT_DIR}/inverse.pto" "${ARTIFACT_DIR}/inverse.cpp" inverse_lib.so
+rm -f "${ARTIFACT_DIR}/inverse.pto" "${ARTIFACT_DIR}/inverse.cpp" inverse_lib_${MATRIX_SIZE}.so
 
 python ./inverse_builder.py \
     --matrix-size "${MATRIX_SIZE}" \
@@ -14,7 +14,6 @@ python ./inverse_builder.py \
 ptoas --enable-insert-sync "${ARTIFACT_DIR}/inverse.pto" -o "${ARTIFACT_DIR}/inverse.cpp"
 
 PTO_LIB_PATH=/sources/pto-isa
-# PTO_LIB_PATH=$ASCEND_TOOLKIT_HOME
 
 bisheng \
     -I${PTO_LIB_PATH}/include \
@@ -30,4 +29,4 @@ bisheng \
     -std=gnu++17 \
     -DKERNEL_CPP="\"${ARTIFACT_DIR}/inverse.cpp\"" \
     ./caller.cpp \
-    -o ./inverse_lib.so
+    -o ./inverse_lib_${MATRIX_SIZE}.so

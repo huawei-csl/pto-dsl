@@ -6,13 +6,16 @@ mkdir -p "${ARTIFACT_DIR}"
 
 rm -f "${ARTIFACT_DIR}"/*.pto "${ARTIFACT_DIR}"/*.cpp "${ARTIFACT_DIR}"/*.so
 
+# CANN 8.5 headers don't have CompactMode, need latest pto-isa source
+PTO_LIB_PATH=/sources/pto-isa
+
 # Step1 baseline: functionally correct dynamic-shape matmul without optimizations.
 python ./step1_baseline.py > "${ARTIFACT_DIR}/step1_baseline.pto"
 ptoas --enable-insert-sync "${ARTIFACT_DIR}/step1_baseline.pto" -o "${ARTIFACT_DIR}/step1_baseline.cpp"
 
 bisheng -fPIC -shared -xcce -O2 -std=c++17 \
     --npu-arch=dav-2201 -DMEMORY_BASE \
-    -I"${ASCEND_TOOLKIT_HOME}/include" \
+    -I"${PTO_LIB_PATH}/include" \
     -DKERNEL_CPP="\"${ARTIFACT_DIR}/step1_baseline.cpp\"" \
     -DKERNEL_FN=matmul_kernel_step1_baseline \
     ./caller.cpp \
@@ -24,7 +27,7 @@ ptoas --enable-insert-sync "${ARTIFACT_DIR}/step2_doublebuffer.pto" -o "${ARTIFA
 
 bisheng -fPIC -shared -xcce -O2 -std=c++17 \
     --npu-arch=dav-2201 -DMEMORY_BASE \
-    -I"${ASCEND_TOOLKIT_HOME}/include" \
+    -I"${PTO_LIB_PATH}/include" \
     -DKERNEL_CPP="\"${ARTIFACT_DIR}/step2_doublebuffer.cpp\"" \
     -DKERNEL_FN=matmul_kernel_ABt_autosync \
     ./caller.cpp \
@@ -36,7 +39,7 @@ ptoas --enable-insert-sync "${ARTIFACT_DIR}/step3_swizzle.pto" -o "${ARTIFACT_DI
 
 bisheng -fPIC -shared -xcce -O2 -std=c++17 \
     --npu-arch=dav-2201 -DMEMORY_BASE \
-    -I"${ASCEND_TOOLKIT_HOME}/include" \
+    -I"${PTO_LIB_PATH}/include" \
     -DKERNEL_CPP="\"${ARTIFACT_DIR}/step3_swizzle.cpp\"" \
     -DKERNEL_FN=matmul_kernel_ABt_autosync \
     ./caller.cpp \
@@ -48,7 +51,7 @@ ptoas "${ARTIFACT_DIR}/step4_manual_pipelining.pto" -o "${ARTIFACT_DIR}/step4_ma
 
 bisheng -fPIC -shared -xcce -O2 -std=c++17 \
     --npu-arch=dav-2201 -DMEMORY_BASE \
-    -I"${ASCEND_TOOLKIT_HOME}/include" \
+    -I"${PTO_LIB_PATH}/include" \
     -DKERNEL_CPP="\"${ARTIFACT_DIR}/step4_manual_pipelining.cpp\"" \
     -DKERNEL_FN=matmul_kernel_ABt \
     ./caller.cpp \

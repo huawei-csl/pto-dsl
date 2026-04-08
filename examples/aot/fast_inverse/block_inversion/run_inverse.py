@@ -202,10 +202,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--lib-path",
         type=str,
-        default="./inverse_lib.so",
-        help="Shared library path produced by compile.sh.",
+        default=None,
+        help="Shared library path produced by compile.sh. Defaults to ./inverse_lib_<matrix-size>.so.",
     )
     args = parser.parse_args()
+    if args.lib_path is None:
+        args.lib_path = f"./inverse_lib_{args.matrix_size}.so"
 
     device = get_test_device()
     torch.npu.set_device(device)

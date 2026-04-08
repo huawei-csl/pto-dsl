@@ -1,9 +1,9 @@
 ```bash
-bash compile.sh           # default matrix size 64
-python run_inverse.py
+bash compile.sh           # default matrix size 64 → inverse_lib_64.so
+python run_inverse.py     # defaults to --lib-path ./inverse_lib_64.so
 
-bash compile.sh 128       # another supported matrix size
-python run_inverse.py --matrix-size 128 --lib-path ./inverse_lib.so
+bash compile.sh 128       # matrix size 128 → inverse_lib_128.so
+python run_inverse.py --matrix-size 128
 ```
 
 This demo implements one-level 2x2 block inversion for `inv(I + A)` with input shape

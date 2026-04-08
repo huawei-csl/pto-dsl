@@ -6,8 +6,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TMP=$(mktemp -d)
 trap "rm -rf \"$TMP\"" EXIT
 
+PTO_LIB_PATH=/sources/pto-isa
+
 BISHENG_FLAGS=(
-    -I${ASCEND_TOOLKIT_HOME}/include
+    -I${PTO_LIB_PATH}/include
     -fPIC -shared -D_FORTIFY_SOURCE=2 -O2 -std=c++17
     -Wno-macro-redefined -Wno-ignored-attributes -fstack-protector-strong
     -xcce -Xhost-start -Xhost-end
