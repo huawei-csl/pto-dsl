@@ -10,7 +10,7 @@ LIB_PATH="${SCRIPT_DIR}/tpushpop_mlir_lib.so"
 mkdir -p "${ARTIFACT_DIR}"
 rm -f "${GENERATED_CPP}" "${LIB_PATH}"
 
-MLIR_GEN_PATH="${SCRIPT_DIR}/bidir_gen.mlir"
+MLIR_GEN_PATH="${SCRIPT_DIR}/c2v_gen.mlir"
 python c2v_builder.py > c2v_gen.mlir
 ptoas --pto-arch=a3 --enable-insert-sync "${MLIR_GEN_PATH}" > "${GENERATED_CPP}"
 
