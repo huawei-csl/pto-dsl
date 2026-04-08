@@ -165,6 +165,33 @@ def sort32(src, dst, idx):
     _pto.TSort32Op(src, idx, dst)
 
 
+_ROUND_MODE = {
+    "none": _pto.RoundMode.NONE,
+    "round": _pto.RoundMode.ROUND,
+    "trunc": _pto.RoundMode.TRUNC,
+    "ceil": _pto.RoundMode.CEIL,
+    "floor": _pto.RoundMode.FLOOR,
+    "rint": _pto.RoundMode.RINT,
+    "cast_rint": _pto.RoundMode.CAST_RINT,
+    "odd": _pto.RoundMode.ODD,
+}
+
+
+def cvt(src, dst, *, rmode=None):
+    """Convert tile element type (e.g. float32 → float16, float16 → float32).
+
+    src:   source tile.
+    dst:   destination tile with a different element type.
+    rmode: optional rounding mode string for lossy conversions: "none",
+           "round", "trunc", "ceil", "floor", "rint", "cast_rint", "odd".
+           Pass None (default) to omit the rounding-mode attribute.
+    """
+    rmode_attr = (
+        _pto.RoundModeAttr.get(_ROUND_MODE[rmode]) if rmode is not None else None
+    )
+    _pto.TCvtOp(src=src, dst=dst, rmode=rmode_attr)
+
+
 def subset(source, offsets, sizes):
     offset_vals = [_unwrap(v) for v in offsets]
     return _pto.subset(source, offset_vals, sizes)
@@ -210,5 +237,6 @@ __all__ = [
     "col_expand",
     "mrgsort",
     "sort32",
+    "cvt",
     "subset",
 ]
