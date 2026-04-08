@@ -83,20 +83,24 @@ def wrap_value(value):
 
 
 def __getattr__(name):
-    # TODO: add more builtin dtype aliases (for example float16/bfloat16/int8/int64)
-    # when they are validated against PTO type support.
     if name == "bool":
         return IntegerType.get_signless(1)
     if name == "float32":
         return F32Type.get()
     if name == "float16":
         return F16Type.get()
+    if name == "int64":
+        return IntegerType.get_signless(64)
     if name == "int32":
         return IntegerType.get_signless(32)
     if name == "int16":
         return IntegerType.get_signless(16)
+    if name == "int8":
+        return IntegerType.get_signless(8)
     if name == "uint32":
         return IntegerType.get_unsigned(32)
+    if name == "uint8":
+        return IntegerType.get_unsigned(8)
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 
