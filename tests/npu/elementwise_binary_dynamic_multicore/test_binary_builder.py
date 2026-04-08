@@ -27,7 +27,7 @@ BINARY_OPS = [
 DTYPES = ["float32", "float16", "int16"]
 
 # ops that only make sense for floating-point dtypes
-_FLOAT_ONLY_OPS = {"add", "sub", "mul", "div"}
+_FLOAT_ONLY_OPS = {"div"}
 # ops that only make sense for int16
 _INT16_ONLY_OPS = {"or", "and", "xor"}
 
