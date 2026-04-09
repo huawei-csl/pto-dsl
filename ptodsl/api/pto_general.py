@@ -111,16 +111,18 @@ def alloc_tile(tile_type, *, addr=None, valid_row=None, valid_col=None):
 # } -> i32
 def reserve_buffer(*, name, size, location, auto_alloc=True, base=None):
     """
-        - At most one `pto.reserve_buffer` is expected in one function
-        - `location` must be a supported local address space
-        - Op-level verification requires:
-        - `auto = false` must provide `base`
-        - `auto = true` must not provide `base`
+    - At most one `pto.reserve_buffer` is expected in one function
+    - `location` must be a supported local address space
+    - Op-level verification requires:
+    - `auto = false` must provide `base`
+    - `auto = true` must not provide `base`
     """
     # All params are compile time attributes
     # wrap reserve_buffer(name, size, location, auto_alloc, *, base=None, loc=None, ip=None) -> mlir._mlir_libs._mlir.ir.Value
 
-    return _pto.ReserveBufferOp(name, size, _resolve_address_space_attr(location), auto_alloc, base=base).result
+    return _pto.ReserveBufferOp(
+        name, size, _resolve_address_space_attr(location), auto_alloc, base=base
+    ).result
 
 
 # %c2v_import = pto.import_reserved_buffer {
@@ -136,12 +138,11 @@ def aic_initialize_pipe(
     *,
     dir_mask,
     slot_size,
-    gm_slot_buffer=None, # only needed on a2/a3?
+    gm_slot_buffer=None,  # only needed on a2/a3?
     c2v_consumer_buf,
     v2c_consumer_buf,
 ):
-    # wrap
-    # aic_initialize_pipe(dir_mask, slot_size, c2v_consumer_buf, v2c_consumer_buf, *, gm_slot_buffer=None, loc=None, ip=None) -> mlir._mlir_libs._mlir.ir.Operation
+    # wrap aic_initialize_pipe(dir_mask, slot_size, c2v_consumer_buf, v2c_consumer_buf, *, gm_slot_buffer=None, loc=None, ip=None) -> mlir._mlir_libs._mlir.ir.Operation
     return _pto.AicInitializePipeOp(
         dir_mask,
         slot_size,
@@ -160,12 +161,11 @@ def aiv_initialize_pipe(
     *,
     dir_mask,
     slot_size,
-    gm_slot_buffer=None, # only needed on a2/a3
+    gm_slot_buffer=None,  # only needed on a2/a3
     c2v_consumer_buf,
     v2c_consumer_buf,
 ):
-    # wrap
-    # aiv_initialize_pipe(dir_mask, slot_size, c2v_consumer_buf, v2c_consumer_buf, *, gm_slot_buffer=None, loc=None, ip=None) -> mlir._mlir_libs._mlir.ir.Operation
+    # wrap aiv_initialize_pipe(dir_mask, slot_size, c2v_consumer_buf, v2c_consumer_buf, *, gm_slot_buffer=None, loc=None, ip=None) -> mlir._mlir_libs._mlir.ir.Operation
     return _pto.AivInitializePipeOp(
         dir_mask,
         slot_size,
