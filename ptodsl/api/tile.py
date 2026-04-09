@@ -147,8 +147,8 @@ def col_max(src, dst):
     _pto.TColMaxOp(src=src, dst=dst)
 
 
-def col_prod(src, tmp, dst, is_binary=True):
-    _pto.TColProdOp(src=src, dst=dst, tmp=tmp, isBinary=BoolAttr.get(is_binary))
+def col_prod(src, tmp, dst):
+    _pto.TColProdOp(src=src, dst=dst)
 
 
 def col_expand(src, dst):
@@ -173,6 +173,26 @@ def col_expand_min(src0, src1, dst):
 
 def col_expand_max(src0, src1, dst):
     _pto.TColExpandMaxOp(src0=src0, src1=src1, dst=dst)
+
+
+def col_expand_add(src0, src1, dst):
+    _pto.TColExpandAddOp(src0=src0, src1=src1, dst=dst)
+
+
+def col_expand_expdif(src0, src1, dst):
+    _pto.TColExpandExpdifOp(src0=src0, src1=src1, dst=dst)
+
+
+def row_expand_min(src0, src1, dst):
+    _pto.TRowExpandMinOp(src0=src0, src1=src1, dst=dst)
+
+
+def row_expand_max(src0, src1, dst):
+    _pto.TRowExpandMaxOp(src0=src0, src1=src1, dst=dst)
+
+
+def row_expand_expdif(src0, src1, dst):
+    _pto.TRowExpandExpdifOp(src0=src0, src1=src1, dst=dst)
 
 
 def mrgsort(src, dst, block_len):
@@ -265,6 +285,11 @@ __all__ = [
     "col_expand_mul",
     "col_expand_min",
     "col_expand_max",
+    "col_expand_add",
+    "col_expand_expdif",
+    "row_expand_min",
+    "row_expand_max",
+    "row_expand_expdif",
     "mrgsort",
     "sort32",
     "cvt",

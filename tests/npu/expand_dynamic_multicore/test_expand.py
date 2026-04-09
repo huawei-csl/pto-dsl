@@ -20,11 +20,16 @@ _KERNELS = [
     "colexpand_mul",
     "colexpand_min",
     "colexpand_max",
+    "colexpand_add",
+    "colexpand_expdif",
     "rowexpand",
     "rowexpand_add",
     "rowexpand_mul",
     "rowexpand_sub",
     "rowexpand_div",
+    "rowexpand_min",
+    "rowexpand_max",
+    "rowexpand_expdif",
 ]
 
 _LIB_PATHS = {name: os.path.join(_DIR, f"{name}_lib.so") for name in _KERNELS}
@@ -55,15 +60,20 @@ def compiled_kernels():
 
 
 _FUSED_KERNELS = {
+    "colexpand_add",
     "colexpand_sub",
     "colexpand_div",
     "colexpand_mul",
     "colexpand_min",
     "colexpand_max",
+    "colexpand_expdif",
     "rowexpand_add",
     "rowexpand_mul",
     "rowexpand_sub",
     "rowexpand_div",
+    "rowexpand_min",
+    "rowexpand_max",
+    "rowexpand_expdif",
 }
 
 
@@ -109,7 +119,14 @@ def _make_inputs(name, batch, n_cols, device):
         y = torch.randn(batch, n_cols, device=device, dtype=torch.float32)
         z = torch.zeros((batch, n_cols), device=device, dtype=torch.float32)
         return x, y, z
-    if name in {"colexpand_sub", "colexpand_mul", "colexpand_min", "colexpand_max"}:
+    if name in {
+        "colexpand_add",
+        "colexpand_sub",
+        "colexpand_mul",
+        "colexpand_min",
+        "colexpand_max",
+        "colexpand_expdif",
+    }:
         x = torch.randn(n_cols, device=device, dtype=torch.float32)
         y = torch.randn(batch, n_cols, device=device, dtype=torch.float32)
         z = torch.zeros((batch, n_cols), device=device, dtype=torch.float32)
@@ -120,7 +137,7 @@ def _make_inputs(name, batch, n_cols, device):
         y = torch.randn(batch, n_cols, device=device, dtype=torch.float32)
         z = torch.zeros((batch, n_cols), device=device, dtype=torch.float32)
         return x, y, z
-    # rowexpand_add, rowexpand_mul, rowexpand_sub
+    # rowexpand_add, rowexpand_mul, rowexpand_sub, rowexpand_min, rowexpand_max, rowexpand_expdif
     x = torch.randn(batch, device=device, dtype=torch.float32)
     y = torch.randn(batch, n_cols, device=device, dtype=torch.float32)
     z = torch.zeros((batch, n_cols), device=device, dtype=torch.float32)
@@ -140,6 +157,8 @@ def _reference(name, x, y):
         return torch.minimum(y.float(), x.float().unsqueeze(0).expand_as(y))
     if name == "colexpand_max":
         return torch.maximum(y.float(), x.float().unsqueeze(0).expand_as(y))
+    if name == "colexpand_add":
+        return y.float() + x.float().unsqueeze(0)
     if name == "rowexpand":
         return x.float().unsqueeze(1).expand_as(y)
     if name == "rowexpand_add":
@@ -150,13 +169,21 @@ def _reference(name, x, y):
         return y.float() - x.float().unsqueeze(1)
     if name == "rowexpand_div":
         return y.float() / x.float().unsqueeze(1)
+    if name == "rowexpand_min":
+        return torch.minimum(y.float(), x.float().unsqueeze(1).expand_as(y))
+    if name == "rowexpand_max":
+        return torch.maximum(y.float(), x.float().unsqueeze(1).expand_as(y))
+    if name == "colexpand_expdif":
+        return torch.exp(y.float() - x.float().unsqueeze(0))
+    if name == "rowexpand_expdif":
+        return torch.exp(y.float() - x.float().unsqueeze(1))
     raise ValueError(f"Unknown kernel: {name}")
 
 
 def _tolerances(name):
     if name in {"colexpand", "rowexpand"}:
         return {"atol": 0, "rtol": 0}
-    if name in {"colexpand_min", "colexpand_max"}:
+    if name in {"colexpand_min", "colexpand_max", "rowexpand_min", "rowexpand_max"}:
         return {"atol": 0, "rtol": 0}
     return {"atol": 1e-4, "rtol": 1e-4}
 

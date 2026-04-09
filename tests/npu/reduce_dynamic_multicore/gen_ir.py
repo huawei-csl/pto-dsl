@@ -13,11 +13,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from reduce_builder import (
     build_colmax,
     build_colmin,
-    # build_colprod,
+    build_colprod,
     build_colsum,
     build_rowmax,
     build_rowmin,
-    # build_rowprod,
+    build_rowprod,
     build_rowsum,
 )
 
@@ -25,11 +25,11 @@ _BUILDERS = {
     "rowsum": build_rowsum,
     "rowmin": build_rowmin,
     "rowmax": build_rowmax,
-    # "rowprod": build_rowprod,
+    "rowprod": build_rowprod,
     "colsum": build_colsum,
     "colmin": build_colmin,
     "colmax": build_colmax,
-    # "colprod": build_colprod,
+    "colprod": build_colprod,
 }
 
 if __name__ == "__main__":

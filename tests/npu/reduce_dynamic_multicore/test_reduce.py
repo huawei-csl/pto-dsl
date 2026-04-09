@@ -17,11 +17,11 @@ _KERNELS = [
     "rowsum",
     "rowmin",
     "rowmax",
-    # "rowprod",
+    "rowprod",
     "colsum",
     "colmin",
     "colmax",
-    # "colprod",
+    "colprod",
 ]
 
 _LIB_PATHS = {name: os.path.join(_DIR, f"{name}_lib.so") for name in _KERNELS}

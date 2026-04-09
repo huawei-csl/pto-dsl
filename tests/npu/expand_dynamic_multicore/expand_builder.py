@@ -209,11 +209,13 @@ def build_row_expand(dtype="fp32"):
 # src1 is a col-vector tile (valid_row=1, valid_col=cols_this)
 # so src1[0,j] = x[col+j] per the hardware op convention.
 _COL_EXPAND_FUSED_OPS = {
+    "colexpand_add": tile.col_expand_add,
     "colexpand_sub": tile.col_expand_sub,
     "colexpand_div": tile.col_expand_div,
     "colexpand_mul": tile.col_expand_mul,
     "colexpand_min": tile.col_expand_min,
     "colexpand_max": tile.col_expand_max,
+    "colexpand_expdif": tile.col_expand_expdif,
 }
 
 
@@ -341,6 +343,14 @@ def build_col_expand_max(dtype="fp32"):
     return _build_col_expand_fused("colexpand_max", dtype=dtype)
 
 
+def build_col_expand_add(dtype="fp32"):
+    return _build_col_expand_fused("colexpand_add", dtype=dtype)
+
+
+def build_col_expand_expdif(dtype="fp32"):
+    return _build_col_expand_fused("colexpand_expdif", dtype=dtype)
+
+
 # Fused row-expand ops: dst[i,j] = src0[i,j] op src1[0,i]
 # src1 is a row-vector tile (valid_row=1, valid_col=rows_this)
 # so src1[0,i] = x[row+i] per the hardware op convention.
@@ -349,6 +359,9 @@ _ROW_EXPAND_FUSED_OPS = {
     "rowexpand_mul": tile.row_expand_mul,
     "rowexpand_sub": tile.row_expand_sub,
     "rowexpand_div": tile.row_expand_div,
+    "rowexpand_min": tile.row_expand_min,
+    "rowexpand_max": tile.row_expand_max,
+    "rowexpand_expdif": tile.row_expand_expdif,
 }
 
 
@@ -473,6 +486,18 @@ def build_row_expand_div(dtype="fp32"):
     return _build_row_expand_fused("rowexpand_div", dtype=dtype)
 
 
+def build_row_expand_min(dtype="fp32"):
+    return _build_row_expand_fused("rowexpand_min", dtype=dtype)
+
+
+def build_row_expand_max(dtype="fp32"):
+    return _build_row_expand_fused("rowexpand_max", dtype=dtype)
+
+
+def build_row_expand_expdif(dtype="fp32"):
+    return _build_row_expand_fused("rowexpand_expdif", dtype=dtype)
+
+
 if __name__ == "__main__":
     import argparse
 
@@ -483,11 +508,16 @@ if __name__ == "__main__":
         "colexpand_mul",
         "colexpand_min",
         "colexpand_max",
+        "colexpand_add",
+        "colexpand_expdif",
         "rowexpand",
         "rowexpand_add",
         "rowexpand_mul",
         "rowexpand_sub",
         "rowexpand_div",
+        "rowexpand_min",
+        "rowexpand_max",
+        "rowexpand_expdif",
     ]
 
     parser = argparse.ArgumentParser()
@@ -502,11 +532,16 @@ if __name__ == "__main__":
         "colexpand_mul": build_col_expand_mul,
         "colexpand_min": build_col_expand_min,
         "colexpand_max": build_col_expand_max,
+        "colexpand_add": build_col_expand_add,
+        "colexpand_expdif": build_col_expand_expdif,
         "rowexpand": build_row_expand,
         "rowexpand_add": build_row_expand_add,
         "rowexpand_mul": build_row_expand_mul,
         "rowexpand_sub": build_row_expand_sub,
         "rowexpand_div": build_row_expand_div,
+        "rowexpand_min": build_row_expand_min,
+        "rowexpand_max": build_row_expand_max,
+        "rowexpand_expdif": build_row_expand_expdif,
     }
 
     print(builders[args.mode](dtype=args.dtype))

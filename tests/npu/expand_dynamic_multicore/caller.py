@@ -5,15 +5,20 @@ Usage:
 """
 
 _FUSED_MODES = {
+    "colexpand_add",
     "colexpand_sub",
     "colexpand_div",
     "colexpand_mul",
     "colexpand_min",
     "colexpand_max",
+    "colexpand_expdif",
     "rowexpand_add",
     "rowexpand_mul",
     "rowexpand_sub",
     "rowexpand_div",
+    "rowexpand_min",
+    "rowexpand_max",
+    "rowexpand_expdif",
 }
 
 
@@ -70,11 +75,16 @@ if __name__ == "__main__":
         "colexpand_mul",
         "colexpand_min",
         "colexpand_max",
+        "colexpand_add",
+        "colexpand_expdif",
         "rowexpand",
         "rowexpand_add",
         "rowexpand_mul",
         "rowexpand_sub",
         "rowexpand_div",
+        "rowexpand_min",
+        "rowexpand_max",
+        "rowexpand_expdif",
     ]
 
     parser = argparse.ArgumentParser()

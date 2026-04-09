@@ -26,11 +26,11 @@ MODES=(
     rowsum
     rowmin
     rowmax
-    # rowprod
+    rowprod
     colsum
     colmin
     colmax
-    # colprod
+    colprod
 )
 
 for MODE in "${MODES[@]}"; do

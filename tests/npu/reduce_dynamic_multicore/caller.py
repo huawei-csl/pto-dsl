@@ -34,11 +34,11 @@ if __name__ == "__main__":
         "rowsum",
         "rowmin",
         "rowmax",
-        # "rowprod",
+        "rowprod",
         "colsum",
         "colmin",
         "colmax",
-        # "colprod",
+        "colprod",
     ]
 
     parser = argparse.ArgumentParser()
