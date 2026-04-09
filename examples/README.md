@@ -3,8 +3,11 @@
 Set the target NPU device with `PTODSL_TEST_DEVICE_ID` (for example `3`).
 If this environment variable is not set, example/test scripts default to `0` (resolved as `npu:0`) and print a warning.
 
+JIT (AOT) examples also require `PTO_LIB_PATH` to point to the `pto-isa` installation so the compiler can find its headers.
+
 ```bash
 export PTODSL_TEST_DEVICE_ID=0
+export PTO_LIB_PATH=/sources/pto-isa
 python ./validate_all_examples.py
 ```
 

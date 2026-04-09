@@ -45,6 +45,8 @@ __all__ = [
     "bool",
     "float16",
     "float32",
+    "int8",
+    "uint8",
     "int16",
     "int32",
     "ffts_type",

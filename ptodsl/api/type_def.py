@@ -123,4 +123,6 @@ __all__ = [
     "int32",
     "ffts_type",
     "uint32",
+    "int8",
+    "uint8",
 ]
