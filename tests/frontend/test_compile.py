@@ -32,7 +32,6 @@ To add a new op, create a ``test_<op>_ir.py`` that follows the pattern above.
 **No changes to this file are required.**
 """
 
-import importlib
 import importlib.util
 import inspect
 import pathlib
