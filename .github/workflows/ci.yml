@@ -96,11 +96,15 @@ jobs:
           fi
 
       - name: Run frontend tests
-        run: pytest -v ./tests/frontend
+        run: |
+          export LD_LIBRARY_PATH=/usr/local/Ascend/ascend-toolkit/latest/$(uname -i)-linux/devlib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+          pytest -v ./tests/frontend
+        env:
+          PTO_LIB_PATH: /sources/pto-isa
 
       - name: Run NPU build tests
         run: |
-          export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/Ascend/ascend-toolkit/latest/$(uname -i)-linux/devlib
+          export LD_LIBRARY_PATH=/usr/local/Ascend/ascend-toolkit/latest/$(uname -i)-linux/devlib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
           pytest -v -m "not require_npu" ./tests/npu
         env:
           TORCH_DEVICE_BACKEND_AUTOLOAD: "0"
