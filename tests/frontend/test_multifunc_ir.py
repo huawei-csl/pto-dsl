@@ -32,7 +32,7 @@ def multi_kernel_module():
     def worker(arg0: "ptr_ty") -> None:
         pass
 
-    @pto.func(entry=True)
+    @pto.func
     def entry(arg0: "ptr_ty") -> None:
         pto.call(worker, arg0)
 

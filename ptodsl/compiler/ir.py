@@ -111,11 +111,13 @@ def _define(module, ctx, meta_map, fn, *, name=None, entry=False, kernel=None):
     return FuncRef(fn_name)
 
 
-def ir_func(*, name=None, entry=False, kernel=None):
+def ir_func(fn=None, *, name=None, kernel=None):
+    entry = kernel is None
+
     def decorator(fn):
         if _CURRENT is None:
             raise RuntimeError(
-                "`pto.func(...)` can only be used inside `@to_ir_module(..., module=True)`."
+                "`pto.func` can only be used inside `@to_ir_module(..., module=True)`."
             )
         return _define(
             _CURRENT["module"],
@@ -126,6 +128,9 @@ def ir_func(*, name=None, entry=False, kernel=None):
             entry=entry,
             kernel=kernel,
         )
+
+    if fn is not None:
+        return decorator(fn)
 
     return decorator
 

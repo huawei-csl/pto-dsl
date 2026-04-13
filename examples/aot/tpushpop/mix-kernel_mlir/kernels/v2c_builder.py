@@ -93,7 +93,7 @@ def module():
         pto.load(gm_x_tile_view, send_tile)
         pto.tpush_to_aic(send_tile, 0)
 
-    @pto.func(entry=True)
+    @pto.func
     def call_both(
         ffts_addr: "ffts_ty", gm_slot_buffer: "ptr_ty", gm_x: "ptr_ty", gm_y: "ptr_ty"
     ) -> None:

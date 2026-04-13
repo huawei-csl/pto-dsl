@@ -99,7 +99,7 @@ def module():
         pto.store(pto.tpop_from_aic(recv_ty, 0), gm_y_tile_view)
         pto.tfree_from_aic(0)
 
-    @pto.func(entry=True)
+    @pto.func
     def call_both(
         ffts_addr: "ffts_ty", gm_slot_buffer: "ptr_ty", gm_x: "ptr_ty", gm_y: "ptr_ty"
     ) -> None:

@@ -117,7 +117,7 @@ def module():
         pto.tpush_to_aic(doubled_tile, 0)
         pto.tfree_from_aic(0)
 
-    @pto.func(entry=True)
+    @pto.func
     def call_both(
         ffts_addr: "ffts_ty", gm_slot_buffer: "ptr_ty", gm_x: "ptr_ty", gm_y: "ptr_ty"
     ) -> None:
