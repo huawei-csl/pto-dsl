@@ -5,10 +5,11 @@ import subprocess
 import pytest
 import torch
 
-from ptodsl.test_util import get_test_device
+from ptodsl.npu_info import get_num_cube_cores, get_test_device
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
 _DEVICE = get_test_device()
+_BLOCK_DIM = get_num_cube_cores()
 
 VARIANTS = ["sym", "asym"]
 _PARAMS = [pytest.param(v, id=v) for v in VARIANTS]
@@ -53,6 +54,7 @@ def _load_sym_kernel():
     lib = ctypes.CDLL(_lib_path("sym"))
     fn = lib.call_quant_sym_dynamic
     fn.argtypes = [
+        ctypes.c_uint32,  # blockDim
         ctypes.c_void_p,  # stream
         ctypes.c_void_p,  # src
         ctypes.c_void_p,  # fp (inv_scale, broadcast per-row)
@@ -68,6 +70,7 @@ def _load_asym_kernel():
     lib = ctypes.CDLL(_lib_path("asym"))
     fn = lib.call_quant_asym_dynamic
     fn.argtypes = [
+        ctypes.c_uint32,  # blockDim
         ctypes.c_void_p,  # stream
         ctypes.c_void_p,  # src
         ctypes.c_void_p,  # fp (inv_scale, broadcast per-row)
@@ -166,6 +169,7 @@ def test_quant_sym(compiled_libs, batch, n_cols):
 
     torch.npu.synchronize()
     fn(
+        ctypes.c_uint32(_BLOCK_DIM),
         stream_ptr,
         _ctypes_ptr(src_dev),
         _ctypes_ptr(inv_scale_dev),
@@ -204,6 +208,7 @@ def test_quant_asym(compiled_libs, batch, n_cols):
 
     torch.npu.synchronize()
     fn(
+        ctypes.c_uint32(_BLOCK_DIM),
         stream_ptr,
         _ctypes_ptr(src_dev),
         _ctypes_ptr(inv_scale_dev),

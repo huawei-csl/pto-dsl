@@ -2,8 +2,6 @@
 
 import sys
 
-_BLOCK_DIM = 20
-
 
 def generate_caller(variant):
     stem = f"quant_{variant}_dynamic"
@@ -13,6 +11,7 @@ def generate_caller(variant):
 #include "{stem}.cpp"
 
 extern "C" void {fn_name}(
+    uint32_t blockDim,
     void *stream,
     uint8_t *src,
     uint8_t *fp,
@@ -20,7 +19,7 @@ extern "C" void {fn_name}(
     int32_t batch,
     int32_t n_cols)
 {{
-    quant_sym_dynamic<<<{_BLOCK_DIM}, nullptr, stream>>>(
+    quant_sym_dynamic<<<blockDim, nullptr, stream>>>(
         reinterpret_cast<float *>(src),
         reinterpret_cast<float *>(fp),
         reinterpret_cast<int8_t *>(dst),
@@ -33,6 +32,7 @@ extern "C" void {fn_name}(
 #include "{stem}.cpp"
 
 extern "C" void {fn_name}(
+    uint32_t blockDim,
     void *stream,
     uint8_t *src,
     uint8_t *fp,
@@ -41,7 +41,7 @@ extern "C" void {fn_name}(
     int32_t batch,
     int32_t n_cols)
 {{
-    quant_asym_dynamic<<<{_BLOCK_DIM}, nullptr, stream>>>(
+    quant_asym_dynamic<<<blockDim, nullptr, stream>>>(
         reinterpret_cast<float *>(src),
         reinterpret_cast<float *>(fp),
         reinterpret_cast<float *>(offset),
