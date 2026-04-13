@@ -2,7 +2,9 @@ import ctypes
 import time
 import torch
 import torch_npu
-from ptodsl.test_util import get_test_device
+from ptodsl.npu_info import get_num_cube_cores, get_test_device
+
+_DEFAULT_NUM_CORES = get_num_cube_cores()
 
 try:
     import matplotlib.pyplot as plt
@@ -85,13 +87,13 @@ def plot_benchmark():
     torch.npu.set_device(device)
     dtype = torch.float32
 
-    blk_values = list(range(1, 25))
+    blk_values = list(range(1, _DEFAULT_NUM_CORES))
     pto_results, torch_results = [], []
 
     matmul_func = load_lib("./matmul_kernel.so")  # assume defined
     torch.manual_seed(0)
 
-    bs, m, k, n = 24 * 200, 128, 128, 128
+    bs, m, k, n = _DEFAULT_NUM_CORES * 200, 128, 128, 128
     for blk in blk_values:
         a = torch.rand((bs, m, k), device=device, dtype=dtype)
         b = torch.rand((k, n), device=device, dtype=dtype)

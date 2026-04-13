@@ -8,6 +8,7 @@ from functools import update_wrapper
 from mlir.dialects import pto as _pto
 from mlir.ir import Context, Location
 
+from ..utils.npu_info import get_num_cube_cores
 from .ir import to_ir_module
 
 
@@ -87,7 +88,7 @@ class JitWrapper:
         *,
         meta_data,
         output_dir=None,
-        block_dim=20,
+        block_dim=None,
         enable_insert_sync=True,
         npu_arch="dav-2201",
     ):
@@ -100,7 +101,7 @@ class JitWrapper:
             if output_dir
             else pathlib.Path.cwd() / ".ptodsl_jit" / fn.__name__
         )
-        self._block_dim = block_dim
+        self._block_dim = block_dim if block_dim is not None else get_num_cube_cores()
         self._enable_insert_sync = enable_insert_sync
         self._npu_arch = npu_arch
         self._compiled = False
@@ -140,7 +141,7 @@ class JitWrapper:
 
     def _compile_shared_library(self, caller_cpp_path, lib_path):
         # CANN 8.5 headers don't have CompactMode, need latest pto-isa source
-        pto_isa = os.environ.get("PTO_LIB_PATH")
+        pto_isa = os.environ.get("PTO_LIB_PATH", "/sources/pto-isa")
         if not pto_isa:
             raise RuntimeError(
                 "PTO_LIB_PATH is required to compile generated caller.cpp."

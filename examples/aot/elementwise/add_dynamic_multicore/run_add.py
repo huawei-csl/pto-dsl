@@ -1,46 +1,61 @@
 import ctypes
+
 import torch
-import torch_npu
-from ptodsl.test_util import get_test_device
+import torch_npu  # noqa: F401
+
+from ptodsl.npu_info import get_num_cube_cores, get_test_device
+
+_DEFAULT_NUM_CORES = get_num_cube_cores()
 
 
 def torch_to_ctypes(tensor):
     return ctypes.c_void_p(tensor.data_ptr())
 
 
-def lib_to_func(lib):
-    def add_func(x, y, z, stream_ptr=None):
+def load_lib(lib_path, block_dim=_DEFAULT_NUM_CORES):
+    lib = ctypes.CDLL(lib_path)
+    lib.call_kernel.argtypes = [
+        ctypes.c_uint32,  # blockDim
+        ctypes.c_void_p,  # stream
+        ctypes.c_void_p,  # x
+        ctypes.c_void_p,  # y
+        ctypes.c_void_p,  # z
+        ctypes.c_int32,  # N
+    ]
+    lib.call_kernel.restype = None
 
+    def add_func(x, y, z, block_dim=block_dim, stream_ptr=None):
         if stream_ptr is None:
             stream_ptr = torch.npu.current_stream()._as_parameter_
-
         N = x.numel()
         lib.call_kernel(
-            stream_ptr, torch_to_ctypes(x), torch_to_ctypes(y), torch_to_ctypes(z), N
+            block_dim,
+            stream_ptr,
+            torch_to_ctypes(x),
+            torch_to_ctypes(y),
+            torch_to_ctypes(z),
+            N,
         )
 
     return add_func
 
 
-def test_add(lib_path="./add_lib.so"):
+def test_add(lib_path="./add_lib.so", block_dim=_DEFAULT_NUM_CORES):
     device = get_test_device()
     torch.npu.set_device(device)
 
-    lib = ctypes.CDLL(lib_path)
-    add_func = lib_to_func(lib)
+    add_func = load_lib(lib_path=lib_path, block_dim=block_dim)
 
-    # shape parameter hard-coded as kernel
-    num_cores = 24 * 2
     tile_size = 1024
     # Keep shapes aligned to tile size, but vary tile counts so they are not
-    # required to be multiples of `num_cores`.
+    # required to be multiples of `block_dim`.
     tile_counts = [
         1,
         7,
-        num_cores - 1,
-        num_cores + 3,
-        2 * num_cores + 7,
-        5 * num_cores - 5,
+        block_dim - 1,
+        block_dim + 3,
+        2 * block_dim + 7,
+        5 * block_dim - 5,
     ]
     shape_list = [tile_size * tiles for tiles in tile_counts]
 

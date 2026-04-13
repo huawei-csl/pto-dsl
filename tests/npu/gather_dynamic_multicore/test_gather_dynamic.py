@@ -4,7 +4,7 @@ import subprocess
 
 import pytest
 import torch
-from ptodsl.test_util import get_test_device
+from ptodsl.npu_info import get_num_cube_cores, get_test_device
 
 torch.manual_seed(0)
 
@@ -30,7 +30,7 @@ CASES = [
 SHAPES = [(1, 64), (8, 64), (4, 128), (2, 256)]
 _SHAPE_PARAMS = [pytest.param(B, N, id=f"B{B}-N{N}") for B, N in SHAPES]
 
-NUM_BLOCKS = 20
+NUM_BLOCKS = get_num_cube_cores()
 TILE = 32
 
 
@@ -97,6 +97,21 @@ def init_indices_per_block(B, N, num_blocks, device):
         )
 
     return flat.view(B, N).to(torch.int32)
+
+
+def _valid_output_mask(mask_pattern, total_elements, tile_size=TILE):
+    """Boolean mask of output positions that the kernel actually writes for the given pattern."""
+    num_tiles = total_elements // tile_size
+    mask = torch.zeros(total_elements, dtype=torch.bool)
+    if mask_pattern == "P1111":
+        mask[:] = True
+    elif mask_pattern in ("P0101", "P1010"):
+        for t in range(num_tiles):
+            mask[t * tile_size : t * tile_size + tile_size // 2] = True
+    elif mask_pattern == "P0001":
+        for t in range(num_tiles):
+            mask[t * tile_size : t * tile_size + tile_size // 4] = True
+    return mask
 
 
 def _gather_ref_blocked(src, indices, mask_pattern, num_blocks=NUM_BLOCKS):
@@ -168,9 +183,6 @@ def test_build_gather(compiled_lib):
 
 
 @pytest.mark.require_npu
-@pytest.mark.xfail(
-    reason="Known unsolved issues of indeterministic output values", strict=False
-)
 @pytest.mark.parametrize("B, N", _SHAPE_PARAMS)
 def test_gather_dynamic(compiled_lib, B, N):
     import torch_npu
@@ -192,12 +204,27 @@ def test_gather_dynamic(compiled_lib, B, N):
     out = torch.empty((B, N), device=_DEVICE, dtype=torch_dtype)
 
     torch.npu.synchronize()
-    fn(stream_ptr, _ctypes_ptr(src), _ctypes_ptr(indices), _ctypes_ptr(out), B, N)
+    fn(
+        NUM_BLOCKS,
+        stream_ptr,
+        _ctypes_ptr(src),
+        _ctypes_ptr(indices),
+        _ctypes_ptr(out),
+        B,
+        N,
+    )
     torch.npu.synchronize()
 
     ref = _gather_ref_blocked(src, indices, mask_pattern, num_blocks=NUM_BLOCKS)
 
-    torch.testing.assert_close(out, ref, msg=f"shape=({B},{N}), mask={mask_pattern}")
+    # Only compare positions the kernel actually writes; non-packed positions in
+    # compression patterns (P0101, P1010, P0001) contain hardware-defined values.
+    valid = _valid_output_mask(mask_pattern, B * N).to(_DEVICE)
+    torch.testing.assert_close(
+        out.reshape(-1)[valid],
+        ref.reshape(-1)[valid],
+        msg=f"shape=({B},{N}), mask={mask_pattern}",
+    )
 
 
 if __name__ == "__main__":

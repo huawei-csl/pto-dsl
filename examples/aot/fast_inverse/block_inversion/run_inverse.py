@@ -8,7 +8,9 @@ import numpy as np
 import torch
 import torch_npu  # noqa: F401
 
-from ptodsl.test_util import get_test_device
+from ptodsl.npu_info import get_num_cube_cores, get_test_device
+
+_DEFAULT_NUM_CORES = get_num_cube_cores()
 
 random.seed(42)
 torch.manual_seed(42)
@@ -27,7 +29,7 @@ def torch_to_ctypes(tensor):
 def load_lib(lib_path):
     lib = ctypes.CDLL(lib_path)
     lib.call_kernel.argtypes = [
-        ctypes.c_uint32,  # blockDim (batch)
+        ctypes.c_uint32,  # blockDim
         ctypes.c_void_p,  # stream
         ctypes.c_void_p,  # out
         ctypes.c_void_p,  # in_delta
@@ -97,7 +99,7 @@ def run_kernel(lib, inp_delta):
 
     stream_ptr = torch.npu.current_stream()._as_parameter_
     lib.call_kernel(
-        batch,
+        _DEFAULT_NUM_CORES,
         stream_ptr,
         torch_to_ctypes(out),
         torch_to_ctypes(inp_fp16),

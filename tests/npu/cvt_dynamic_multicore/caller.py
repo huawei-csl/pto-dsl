@@ -2,8 +2,6 @@
 
 import argparse
 
-_BLOCK_DIM = 20
-
 _CPP_TYPE = {
     "float32": "float",
     "float16": "half",
@@ -24,13 +22,14 @@ def generate_caller(src_dtype, dst_dtype, rmode=None):
 #include "{stem}.cpp"
 
 extern "C" void {fn_name}(
+    uint32_t blockDim,
     void *stream,
     uint8_t *src,
     uint8_t *dst,
     int32_t batch,
     int32_t n_cols)
 {{
-    _kernel<<<{_BLOCK_DIM}, nullptr, stream>>>(
+    _kernel<<<blockDim, nullptr, stream>>>(
         reinterpret_cast<{src_cpp} *>(src),
         reinterpret_cast<{dst_cpp} *>(dst),
         batch,

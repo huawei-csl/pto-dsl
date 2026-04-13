@@ -9,7 +9,6 @@ Environment:
 from __future__ import annotations
 
 import argparse
-import os
 import re
 import subprocess
 import sys
@@ -17,10 +16,10 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from ptodsl.npu_info import DEVICE_ENV_VAR, get_test_device
 
 README_NAME = "README.md"
 SUPPORTED_LANGS = {"bash", "sh", "shell", ""}
-DEVICE_ENV_VAR = "PTODSL_TEST_DEVICE_ID"
 
 
 @dataclass
@@ -168,13 +167,8 @@ def main() -> int:
     args = parser.parse_args()
 
     examples_root = args.root.resolve()
-    device = os.getenv(DEVICE_ENV_VAR)
-    if device:
-        print(f"Using {DEVICE_ENV_VAR}={device}")
-    else:
-        print(
-            f"Warning: {DEVICE_ENV_VAR} is not set; scripts default to 0 (resolved to npu:0)."
-        )
+    device = get_test_device()
+    print(f"Using {DEVICE_ENV_VAR}={device}")
     readmes = discover_example_readmes(examples_root)
     print_header(len(readmes))
 

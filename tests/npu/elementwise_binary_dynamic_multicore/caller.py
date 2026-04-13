@@ -44,17 +44,17 @@ def _binary_caller(op_name, ctype):
 #undef ptoas_auto_sync_tail
 
 extern "C" void call_kernel_1d(
-    void *stream, uint8_t *x, uint8_t *y, uint8_t *z, int32_t N)
+    uint32_t blockDim, void *stream, uint8_t *x, uint8_t *y, uint8_t *z, int32_t N)
 {{
-    vec_{op_name}_1d_dynamic<<<20, nullptr, stream>>>(
+    vec_{op_name}_1d_dynamic<<<blockDim, nullptr, stream>>>(
         ({ctype} *)x, ({ctype} *)y, ({ctype} *)z, N
         );
 }}
 
 extern "C" void call_kernel_2d(
-    void *stream, uint8_t *x, uint8_t *y, uint8_t *z, int32_t M, int32_t N)
+    uint32_t blockDim, void *stream, uint8_t *x, uint8_t *y, uint8_t *z, int32_t M, int32_t N)
 {{
-    vec_{op_name}_2d_dynamic<<<20, nullptr, stream>>>(
+    vec_{op_name}_2d_dynamic<<<blockDim, nullptr, stream>>>(
         ({ctype} *)x, ({ctype} *)y, ({ctype} *)z, M, N
         );
 }}

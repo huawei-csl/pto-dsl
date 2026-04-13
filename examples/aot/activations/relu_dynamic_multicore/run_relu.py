@@ -13,7 +13,9 @@
 import ctypes
 import torch
 import torch_npu
-from ptodsl.test_util import get_test_device
+from ptodsl.npu_info import get_num_cube_cores, get_test_device
+
+_DEFAULT_NUM_CORES = get_num_cube_cores()
 
 
 def torch_to_ctypes(tensor):
@@ -56,7 +58,7 @@ def test_relu(verbose=True):
 
     # allocate a bigger buffer than the actual number of elements to test the padding behavior
     shape = [1, 2 * 128]
-    for BLOCK_DIM in range(1, 21):
+    for BLOCK_DIM in range(1, _DEFAULT_NUM_CORES + 1):
         relu_kernel = load_lib("relu_lib.so", block_dim=BLOCK_DIM)
         print(BLOCK_DIM)
         for num_elements in [3, 7, 13, 97, 143, 2 * 128]:

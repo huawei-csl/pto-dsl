@@ -6,10 +6,11 @@ import torch
 import torch.nn.functional as F
 import torch_npu
 
-from ptodsl.test_util import get_test_device
+from ptodsl.npu_info import get_num_cube_cores, get_test_device
 
 
-BLOCK_DIM_LIST = [1, 20, 24]
+_DEFAULT_NUM_CORES = get_num_cube_cores()
+BLOCK_DIM_LIST = [1, 20, _DEFAULT_NUM_CORES]
 SWIZZLE_DIRECTION_LIST = [0, 1]
 SWIZZLE_COUNT_LIST = [1, 3, 5]
 M_LIST = [128 * i for i in range(1, 37, 4)]  # 128, ..., 4224
@@ -58,7 +59,7 @@ def load_lib(lib_path):
         a,
         b,
         *,
-        block_dim=24,
+        block_dim=_DEFAULT_NUM_CORES,
         swizzle_direction=1,
         swizzle_count=3,
         stream_ptr=None,

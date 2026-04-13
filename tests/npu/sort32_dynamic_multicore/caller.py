@@ -7,8 +7,6 @@ _DTYPE_TO_CTYPE = {
     "float32": "float",
 }
 
-_BLOCK_DIM = 24
-
 
 def fn_name(dtype):
     return f"tsort32_1d_dynamic_{dtype}"
@@ -21,9 +19,9 @@ def generate_caller(dtype):
 #include "{fn}.cpp"
 
 extern "C" void call_{fn}(
-    void *stream, uint8_t *src, uint8_t *idx, uint8_t *dst, int32_t N)
+    uint32_t blockDim, void *stream, uint8_t *src, uint8_t *idx, uint8_t *dst, int32_t N)
 {{
-    {fn}<<<{_BLOCK_DIM}, nullptr, stream>>>(
+    {fn}<<<blockDim, nullptr, stream>>>(
         ({ctype} *)src, (uint32_t *)idx, ({ctype} *)dst, (int32_t)N);
 }}
 """

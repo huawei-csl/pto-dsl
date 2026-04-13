@@ -1,24 +1,40 @@
 import ctypes
+
 import torch
-import torch_npu
-from ptodsl.test_util import get_test_device
+import torch_npu  # noqa: F401
+
+from ptodsl.npu_info import get_num_cube_cores, get_test_device
+
+_DEFAULT_NUM_CORES = get_num_cube_cores()
 
 
 def torch_to_ctypes(tensor):
     return ctypes.c_void_p(tensor.data_ptr())
 
 
-def lib_to_func(lib):
-    def add_func(x, y, z, stream_ptr=None):
+def load_lib(lib_path, block_dim=_DEFAULT_NUM_CORES):
+    lib = ctypes.CDLL(lib_path)
+    lib.call_kernel.argtypes = [
+        ctypes.c_uint32,  # blockDim
+        ctypes.c_void_p,  # stream
+        ctypes.c_void_p,  # x
+        ctypes.c_void_p,  # y
+        ctypes.c_void_p,  # z
+        ctypes.c_int32,  # N
+    ]
+    lib.call_kernel.restype = None
+
+    def add_func(x, y, z, block_dim=block_dim, stream_ptr=None):
         if stream_ptr is None:
             stream_ptr = torch.npu.current_stream()._as_parameter_
-
+        N = x.numel()
         lib.call_kernel(
+            block_dim,
             stream_ptr,
             torch_to_ctypes(x),
             torch_to_ctypes(y),
             torch_to_ctypes(z),
-            x.numel(),
+            N,
         )
 
     return add_func
@@ -77,17 +93,15 @@ def bench_add(
     )
 
 
-def run_bench(lib_path, kernel_name):
+def run_bench(lib_path, kernel_name, block_dim=_DEFAULT_NUM_CORES):
     device = get_test_device()
     torch.npu.set_device(device)
 
-    lib = ctypes.CDLL(lib_path)
-    add_func = lib_to_func(lib)
+    add_func = load_lib(lib_path, block_dim=block_dim)
 
-    num_cores = 24 * 2  # match kernel num cores * 2
     tile_size = 8192  # match kernel tile size
     num_rounds = 100  # each core iterate this many times
-    tile_count = num_rounds * num_cores
+    tile_count = num_rounds * block_dim
     shape = tile_size * tile_count
 
     torch.manual_seed(0)

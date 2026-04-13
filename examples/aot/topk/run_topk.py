@@ -24,10 +24,11 @@ import subprocess
 import torch
 import torch_npu
 
-from ptodsl.test_util import get_test_device
+from ptodsl.npu_info import get_num_cube_cores, get_test_device
 from topk_builder import fn_name
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
+_BLOCK_DIM = get_num_cube_cores()
 
 # ── test configurations ───────────────────────────────────────────────────────
 # (n_rows, n_cols, topk, description)
@@ -69,6 +70,7 @@ def _load_fn(n_cols: int, topk: int):
     lib = ctypes.CDLL(_lib_path(n_cols, topk))
     fn = getattr(lib, f"call_{fn_name(n_cols, topk)}")
     fn.argtypes = [
+        ctypes.c_uint32,  # blockDim
         ctypes.c_void_p,  # stream
         ctypes.c_void_p,  # src         [n_rows, n_cols] float32
         ctypes.c_void_p,  # inIdx       [n_cols]         uint32
@@ -96,6 +98,7 @@ def _run_one(device: str, n_rows: int, n_cols: int, topk: int, desc: str) -> Non
     stream_ptr = torch.npu.current_stream()._as_parameter_
     torch.npu.synchronize()
     fn(
+        ctypes.c_uint32(_BLOCK_DIM),
         stream_ptr,
         _ptr(src),
         _ptr(inidx),

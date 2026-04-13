@@ -9,8 +9,6 @@ _DTYPE_TO_CTYPE = {
     "int16": "int16_t",
 }
 
-_BLOCK_DIM = 24
-
 
 def generate_caller(op_name, dtype="float32"):
     ctype = _DTYPE_TO_CTYPE[dtype]
@@ -18,9 +16,9 @@ def generate_caller(op_name, dtype="float32"):
 #include "{op_name}_{dtype}.cpp"
 
 extern "C" void call_kernel(
-    void *stream, uint8_t *x, uint8_t *y, int32_t batch, int32_t n_cols)
+    uint32_t blockDim, void *stream, uint8_t *x, uint8_t *y, int32_t batch, int32_t n_cols)
 {{
-    _kernel<<<{_BLOCK_DIM}, nullptr, stream>>>(
+    _kernel<<<blockDim, nullptr, stream>>>(
         ({ctype} *)x, ({ctype} *)y, batch, n_cols);
 }}
 """

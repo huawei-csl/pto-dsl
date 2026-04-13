@@ -5,14 +5,16 @@ import torch
 import torch.nn.functional as F
 import torch_npu  # noqa: F401
 
-from ptodsl.test_util import get_test_device
+from ptodsl.npu_info import get_num_cube_cores, get_test_device
+
+_DEFAULT_NUM_CORES = get_num_cube_cores()
 
 
 def torch_to_ctypes(tensor):
     return ctypes.c_void_p(tensor.data_ptr())
 
 
-def load_lib(lib_path, block_dim=24):
+def load_lib(lib_path, block_dim=_DEFAULT_NUM_CORES):
     lib = ctypes.CDLL(lib_path)
     lib.call_kernel.argtypes = [
         ctypes.c_uint32,  # blockDim
@@ -96,7 +98,7 @@ def bench_geglu(
     )
 
 
-def run_bench(lib_path, block_dim=24, batch=1024, n_cols=8192):
+def run_bench(lib_path, block_dim=_DEFAULT_NUM_CORES, batch=1024, n_cols=8192):
     device = get_test_device()
     torch.npu.set_device(device)
 

@@ -5,12 +5,13 @@ import subprocess
 
 import pytest
 import torch
-from ptodsl.test_util import get_test_device
+from ptodsl.npu_info import get_num_cube_cores, get_test_device
 
 torch.manual_seed(0)
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
 _DEVICE = get_test_device()
+_BLOCK_DIM = get_num_cube_cores()
 
 BINARY_OPS = [
     ("add", lambda x, y: x + y),
@@ -97,7 +98,12 @@ def _lib_to_func_binary_1d(lib):
     def fn(x, y, z):
         stream_ptr = torch.npu.current_stream()._as_parameter_
         lib.call_kernel_1d(
-            stream_ptr, _ctypes_ptr(x), _ctypes_ptr(y), _ctypes_ptr(z), x.numel()
+            _BLOCK_DIM,
+            stream_ptr,
+            _ctypes_ptr(x),
+            _ctypes_ptr(y),
+            _ctypes_ptr(z),
+            x.numel(),
         )
 
     return fn
@@ -107,6 +113,7 @@ def _lib_to_func_binary_2d(lib):
     def fn(x, y, z):
         stream_ptr = torch.npu.current_stream()._as_parameter_
         lib.call_kernel_2d(
+            _BLOCK_DIM,
             stream_ptr,
             _ctypes_ptr(x),
             _ctypes_ptr(y),
@@ -143,7 +150,7 @@ def test_binary_1d_precision(compiled_lib):
     lib = ctypes.CDLL(compiled_lib["lib_path"])
     kernel = _lib_to_func_binary_1d(lib)
 
-    num_cores = 20 * 2
+    num_cores = _BLOCK_DIM
     tile_size = 1024
     tile_counts = [
         1,
@@ -175,7 +182,7 @@ def test_binary_2d_precision(compiled_lib):
     lib = ctypes.CDLL(compiled_lib["lib_path"])
     kernel = _lib_to_func_binary_2d(lib)
 
-    num_cores = 20 * 2
+    num_cores = _BLOCK_DIM
     tile_size = 1024
     shape_list = [
         (1, tile_size),

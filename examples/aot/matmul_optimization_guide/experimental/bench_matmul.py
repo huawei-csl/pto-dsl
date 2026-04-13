@@ -8,10 +8,10 @@ import torch
 import torch.nn.functional as F
 import torch_npu  # noqa: F401
 
-from ptodsl.test_util import get_test_device
+from ptodsl.npu_info import get_num_cube_cores, get_test_device
 
 
-BLOCK_DIM = 24
+BLOCK_DIM = get_num_cube_cores()
 SWIZZLE_DIRECTION_LIST = [0, 1]
 SWIZZLE_COUNT_LIST = [1, 3, 5]
 NO_SWIZZLE_DIRECTION = -1
@@ -52,7 +52,7 @@ def load_lib(lib_path):
         a,
         b,
         *,
-        block_dim=24,
+        block_dim=BLOCK_DIM,
         swizzle_direction=1,
         swizzle_count=3,
         stream_ptr=None,

@@ -1,17 +1,17 @@
 #!/bin/bash
 # Compile one TopK kernel config into a shared library.
 #
-# Usage: bash compile.sh [N_COLS] [TOPK] [BLOCK_DIM]
-# Defaults: 512 256 24
+# Usage: bash compile.sh [N_COLS] [TOPK]
+# Defaults: 512 256
 #
-# N_ROWS is a runtime argument – the same library handles any row count.
+# N_ROWS and block_dim are runtime arguments – the same library handles any
+# row count and is launched with however many cores are available.
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 N_COLS=${1:-512}
 TOPK=${2:-256}
-BLOCK_DIM=${3:-24}
 
 FN="topk_c${N_COLS}_k${TOPK}"
 
@@ -19,11 +19,11 @@ TMP=$(mktemp -d)
 trap "rm -rf $TMP" EXIT
 
 python "$SCRIPT_DIR/topk_builder.py" \
-    --n-cols "$N_COLS" --topk "$TOPK" --block-dim "$BLOCK_DIM" \
+    --n-cols "$N_COLS" --topk "$TOPK" \
     > "$TMP/${FN}.pto"
 ptoas --enable-insert-sync "$TMP/${FN}.pto" -o "$TMP/${FN}.cpp"
 
-python "$SCRIPT_DIR/caller.py" "$FN" --block-dim "$BLOCK_DIM" > "$TMP/caller.cpp"
+python "$SCRIPT_DIR/caller.py" "$FN" > "$TMP/caller.cpp"
 
 # CANN 8.5 headers don't have CompactMode, need latest pto-isa source
 PTO_LIB_PATH=/sources/pto-isa

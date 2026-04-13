@@ -130,11 +130,14 @@ def build_row_reduce(kind="sum", dtype="fp32"):
         n_cols = s.index_cast(n_cols_i32)
 
         with pto.vector_section():
-            bid = s.index_cast(pto.get_block_idx())
-            num_cores = s.index_cast(pto.get_block_num())
+            cid = pto.get_block_idx()
+            sub_bid = pto.get_subblock_idx()
+            sub_bnum = pto.get_subblock_num()
+            vid = s.index_cast(cid * sub_bnum + sub_bid)
+            num_cores = s.index_cast(pto.get_block_num() * sub_bnum)
 
             rows_per_core = s.ceil_div(batch, num_cores)
-            row_start = bid * rows_per_core
+            row_start = vid * rows_per_core
             row_end = s.min_u(row_start + rows_per_core, batch)
             num_rows = row_end - row_start
 
@@ -203,11 +206,14 @@ def build_col_reduce(kind="sum", dtype="fp32"):
         n_cols = s.index_cast(n_cols_i32)
 
         with pto.vector_section():
-            bid = s.index_cast(pto.get_block_idx())
-            num_cores = s.index_cast(pto.get_block_num())
+            cid = pto.get_block_idx()
+            sub_bid = pto.get_subblock_idx()
+            sub_bnum = pto.get_subblock_num()
+            vid = s.index_cast(cid * sub_bnum + sub_bid)
+            num_cores = s.index_cast(pto.get_block_num() * sub_bnum)
 
             cols_per_core = s.ceil_div(n_cols, num_cores)
-            col_start = bid * cols_per_core
+            col_start = vid * cols_per_core
             col_end = s.min_u(col_start + cols_per_core, n_cols)
             num_cols = col_end - col_start
 

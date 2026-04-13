@@ -8,17 +8,15 @@ import numpy as np
 import torch
 import torch_npu  # noqa: F401
 
-from ptodsl.test_util import get_test_device
+from ptodsl.npu_info import get_num_cube_cores, get_test_device
+
+_DEFAULT_NUM_CORES = get_num_cube_cores()
 
 random.seed(42)
 torch.manual_seed(42)
 np.random.seed(42)
 
 SUPPORTED_MATRIX_SIZES = (16, 32, 64, 128)
-try:
-    PERSISTENT_BLOCK_DIM = int(torch.npu.get_device_properties("npu").cube_core_num)
-except Exception:
-    PERSISTENT_BLOCK_DIM = 24
 
 
 def torch_to_ctypes(tensor):
@@ -60,7 +58,7 @@ def run_kernel(lib, inp):
 
     stream_ptr = torch.npu.current_stream()._as_parameter_
     lib.call_kernel(
-        PERSISTENT_BLOCK_DIM,
+        _DEFAULT_NUM_CORES,
         stream_ptr,
         torch_to_ctypes(out),
         torch_to_ctypes(in_delta),

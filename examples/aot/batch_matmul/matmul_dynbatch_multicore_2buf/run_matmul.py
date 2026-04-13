@@ -3,11 +3,13 @@ import ctypes
 import time
 import argparse
 
-from ptodsl.test_util import get_test_device
+from ptodsl.npu_info import get_num_cube_cores, get_test_device
 from ptodsl import do_bench
 
 import torch
 import torch_npu
+
+_DEFAULT_NUM_CORES = get_num_cube_cores()
 
 
 def torch_to_ctypes(tensor):
@@ -84,7 +86,7 @@ def plot_benchmark():
     pto_results, torch_results, pto2_results, pto3_results = [], [], [], []
     m, k, n = 128, 128, 128
     batches = list(range(24 * 2, 8000, 24 * 2))
-    blk = [24, 1, 6]
+    blk = [_DEFAULT_NUM_CORES, 1, 6]
     for i in batches:
         bs = i
         a = torch.rand((bs, m, k), device=device, dtype=dtype)
@@ -92,7 +94,7 @@ def plot_benchmark():
         c = torch.zeros((bs, m, n), device=device, dtype=dtype)
 
         # correctness check
-        matmul_func(c, a, b, batch_size=bs, block_dim=24)
+        matmul_func(c, a, b, batch_size=bs, block_dim=_DEFAULT_NUM_CORES)
         torch.npu.synchronize()
         c_ref = torch.matmul(a, b)
         diff = (c - c_ref).abs().max()
@@ -172,7 +174,7 @@ def correctness_verify():
     matmul_func = load_lib("./matmul_kernel.so")
 
     m, k, n = 128, 128, 128
-    for blk in [1, 24]:
+    for blk in [1, _DEFAULT_NUM_CORES]:
         for bs in range(1000, 1100):
             a = torch.rand((bs, m, k), device=device, dtype=dtype)
             b = torch.rand((k, n), device=device, dtype=dtype)

@@ -5,13 +5,13 @@ import subprocess
 import pytest
 import torch
 
-from ptodsl.test_util import get_test_device
+from ptodsl.npu_info import get_num_cube_cores, get_test_device
 
 torch.manual_seed(0)
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
 _DEVICE = get_test_device()
-_BLOCK_DIM = 24
+_BLOCK_DIM = get_num_cube_cores()
 
 _KERNELS = [
     "rowsum",

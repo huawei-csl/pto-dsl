@@ -74,11 +74,14 @@ def build_col_expand(dtype="fp32"):
         n_cols = s.index_cast(n_cols_i32)
 
         with pto.vector_section():
-            bid = s.index_cast(pto.get_block_idx())
-            num_cores = s.index_cast(pto.get_block_num())
+            cid = pto.get_block_idx()
+            sub_bid = pto.get_subblock_idx()
+            sub_bnum = pto.get_subblock_num()
+            vid = s.index_cast(cid * sub_bnum + sub_bid)
+            num_cores = s.index_cast(pto.get_block_num() * sub_bnum)
 
             cols_per_core = s.ceil_div(n_cols, num_cores)
-            col_start = bid * cols_per_core
+            col_start = vid * cols_per_core
             col_end = s.min_u(col_start + cols_per_core, n_cols)
 
             # src[n_cols] represented as 2D [1, n_cols] for uniform slice_view usage
@@ -152,11 +155,14 @@ def build_row_expand(dtype="fp32"):
         n_cols = s.index_cast(n_cols_i32)
 
         with pto.vector_section():
-            bid = s.index_cast(pto.get_block_idx())
-            num_cores = s.index_cast(pto.get_block_num())
+            cid = pto.get_block_idx()
+            sub_bid = pto.get_subblock_idx()
+            sub_bnum = pto.get_subblock_num()
+            vid = s.index_cast(cid * sub_bnum + sub_bid)
+            num_cores = s.index_cast(pto.get_block_num() * sub_bnum)
 
             rows_per_core = s.ceil_div(batch, num_cores)
-            row_start = bid * rows_per_core
+            row_start = vid * rows_per_core
             row_end = s.min_u(row_start + rows_per_core, batch)
 
             # x[batch] represented as 2D [batch, 1] for uniform slice_view usage
@@ -250,11 +256,14 @@ def _build_col_expand_fused(kind, dtype="fp32"):
         n_cols = s.index_cast(n_cols_i32)
 
         with pto.vector_section():
-            bid = s.index_cast(pto.get_block_idx())
-            num_cores = s.index_cast(pto.get_block_num())
+            cid = pto.get_block_idx()
+            sub_bid = pto.get_subblock_idx()
+            sub_bnum = pto.get_subblock_num()
+            vid = s.index_cast(cid * sub_bnum + sub_bid)
+            num_cores = s.index_cast(pto.get_block_num() * sub_bnum)
 
             cols_per_core = s.ceil_div(n_cols, num_cores)
-            col_start = bid * cols_per_core
+            col_start = vid * cols_per_core
             col_end = s.min_u(col_start + cols_per_core, n_cols)
 
             # x[n_cols] represented as 2D [1, n_cols]
@@ -396,11 +405,14 @@ def _build_row_expand_fused(kind, dtype="fp32"):
         n_cols = s.index_cast(n_cols_i32)
 
         with pto.vector_section():
-            bid = s.index_cast(pto.get_block_idx())
-            num_cores = s.index_cast(pto.get_block_num())
+            cid = pto.get_block_idx()
+            sub_bid = pto.get_subblock_idx()
+            sub_bnum = pto.get_subblock_num()
+            vid = s.index_cast(cid * sub_bnum + sub_bid)
+            num_cores = s.index_cast(pto.get_block_num() * sub_bnum)
 
             rows_per_core = s.ceil_div(batch, num_cores)
-            row_start = bid * rows_per_core
+            row_start = vid * rows_per_core
             row_end = s.min_u(row_start + rows_per_core, batch)
 
             # y[batch, n_cols] - input matrix (src0)

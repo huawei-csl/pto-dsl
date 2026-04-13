@@ -21,9 +21,9 @@ def generate_caller(dtype, mask_pattern="P1111"):
 #include "{fn}.cpp"
 
 extern "C" void call_{fn}(
-    void *stream, uint8_t *src, uint8_t *indices, uint8_t *out, int32_t B, int32_t N)
+    uint32_t blockDim, void *stream, uint8_t *src, uint8_t *indices, uint8_t *out, int32_t B, int32_t N)
 {{
-    {fn}<<<20, nullptr, stream>>>(
+    {fn}<<<blockDim, nullptr, stream>>>(
         ({src_ctype} *)src, (int32_t *)indices, ({src_ctype} *)out, B, N);
 }}
 """

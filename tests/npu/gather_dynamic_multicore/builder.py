@@ -96,7 +96,7 @@ def build_gather_kernel(
         num_blocks = pto.get_block_num()
 
         vid_idx = s.index_cast(vid)
-        num_cores = s.index_cast(num_blocks)
+        num_cores = s.index_cast(num_blocks * sub_bnum)
 
         num_tiles_global = s.ceil_div(total_elements, c_tile)
         num_tiles_per_core = s.ceil_div(num_tiles_global, num_cores)

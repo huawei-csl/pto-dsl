@@ -7,16 +7,17 @@ import math
 import torch
 import torch_npu  # noqa: F401
 
-from ptodsl.test_util import get_test_device
+from ptodsl.npu_info import get_num_cube_cores, get_test_device
 
 ELEMENTS_PER_TILE = 32 * 1024 // 2  # 32KB UB / sizeof(fp16)
+_DEFAULT_NUM_CORES = get_num_cube_cores()
 
 
 def torch_to_ctypes(tensor):
     return ctypes.c_void_p(tensor.data_ptr())
 
 
-def load_lib(lib_path, block_dim=24):
+def load_lib(lib_path, block_dim=_DEFAULT_NUM_CORES):
     lib = ctypes.CDLL(lib_path)
     lib.call_kernel.argtypes = [
         ctypes.c_uint32,  # blockDim
@@ -62,7 +63,7 @@ def _is_power_of_two(v):
     return v > 0 and (v & (v - 1)) == 0
 
 
-def test_hadamard(hadamard_func, block_dim=24):
+def test_hadamard(hadamard_func, block_dim=_DEFAULT_NUM_CORES):
     torch.manual_seed(0)
     dtype = torch.float16
     batch_list = [1, 7, 29, 65]
@@ -113,7 +114,7 @@ def benchmark(hadamard_func, warmup=2, repeats=20, output_dir="./perf_data/"):
     """
     TEST_HIDDEN_DIMS = [128, 256, 512, 1024, 2048, 4096, 8192, 16384]
     BENCH_BATCHES = [1, 5, 8, 10, 16, 20, 32, 40, 64, 128, 256, 512, 1024]
-    BENCH_BLOCK_DIMS = [20, 24]
+    BENCH_BLOCK_DIMS = [20, _DEFAULT_NUM_CORES]
 
     os.makedirs(output_dir, exist_ok=True)
 

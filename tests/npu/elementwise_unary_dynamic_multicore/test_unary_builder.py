@@ -4,12 +4,13 @@ import subprocess
 
 import pytest
 import torch
-from ptodsl.test_util import get_test_device
+from ptodsl.npu_info import get_num_cube_cores, get_test_device
 
 torch.manual_seed(0)
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
 _DEVICE = get_test_device()
+_BLOCK_DIM = get_num_cube_cores()
 
 UNARY_OPS = [
     ("rsqrt", lambda x: x.rsqrt()),
@@ -86,6 +87,7 @@ def _make_input(shape, device, dtype, op_name):
 
 def _lib_to_func_unary(lib):
     lib.call_kernel.argtypes = [
+        ctypes.c_uint32,
         ctypes.c_void_p,
         ctypes.c_void_p,
         ctypes.c_void_p,
@@ -97,6 +99,7 @@ def _lib_to_func_unary(lib):
     def fn(x, y):
         stream_ptr = torch.npu.current_stream()._as_parameter_
         lib.call_kernel(
+            ctypes.c_uint32(_BLOCK_DIM),
             stream_ptr,
             ctypes.c_void_p(x.data_ptr()),
             ctypes.c_void_p(y.data_ptr()),

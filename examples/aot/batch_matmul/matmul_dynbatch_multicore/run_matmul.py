@@ -1,7 +1,7 @@
 import ctypes
 import torch
 import torch_npu
-from ptodsl.test_util import get_test_device
+from ptodsl.npu_info import get_test_device
 
 
 def torch_to_ctypes(tensor):

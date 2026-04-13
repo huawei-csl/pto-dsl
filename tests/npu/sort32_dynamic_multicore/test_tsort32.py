@@ -4,12 +4,13 @@ import subprocess
 
 import pytest
 import torch
-from ptodsl.test_util import get_test_device
+from ptodsl.npu_info import get_num_cube_cores, get_test_device
 
 torch.manual_seed(0)
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
 _DEVICE = get_test_device()
+_BLOCK_DIM = get_num_cube_cores()
 
 # TSORT32 sorts within fixed 32-element blocks.
 # Each input element expands into (score, index) pairs in the output:
@@ -57,6 +58,7 @@ def _load_fn(dtype):
     lib = ctypes.CDLL(_lib_path(dtype))
     fn = getattr(lib, f"call_{_fn_name(dtype)}")
     fn.argtypes = [
+        ctypes.c_uint32,  # blockDim
         ctypes.c_void_p,  # stream
         ctypes.c_void_p,  # src
         ctypes.c_void_p,  # idx  (uint32)
@@ -75,6 +77,7 @@ def _run_kernel(
     dst = torch.empty(N * dst_stride, dtype=src.dtype, device=src.device)
     torch.npu.synchronize()
     fn(
+        ctypes.c_uint32(_BLOCK_DIM),
         stream_ptr,
         _ctypes_ptr(src),
         _ctypes_ptr(idx),

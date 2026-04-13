@@ -4,7 +4,7 @@ from ptodsl import jit, pto, tile
 from ptodsl import scalar as s
 import torch
 import torch_npu
-from ptodsl.test_util import get_test_device
+from ptodsl.npu_info import get_num_cube_cores, get_test_device
 
 const = s.const
 
@@ -200,7 +200,7 @@ def test_matmul():
 
     m, k, n = 128, 128, 128
     batch_sizes = [5, 32, 66, 511]
-    block_dims = [1, 2, 10, 20]
+    block_dims = [1, 2, 10, get_num_cube_cores()]
 
     torch.manual_seed(0)
 

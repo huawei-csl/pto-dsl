@@ -13,7 +13,7 @@ except ImportError:
     plt = None
 
 from ptodsl import do_bench
-from ptodsl.test_util import get_test_device
+from ptodsl.npu_info import get_num_cube_cores, get_test_device
 
 random.seed(42)
 torch.manual_seed(42)
@@ -21,10 +21,7 @@ np.random.seed(42)
 
 SUPPORTED_MATRIX_SIZES = (16, 32, 64, 128)
 DEFAULT_BATCH_SIZES = [2**k for k in range(4, 16)]  # 16, 32, ..., 32768
-try:
-    PERSISTENT_BLOCK_DIM = int(torch.npu.get_device_properties("npu").cube_core_num)
-except Exception:
-    PERSISTENT_BLOCK_DIM = 24
+PERSISTENT_BLOCK_DIM = get_num_cube_cores()
 
 
 def torch_to_ctypes(tensor):

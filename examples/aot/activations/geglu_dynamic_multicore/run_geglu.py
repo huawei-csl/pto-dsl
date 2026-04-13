@@ -4,14 +4,16 @@ import ctypes
 import torch
 import torch_npu  # noqa: F401
 
-from ptodsl.test_util import get_test_device
+from ptodsl.npu_info import get_num_cube_cores, get_test_device
+
+_DEFAULT_NUM_CORES = get_num_cube_cores()
 
 
 def torch_to_ctypes(tensor):
     return ctypes.c_void_p(tensor.data_ptr())
 
 
-def load_lib(lib_path, block_dim=24):
+def load_lib(lib_path, block_dim=_DEFAULT_NUM_CORES):
     lib = ctypes.CDLL(lib_path)
     lib.call_kernel.argtypes = [
         ctypes.c_uint32,  # blockDim
@@ -56,7 +58,7 @@ def geglu_ref(a, b):
     return gelu_a.to(a.dtype) * b
 
 
-def test_geglu(lib_path, block_dim=24):
+def test_geglu(lib_path, block_dim=_DEFAULT_NUM_CORES):
     device = get_test_device()
     torch.npu.set_device(device)
 
@@ -114,8 +116,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--block-dim",
         type=int,
-        default=24,
-        help="Kernel blockDim (default: 24).",
+        default=_DEFAULT_NUM_CORES,
+        help=f"Kernel blockDim (default: {_DEFAULT_NUM_CORES}).",
     )
     args = parser.parse_args()
     test_geglu(args.lib, block_dim=args.block_dim)

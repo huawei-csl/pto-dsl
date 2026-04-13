@@ -3,10 +3,6 @@
 #endif
 #include KERNEL_CPP
 
-#ifndef NUM_CORES
-#define NUM_CORES 24
-#endif
-
 extern "C" void call_kernel(
     uint32_t blockDim,
     void *stream,
@@ -16,8 +12,7 @@ extern "C" void call_kernel(
     uint32_t batch,
     uint32_t n_cols)
 {
-    uint32_t launch_blocks = blockDim > 0 ? blockDim : NUM_CORES;
-    _kernel<<<launch_blocks, nullptr, stream>>>(
+    _kernel<<<blockDim, nullptr, stream>>>(
         reinterpret_cast<half *>(a),
         reinterpret_cast<half *>(b),
         reinterpret_cast<half *>(c),

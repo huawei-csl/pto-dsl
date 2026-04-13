@@ -6,10 +6,10 @@ from pathlib import Path
 import torch
 import torch_npu  # noqa: F401
 
-from ptodsl.test_util import get_test_device
+from ptodsl.npu_info import get_num_cube_cores, get_test_device
 
 
-BLOCK_DIM = 24
+BLOCK_DIM = get_num_cube_cores()
 M_LIST = [128 * i for i in range(1, 37, 4)]  # 128, ..., 4224
 SHAPES_NK = [
     (4096, 4096),

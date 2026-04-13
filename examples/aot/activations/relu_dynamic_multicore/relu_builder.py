@@ -41,18 +41,15 @@ def build():
             c_tile_w = const(tile_w)
             total_elements = s.index_cast(argN)
 
-            num_blocks = s.index_cast(pto.get_block_num())
+            cid = pto.get_block_idx()
+            sub_bid = pto.get_subblock_idx()
+            sub_bnum = pto.get_subblock_num()
+            vid = s.index_cast(cid * sub_bnum + sub_bid)
+            num_blocks = s.index_cast(pto.get_block_num() * sub_bnum)
             num_el_per_core = s.ceil_div(total_elements, num_blocks)
 
             # Per-core range: [core_start, core_end)
-            bid = s.index_cast(pto.get_block_idx())
-            core_start = bid * num_el_per_core
-            core_end_unclamped = core_start + num_el_per_core
-            core_end = s.min_u(core_end_unclamped, total_elements)
-            core_len = core_end - core_start
-
-            # Per-core number of tiles: ceil(core_len / tile_w).
-            num_tiles = s.ceil_div(core_len, c_tile_w)
+            core_start = vid * num_el_per_core
 
             # GM tensors shape N with stride 1.
             tv0 = pto.as_tensor(
@@ -62,34 +59,42 @@ def build():
                 tensor_type, ptr=arg1, shape=[total_elements], strides=[c1]
             )
 
-            for i in pto.range(c0, num_tiles, c1):
-                offset_tile = i * c_tile_w
-                offset_total = core_start + offset_tile
+            with pto.if_context(core_start < total_elements):
+                core_end_unclamped = core_start + num_el_per_core
+                core_end = s.min_u(core_end_unclamped, total_elements)
+                core_len = core_end - core_start
 
-                remaining_core = core_end - offset_total
-                valid_len = s.min_u(remaining_core, c_tile_w)
+                # Per-core number of tiles: ceil(core_len / tile_w).
+                num_tiles = s.ceil_div(core_len, c_tile_w)
 
-                # Keep per-iteration tile alloc to match original behavior.
-                tb0 = pto.alloc_tile(tile_type, valid_row=c1, valid_col=valid_len)
-                tb1 = pto.alloc_tile(tile_type, valid_row=c1, valid_col=valid_len)
+                for i in pto.range(c0, num_tiles, c1):
+                    offset_tile = i * c_tile_w
+                    offset_total = core_start + offset_tile
 
-                # each core c takes a tile at offset c*num_el_per_core + i*tile_w
-                sv0 = pto.slice_view(
-                    subtensor_type,
-                    source=tv0,
-                    offsets=[offset_total],
-                    sizes=[c_tile_w],
-                )
-                sv1 = pto.slice_view(
-                    subtensor_type,
-                    source=tv1,
-                    offsets=[offset_total],
-                    sizes=[c_tile_w],
-                )
+                    remaining_core = core_end - offset_total
+                    valid_len = s.min_u(remaining_core, c_tile_w)
 
-                pto.load(sv0, tb0)
-                tile.relu(tb0, tb1)
-                pto.store(tb1, sv1)
+                    # Keep per-iteration tile alloc to match original behavior.
+                    tb0 = pto.alloc_tile(tile_type, valid_row=c1, valid_col=valid_len)
+                    tb1 = pto.alloc_tile(tile_type, valid_row=c1, valid_col=valid_len)
+
+                    # each core c takes a tile at offset c*num_el_per_core + i*tile_w
+                    sv0 = pto.slice_view(
+                        subtensor_type,
+                        source=tv0,
+                        offsets=[offset_total],
+                        sizes=[c_tile_w],
+                    )
+                    sv1 = pto.slice_view(
+                        subtensor_type,
+                        source=tv1,
+                        offsets=[offset_total],
+                        sizes=[c_tile_w],
+                    )
+
+                    pto.load(sv0, tb0)
+                    tile.relu(tb0, tb1)
+                    pto.store(tb1, sv1)
 
     return sync_kernel_dyn
 

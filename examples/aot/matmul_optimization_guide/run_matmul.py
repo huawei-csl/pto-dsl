@@ -7,9 +7,10 @@ import torch
 import torch.nn.functional as F
 import torch_npu
 
-from ptodsl.test_util import get_test_device
+from ptodsl.npu_info import get_num_cube_cores, get_test_device
 
 
+_DEFAULT_NUM_CORES = get_num_cube_cores()
 BLOCK_DIM_LIST = [1, 20, 24]
 M_LIST = [128 * i for i in range(1, 37, 4)]  # 128, ..., 4224
 SHAPES_NK = [
@@ -53,7 +54,7 @@ def load_lib(lib_path):
         a,
         b,
         *,
-        block_dim=24,
+        block_dim=_DEFAULT_NUM_CORES,
         stream_ptr=None,
     ):
         if a.ndim != 2 or b.ndim != 2:

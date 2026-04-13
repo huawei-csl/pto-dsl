@@ -2,7 +2,10 @@ from ptodsl import jit, pto, tile
 from ptodsl import scalar as s
 import torch
 import torch_npu
-from ptodsl.test_util import get_test_device
+from ptodsl.npu_info import get_num_cube_cores, get_test_device
+
+_BLOCK_DIM = get_num_cube_cores()
+_TILE_LEN = 1024
 
 const = s.const
 
@@ -30,12 +33,12 @@ def meta_data():
     }
 
 
-@jit(meta_data=meta_data, block_dim=20)
+@jit(meta_data=meta_data, block_dim=_BLOCK_DIM)
 def vec_add_kernel(arg0: "ptr_type", arg1: "ptr_type", arg2: "ptr_type") -> None:
     c0 = const(0)
     c1 = const(1)
-    c1024 = const(1024)
-    c20480 = const(20480)  # 1024 elements / core * 20 cores = 20480 elements
+    c1024 = const(_TILE_LEN)
+    c20480 = const(_TILE_LEN * _BLOCK_DIM)  # elements / core * num cores
 
     cid = pto.get_block_idx()
     sub_bid = pto.get_subblock_idx()
@@ -74,7 +77,7 @@ def test_add():
     device = get_test_device()
     torch.npu.set_device(device)
 
-    shape = (1, 1024 * 20)  # tensor shape hard-coded as the kernel
+    shape = (1, _TILE_LEN * _BLOCK_DIM)  # one tile per core
     torch.manual_seed(0)
     dtype = torch.float32
     x = torch.rand(shape, device=device, dtype=dtype)

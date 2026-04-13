@@ -5,10 +5,11 @@ import subprocess
 import pytest
 import torch
 
-from ptodsl.test_util import get_test_device
+from ptodsl.npu_info import get_num_cube_cores, get_test_device
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
 _DEVICE = get_test_device()
+_BLOCK_DIM = get_num_cube_cores()
 
 # ---------------------------------------------------------------------------
 # Dtype metadata
@@ -73,6 +74,7 @@ def _load_kernel(src_dtype, dst_dtype, rmode=None):
     lib = ctypes.CDLL(_lib_path(src_dtype, dst_dtype, rmode))
     fn = getattr(lib, f"call_cvt_{src_dtype}_to_{dst_dtype}")
     fn.argtypes = [
+        ctypes.c_uint32,  # blockDim
         ctypes.c_void_p,  # stream
         ctypes.c_void_p,  # src
         ctypes.c_void_p,  # dst
@@ -179,6 +181,7 @@ def test_cvt(compiled_libs, src_dtype, dst_dtype, rmode, batch, n_cols):
 
         torch.npu.synchronize()
         fn(
+            ctypes.c_uint32(_BLOCK_DIM),
             stream_ptr,
             ctypes.c_void_p(src_dev.data_ptr()),
             ctypes.c_void_p(dst_dev.data_ptr()),

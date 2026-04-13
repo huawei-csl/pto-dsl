@@ -74,7 +74,7 @@ def build_binary_kernels(op_name, op_fn, dtype=None, tile_length=1024):
         num_blocks = pto.get_block_num()
 
         vid_idx = s.index_cast(vid)
-        num_cores = s.index_cast(num_blocks)
+        num_cores = s.index_cast(num_blocks * sub_bnum)
         total_elements = s.index_cast(argN)
 
         num_tiles_global = s.ceil_div(total_elements, c_tile)
@@ -157,7 +157,7 @@ def build_binary_kernels(op_name, op_fn, dtype=None, tile_length=1024):
         num_blocks = pto.get_block_num()
 
         vid_idx = s.index_cast(vid)
-        num_cores = s.index_cast(num_blocks)
+        num_cores = s.index_cast(num_blocks * sub_bnum)
         rows = s.index_cast(argM)
         cols = s.index_cast(argN)
 

@@ -7,8 +7,6 @@ _DTYPE_TO_CTYPE = {
     "float16": "half",
 }
 
-_BLOCK_DIM = 24
-
 
 def fn_name(dtype):
     return f"vec_mrgsort_1d_dynamic_{dtype}"
@@ -21,9 +19,9 @@ def generate_caller(dtype):
 #include "{fn}.cpp"
 
 extern "C" void call_{fn}(
-    void *stream, uint8_t *src, uint8_t *out, int32_t N)
+    uint32_t blockDim, void *stream, uint8_t *src, uint8_t *out, int32_t N)
 {{
-    {fn}<<<{_BLOCK_DIM}, nullptr, stream>>>(
+    {fn}<<<blockDim, nullptr, stream>>>(
         ({ctype} *)src, ({ctype} *)out, (int32_t)N);
 }}
 """

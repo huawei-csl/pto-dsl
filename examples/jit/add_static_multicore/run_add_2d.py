@@ -2,7 +2,12 @@ from ptodsl import jit, pto, tile
 from ptodsl import scalar as s
 import torch
 import torch_npu
-from ptodsl.test_util import get_test_device
+from ptodsl.npu_info import get_num_cube_cores, get_test_device
+
+_BLOCK_DIM = get_num_cube_cores()
+_SUBBLOCK_NUM = 2  # 910B2 and 910B4 both have 2 subblocks per cube core
+_ROWS_PER_CORE = 32
+_TOTAL_ROWS = _BLOCK_DIM * _SUBBLOCK_NUM * _ROWS_PER_CORE
 
 const = s.const
 
@@ -34,7 +39,7 @@ def meta_data():
     }
 
 
-@jit(meta_data=meta_data, block_dim=20)
+@jit(meta_data=meta_data, block_dim=_BLOCK_DIM)
 def vec_add_kernel(
     arg0: "ptr_type",
     arg1: "ptr_type",
@@ -44,8 +49,8 @@ def vec_add_kernel(
 ) -> None:
     c0 = const(0)
     c1 = const(1)
-    c32 = const(32)
-    c1280 = const(1280)  # 32 rows/per * 40 vec cores = 1280 rows
+    c32 = const(_ROWS_PER_CORE)
+    c1280 = const(_TOTAL_ROWS)  # rows/core * num_cores * subblocks_per_core
 
     cid = pto.get_block_idx()
     sub_bid = pto.get_subblock_idx()
@@ -87,7 +92,10 @@ def test_add():
     device = get_test_device()
     torch.npu.set_device(device)
 
-    shape = [1280, 32]  # tensor shape hard-coded as the kernel
+    shape = [
+        _TOTAL_ROWS,
+        _ROWS_PER_CORE,
+    ]  # total_rows = block_dim * subblocks * rows_per_core
     torch.manual_seed(0)
     dtype = torch.float32
     x = torch.rand(shape, device=device, dtype=dtype)

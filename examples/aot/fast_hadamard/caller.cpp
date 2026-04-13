@@ -7,10 +7,6 @@
 #define KERNEL_FN fast_hadamard_autosync
 #endif
 
-#ifndef NUM_CORES
-#define NUM_CORES 24
-#endif
-
 extern "C" void call_kernel(
     uint32_t blockDim,
     void *stream,
@@ -19,8 +15,7 @@ extern "C" void call_kernel(
     uint32_t n,
     uint32_t log2_n)
 {
-    uint32_t launch_blocks = blockDim > 0 ? blockDim : NUM_CORES;
-    KERNEL_FN<<<launch_blocks, nullptr, stream>>>(
+    KERNEL_FN<<<blockDim, nullptr, stream>>>(
         reinterpret_cast<half *>(x),
         static_cast<int32_t>(batch),
         static_cast<int32_t>(n),

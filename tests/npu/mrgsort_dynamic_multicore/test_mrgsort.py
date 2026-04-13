@@ -4,12 +4,13 @@ import subprocess
 
 import pytest
 import torch
-from ptodsl.test_util import get_test_device
+from ptodsl.npu_info import get_num_cube_cores, get_test_device
 
 torch.manual_seed(0)
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
 _DEVICE = get_test_device()
+_BLOCK_DIM = get_num_cube_cores()
 
 # TMRGSORT single-list constraints (in terms of hw_block_len = BLOCK_LEN * TYPE_COEF):
 #   hw_block_len % 64 == 0
@@ -95,6 +96,7 @@ def _load_fn(dtype: str):
     lib = ctypes.CDLL(_lib_path(dtype))
     fn = getattr(lib, f"call_{_fn_name(dtype)}")
     fn.argtypes = [
+        ctypes.c_uint32,  # blockDim
         ctypes.c_void_p,  # stream
         ctypes.c_void_p,  # src
         ctypes.c_void_p,  # out
@@ -109,7 +111,13 @@ def _run_kernel(fn, stream_ptr, src: torch.Tensor, N: int) -> torch.Tensor:
 
     out = torch.empty_like(src)
     torch.npu.synchronize()
-    fn(stream_ptr, _ctypes_ptr(src), _ctypes_ptr(out), ctypes.c_int32(N))
+    fn(
+        ctypes.c_uint32(_BLOCK_DIM),
+        stream_ptr,
+        _ctypes_ptr(src),
+        _ctypes_ptr(out),
+        ctypes.c_int32(N),
+    )
     torch.npu.synchronize()
     return out
 
