@@ -50,7 +50,7 @@ jobs:
       RELEASE_VER: 0.24
       RELEASE_TAG: v0.24
       CLI_DIR: /installers/ptoas-cli
-      PTOISA_COMMIT: a8c3fbf42a2f4a0f609f64e138dda62deefddb8e
+      PTOISA_COMMIT: 6d4d591155de3f3277381abbfe20d41b4170d202
 
     steps:
       - name: Install system packages

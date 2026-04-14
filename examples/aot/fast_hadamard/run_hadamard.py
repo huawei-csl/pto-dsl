@@ -1,7 +1,6 @@
 import os
 import argparse
 import ctypes
-import csv
 import math
 
 import torch
@@ -106,7 +105,9 @@ def test_hadamard(hadamard_func, block_dim=_DEFAULT_NUM_CORES):
     return results
 
 
-def benchmark(hadamard_func, warmup=2, repeats=20, output_dir="./perf_data/"):
+def benchmark(
+    hadamard_func, warmup=2, repeats=20, output_dir="./perf_data/", manual_sync=False
+):
     """Benchmark across (batch, N, block_dim) configs.
 
     Uses separate input tensors per run to avoid L2 cache reuse,
@@ -136,18 +137,15 @@ def benchmark(hadamard_func, warmup=2, repeats=20, output_dir="./perf_data/"):
                 log2_n = int(math.log2(n))
                 allocated = warmup + repeats
 
-                # Separate GM tensors to avoid L2 cache reuse
                 x_list = [
                     torch.randn(batch, n, device="npu", dtype=torch.float16)
                     for _ in range(allocated)
                 ]
 
-                # Warmup
                 for i in range(warmup):
                     hadamard_func(x_list[i], batch, n, log2_n, block_dim=block_dim)
                 torch.npu.synchronize()
 
-                # Timed runs — single event pair, average over repeats
                 start = torch.npu.Event(enable_timing=True)
                 end = torch.npu.Event(enable_timing=True)
 
@@ -170,10 +168,11 @@ def benchmark(hadamard_func, warmup=2, repeats=20, output_dir="./perf_data/"):
                 data_bytes = 2 * batch * n * 2
                 bw_gbs = (data_bytes / 1e9) / (dur_us / 1e6) if dur_us > 0 else 0.0
 
-                print(f"{batch:>6d}  {n:>6d}" f"  {dur_us:>12.2f}  {bw_gbs:>14.2f}")
+                print(f"{batch:>6d}  {n:>6d}  {dur_us:>12.2f}  {bw_gbs:>14.2f}")
                 records.append(f"{batch},{n},{dur_us:.4f},{bw_gbs:.4f}")
 
-        csv_path = os.path.join(output_dir, f"fht_pto_bd{block_dim}.csv")
+        suffix = "_manual" if manual_sync else ""
+        csv_path = os.path.join(output_dir, f"fht_pto{suffix}_bd{block_dim}.csv")
         with open(csv_path, "w", encoding="utf-8") as f:
             f.write("batch,N,duration_us,bandwidth_gbs\n")
             f.write("\n".join(records) + "\n")
@@ -181,7 +180,9 @@ def benchmark(hadamard_func, warmup=2, repeats=20, output_dir="./perf_data/"):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description="Test and benchmark the plain fast-Hadamard kernel."
+    )
     parser.add_argument(
         "--manual-sync",
         action="store_true",
@@ -195,15 +196,14 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
+    device = get_test_device()
+    torch.npu.set_device(device)
+
     lib_path = (
         "./hadamard_manual_sync_lib.so"
         if args.manual_sync
         else "./hadamard_auto_sync_lib.so"
     )
-
-    device = get_test_device()
-    torch.npu.set_device(device)
     hadamard_func = load_lib(lib_path=lib_path, block_dim=args.block_dim)
-
     test_hadamard(hadamard_func)
-    benchmark(hadamard_func)
+    benchmark(hadamard_func, manual_sync=args.manual_sync)

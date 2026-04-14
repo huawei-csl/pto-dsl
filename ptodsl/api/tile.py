@@ -221,6 +221,16 @@ _ROUND_MODE = {
 }
 
 
+def muls(src, scalar, dst):
+    """Multiply every element of a tile by a scalar value (tile * scalar → tile)."""
+    _pto.tmuls(src, _unwrap(scalar), dst)
+
+
+def adds(src, scalar, dst):
+    """Add a scalar value to every element of a tile (tile + scalar → tile)."""
+    _pto.tadds(src, _unwrap(scalar), dst)
+
+
 def cvt(src, dst, *, rmode=None):
     """Convert tile element type (e.g. float32 → float16, float16 → float32).
 
@@ -292,6 +302,8 @@ __all__ = [
     "row_expand_expdif",
     "mrgsort",
     "sort32",
+    "muls",
+    "adds",
     "cvt",
     "subset",
 ]
