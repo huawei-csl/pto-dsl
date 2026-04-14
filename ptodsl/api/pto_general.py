@@ -208,6 +208,11 @@ def tfree_from_aiv(split):
     return _pto.TFreeFromAivOp(split)
 
 
+def load_scalar(result_type, ptr, offset):
+    """Load a single scalar element from global memory at ptr[offset]."""
+    return _pto.load_scalar(result_type, _unwrap(ptr), _unwrap(offset))
+
+
 def load(source, dest):
     _pto.TLoadOp(None, source, dest)
 
@@ -248,6 +253,7 @@ __all__ = [
     "import_reserved_buffer",
     "aic_initialize_pipe",
     "aiv_initialize_pipe",
+    "load_scalar",
     "load",
     "store",
     "tpush_to_aiv",

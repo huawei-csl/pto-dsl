@@ -156,6 +156,15 @@ def select(cond, true_val, false_val):
     )
 
 
+def truncf(value, target_type):
+    """Truncate a floating-point scalar to a narrower float type (e.g. f32 → f16).
+
+    Returns a raw MLIR value suitable for use as a tile scalar operand
+    (e.g. with tile.muls / tile.adds).
+    """
+    return arith.TruncFOp(target_type, _unwrap(value)).result
+
+
 __all__ = [
     "Value",
     "_unwrap",
@@ -171,4 +180,5 @@ __all__ = [
     "gt",
     "ge",
     "select",
+    "truncf",
 ]
