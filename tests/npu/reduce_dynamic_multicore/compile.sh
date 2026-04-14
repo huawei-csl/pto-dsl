@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TMP=$(mktemp -d)
 trap "rm -rf \"$TMP\"" EXIT
 
-PTO_LIB_PATH=/sources/pto-isa
+PTO_LIB_PATH=${PTO_LIB_PATH:-/sources/pto-isa}
 
 BISHENG_FLAGS=(
     -I${PTO_LIB_PATH}/include

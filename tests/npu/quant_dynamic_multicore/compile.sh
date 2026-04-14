@@ -3,7 +3,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-PTO_LIB_PATH=/sources/pto-isa
+PTO_LIB_PATH=${PTO_LIB_PATH:-/sources/pto-isa}
 
 TMP=$(mktemp -d)
 trap "rm -rf $TMP" EXIT

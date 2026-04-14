@@ -13,7 +13,7 @@ python ./inverse_builder.py \
 
 ptoas --enable-insert-sync "${ARTIFACT_DIR}/inverse.pto" -o "${ARTIFACT_DIR}/inverse.cpp"
 
-PTO_LIB_PATH=/sources/pto-isa
+PTO_LIB_PATH=${PTO_LIB_PATH:-/sources/pto-isa}
 
 bisheng \
     -I${PTO_LIB_PATH}/include \

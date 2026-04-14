@@ -6,7 +6,7 @@ ARCH=$(uname -m)
 
 PTO_DIR="$ASCEND_HOME_PATH/include/pto"
 PTO_BACKUP="$ASCEND_HOME_PATH/include/pto_hidden"
-PTO_LIB_PATH="/sources/pto-isa"
+PTO_LIB_PATH=${PTO_LIB_PATH:-/sources/pto-isa}
 [ -d "$PTO_LIB_PATH" ] || exit 0
 
 

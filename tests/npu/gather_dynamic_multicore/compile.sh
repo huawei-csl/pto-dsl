@@ -18,7 +18,7 @@ ptoas --enable-insert-sync "$TMP/${FN_NAME}.pto" -o "$TMP/${FN_NAME}.cpp"
 # Generate caller.cpp
 python "$SCRIPT_DIR/caller.py" "$DTYPE" "$MASK" > "$TMP/caller.cpp"
 
-PTO_LIB_PATH=/sources/pto-isa
+PTO_LIB_PATH=${PTO_LIB_PATH:-/sources/pto-isa}
 bisheng \
     -I${PTO_LIB_PATH}/include \
     -fPIC -shared -D_FORTIFY_SOURCE=2 -O2 -std=c++17 \

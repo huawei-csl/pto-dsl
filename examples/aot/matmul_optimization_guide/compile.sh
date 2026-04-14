@@ -7,7 +7,7 @@ mkdir -p "${ARTIFACT_DIR}"
 rm -f "${ARTIFACT_DIR}"/*.pto "${ARTIFACT_DIR}"/*.cpp "${ARTIFACT_DIR}"/*.so
 
 # CANN 8.5 headers don't have CompactMode, need latest pto-isa source
-PTO_LIB_PATH=/sources/pto-isa
+PTO_LIB_PATH=${PTO_LIB_PATH:-/sources/pto-isa}
 
 # Step1 baseline: functionally correct dynamic-shape matmul without optimizations.
 python ./step1_baseline.py > "${ARTIFACT_DIR}/step1_baseline.pto"

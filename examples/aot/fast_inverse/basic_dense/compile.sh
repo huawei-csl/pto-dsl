@@ -14,7 +14,7 @@ rm -f "${ARTIFACT_DIR}/inverse.pto" "${ARTIFACT_DIR}/inverse.cpp" "inverse_lib.s
 python ./inverse_builder.py --matrix-size "${MATRIX_SIZE}" > "${ARTIFACT_DIR}/inverse.pto"
 ptoas --enable-insert-sync "${ARTIFACT_DIR}/inverse.pto" -o "${ARTIFACT_DIR}/inverse.cpp"
 
-PTO_LIB_PATH=/sources/pto-isa
+PTO_LIB_PATH=${PTO_LIB_PATH:-/sources/pto-isa}
 # PTO_LIB_PATH=$ASCEND_TOOLKIT_HOME
 
 bisheng \

@@ -4,7 +4,7 @@ python ./add_builder.py > ./add.pto
 ptoas --enable-insert-sync ./add.pto -o ./add.cpp
 
 # CANN 8.5 headers don't have CompactMode, need latest pto-isa source
-PTO_LIB_PATH=/sources/pto-isa
+PTO_LIB_PATH=${PTO_LIB_PATH:-/sources/pto-isa}
 bisheng \
     -I${PTO_LIB_PATH}/include \
     -fPIC -shared -D_FORTIFY_SOURCE=2 -O2 -std=c++17 \

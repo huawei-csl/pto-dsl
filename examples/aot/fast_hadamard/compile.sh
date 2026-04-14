@@ -17,7 +17,7 @@ python ./hadamard_builder.py --manual-sync > ./hadamard_manual_sync.pto
 ptoas ./hadamard_manual_sync.pto -o ./hadamard_manual_sync.cpp
 
 # CANN 8.5 headers don't have CompactMode, need latest pto-isa source
-PTO_LIB_PATH=/sources/pto-isa
+PTO_LIB_PATH=${PTO_LIB_PATH:-/sources/pto-isa}
 bisheng \
     -I${PTO_LIB_PATH}/include \
     -fPIC -shared -D_FORTIFY_SOURCE=2 -O2 -std=c++17 \
