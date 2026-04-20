@@ -3,7 +3,7 @@ import inspect
 import os
 import pathlib
 import subprocess
-from functools import update_wrapper
+from functools import update_wrapper, wraps
 
 from mlir.dialects import pto as _pto
 from mlir.ir import Context, Location
@@ -28,27 +28,31 @@ def _ptr_elem_cpp_type(type_obj):
         return "__fp16"
     if "bf16" in type_repr:
         return "__bf16"
+    if "ui8" in type_repr or "u8" in type_repr:
+        return "uint8_t"
+    if "ui16" in type_repr or "u16" in type_repr:
+        return "uint16_t"
+    if "ui32" in type_repr or "u32" in type_repr:
+        return "uint32_t"
+    if "ui64" in type_repr or "u64" in type_repr:
+        return "uint64_t"
     if "i8" in type_repr:
         return "int8_t"
-    if "u8" in type_repr:
-        return "uint8_t"
     if "i16" in type_repr:
         return "int16_t"
-    if "u16" in type_repr:
-        return "uint16_t"
     if "i32" in type_repr:
         return "int32_t"
-    if "u32" in type_repr:
-        return "uint32_t"
     if "i64" in type_repr:
         return "int64_t"
-    if "u64" in type_repr:
-        return "uint64_t"
     return "float"
 
 
 def _scalar_cpp_type(type_obj):
     type_repr = _type_repr(type_obj)
+    if "ui32" in type_repr or "u32" in type_repr:
+        return "uint32_t"
+    if "ui64" in type_repr or "u64" in type_repr:
+        return "uint64_t"
     if "i32" in type_repr:
         return "int32_t"
     if "i64" in type_repr or "index" in type_repr:
@@ -62,12 +66,16 @@ def _scalar_cpp_type(type_obj):
 
 def _scalar_ctype(type_obj):
     type_repr = _type_repr(type_obj)
+    if "ui64" in type_repr or "u64" in type_repr:
+        return ctypes.c_uint64
     if "i64" in type_repr or "index" in type_repr:
         return ctypes.c_int64
     if "f32" in type_repr:
         return ctypes.c_float
     if "f16" in type_repr:
         return ctypes.c_uint16
+    if "ui32" in type_repr or "u32" in type_repr:
+        return ctypes.c_uint32
     return ctypes.c_int32
 
 
@@ -90,11 +98,13 @@ class JitWrapper:
         output_dir=None,
         block_dim=None,
         enable_insert_sync=True,
+        init_ffts=None,
         npu_arch="dav-2201",
     ):
         self._fn = fn
+        self._orig_sig = inspect.signature(fn)
+        self._sig = self._orig_sig
         self._meta_data = meta_data
-        self._sig = inspect.signature(fn)
         self._arg_types = None
         self._output_dir = (
             pathlib.Path(output_dir)
@@ -103,11 +113,35 @@ class JitWrapper:
         )
         self._block_dim = block_dim if block_dim is not None else get_num_cube_cores()
         self._enable_insert_sync = enable_insert_sync
+        self._init_ffts = init_ffts
         self._npu_arch = npu_arch
         self._compiled = False
         self._lib = None
         self._lib_path = self._output_dir / "kernel.so"
         update_wrapper(self, fn)
+
+        if self._init_ffts is not None:
+            original_fn = self._fn
+
+            @wraps(original_fn)
+            def wrapper(*args, **kwargs):
+                # Automatically emit the MLIR operation before tracing the rest of the kernel
+                from ..api import pto as pto_api
+
+                pto_api.set_ffts(args[-1])
+                return original_fn(*args[:-1], **kwargs)
+
+            new_params = list(self._sig.parameters.values())
+            new_params.append(
+                inspect.Parameter(
+                    self._init_ffts,
+                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                    annotation="ffts_type",
+                )
+            )
+            self._sig = self._sig.replace(parameters=new_params)
+            wrapper.__signature__ = self._sig
+            self._fn = wrapper
 
     def _artifact_paths(self):
         pto_path = self._output_dir / "kernel.pto"
@@ -120,22 +154,38 @@ class JitWrapper:
         cpp_args = []
         launch_args = []
         for param, arg_type in zip(params, self._arg_types):
-            if _is_ptr_type(arg_type):
-                cpp_args.append(f"uint8_t *{param.name}")
-                launch_args.append(f"({_ptr_elem_cpp_type(arg_type)} *){param.name}")
+            if param.name == self._init_ffts:
+                launch_args.append(f"reinterpret_cast<uint64_t *>(fftsAddr)")
             else:
-                cpp_t = _scalar_cpp_type(arg_type)
-                cpp_args.append(f"{cpp_t} {param.name}")
-                launch_args.append(param.name)
+                if _is_ptr_type(arg_type):
+                    cpp_args.append(f"uint8_t *{param.name}")
+                    launch_args.append(
+                        f"({_ptr_elem_cpp_type(arg_type)} *){param.name}"
+                    )
+                else:
+                    cpp_t = _scalar_cpp_type(arg_type)
+                    cpp_args.append(f"{cpp_t} {param.name}")
+                    launch_args.append(param.name)
 
         wrapper_sig = ", ".join(["uint32_t blockDim", "void *stream"] + cpp_args)
         kernel_call = ", ".join(launch_args)
+
+        ffts_init_code = ""
+        if self._init_ffts is not None:
+            ffts_init_code = (
+                "    void *fftsAddr = nullptr;\n"
+                "    uint32_t fftsLen = 0;\n"
+                "    (void)rtGetC2cCtrlAddr(reinterpret_cast<uint64_t *>(&fftsAddr), &fftsLen);\n"
+            )
+
         return (
             f'#include "{kernel_cpp_name}"\n'
-            f"#include <cstdint>\n\n"
+            f"#include <cstdint>\n"
+            f'#include "runtime/rt.h"\n\n'
             f'extern "C" void call_kernel({wrapper_sig})\n'
             "{\n"
-            f"    {self._fn.__name__}<<<blockDim, nullptr, stream>>>({kernel_call});\n"
+            f"{ffts_init_code}"
+            f"    {self.__name__}<<<blockDim, nullptr, stream>>>({kernel_call});\n"
             "}\n"
         )
 
@@ -146,9 +196,14 @@ class JitWrapper:
             raise RuntimeError(
                 "PTO_LIB_PATH is required to compile generated caller.cpp."
             )
+        ascend_home = os.environ.get("ASCEND_TOOLKIT_HOME")
         cmd = [
             "bisheng",
             f"-I{pto_isa}/include",
+            f"-I{ascend_home}/include",
+            f"-I{ascend_home}/pkg_inc",
+            f"-I{ascend_home}/pkg_inc/runtime",
+            f"-I{ascend_home}/pkg_inc/profiling",
             "-fPIC",
             "-shared",
             "-D_FORTIFY_SOURCE=2",
@@ -177,7 +232,17 @@ class JitWrapper:
             "-o",
             str(lib_path),
         ]
-        subprocess.run(cmd, check=True, cwd=str(self._output_dir))
+        try:
+            subprocess.run(cmd, check=True, cwd=str(self._output_dir))
+        except Exception as e:
+            output = (
+                e.stdout.decode("utf-8", errors="replace")
+                if hasattr(e, "stdout") and e.stdout
+                else ""
+            )
+            raise RuntimeError(
+                f"Compile failed with exit code {e.returncode}:\n{output}"
+            ) from e
 
     def _resolve_runtime_arg_types(self):
         from .ir import _resolve_arg_types, _resolve_meta
@@ -207,10 +272,16 @@ class JitWrapper:
         self._compile_shared_library(caller_path, lib_path)
 
         self._lib = ctypes.CDLL(str(lib_path))
-        self._lib.call_kernel.argtypes = [ctypes.c_uint32, ctypes.c_void_p] + [
-            ctypes.c_void_p if _is_ptr_type(arg_type) else _scalar_ctype(arg_type)
-            for arg_type in self._arg_types
-        ]
+        argtypes = [ctypes.c_uint32, ctypes.c_void_p]
+        for param, arg_type in zip(self._sig.parameters.values(), self._arg_types):
+            if self._init_ffts is not None and param.name == self._init_ffts:
+                continue
+            if _is_ptr_type(arg_type):
+                argtypes.append(ctypes.c_void_p)
+            else:
+                argtypes.append(_scalar_ctype(arg_type))
+
+        self._lib.call_kernel.argtypes = argtypes
         self._compiled = True
 
     def _convert_ptr(self, value):
@@ -224,23 +295,32 @@ class JitWrapper:
 
     def _prepare_call_args(self, args):
         params = list(self._sig.parameters.values())
-        if len(args) > len(params):
+        orig_params = [
+            p for p in params if self._init_ffts is None or p.name != self._init_ffts
+        ]
+        orig_arg_types = [
+            t
+            for p, t in zip(params, self._arg_types)
+            if self._init_ffts is None or p.name != self._init_ffts
+        ]
+
+        if len(args) > len(orig_params):
             raise TypeError(
-                f"Expected at most {len(params)} arguments, got {len(args)}."
+                f"Expected at most {len(orig_params)} arguments, got {len(args)}."
             )
 
         filled_args = list(args)
-        for idx in range(len(args), len(params)):
-            param = params[idx]
+        for idx in range(len(filled_args), len(orig_params)):
+            param = orig_params[idx]
             if param.default is not inspect._empty:
                 filled_args.append(param.default)
                 continue
-            arg_type = self._arg_types[idx]
+            arg_type = orig_arg_types[idx]
             if _is_ptr_type(arg_type):
                 raise TypeError(f"Missing required pointer argument '{param.name}'.")
 
         converted = []
-        for value, arg_type in zip(filled_args, self._arg_types):
+        for value, arg_type in zip(filled_args, orig_arg_types):
             if _is_ptr_type(arg_type):
                 converted.append(self._convert_ptr(value))
             else:
@@ -286,6 +366,7 @@ def jit(
     output_dir=None,
     block_dim=1,
     enable_insert_sync=True,
+    init_ffts=None,
     npu_arch="dav-2201",
 ):
     def decorator(fn):
@@ -295,6 +376,7 @@ def jit(
             output_dir=output_dir,
             block_dim=block_dim,
             enable_insert_sync=enable_insert_sync,
+            init_ffts=init_ffts,
             npu_arch=npu_arch,
         )
 

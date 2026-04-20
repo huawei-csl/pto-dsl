@@ -48,9 +48,14 @@ def run_bisheng(caller_cpp, output_so, *, npu_arch="dav-2201", cwd=None):
     Raises :class:`subprocess.CalledProcessError` on failure.
     """
     pto_isa = os.environ.get("PTO_LIB_PATH", "/sources/pto-isa")
+    ascend_home = os.environ.get("ASCEND_TOOLKIT_HOME")
     cmd = [
         "bisheng",
         f"-I{pto_isa}/include",
+        f"-I{ascend_home}/include",
+        f"-I{ascend_home}/pkg_inc",
+        f"-I{ascend_home}/pkg_inc/runtime",
+        f"-I{ascend_home}/pkg_inc/profiling",
         "-fPIC",
         "-shared",
         "-D_FORTIFY_SOURCE=2",

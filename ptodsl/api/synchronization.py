@@ -6,12 +6,16 @@ from mlir.dialects import pto as _pto
 def _resolve_sync_op(sync_op):
     if isinstance(sync_op, str):
         normalized = sync_op.strip().upper()
-        if not normalized.startswith("T"):
-            normalized = f"T{normalized}"
         try:
+            if normalized.startswith("PIPE_"):
+                return _pto.PipeAttr.get(getattr(_pto.PIPE, normalized))
+            elif not normalized.startswith("T"):
+                normalized = f"T{normalized}"
             return getattr(_pto, normalized)
         except AttributeError as exc:
-            raise ValueError(f"Unsupported sync op type '{sync_op}'.") from exc
+            raise ValueError(
+                f"Unsupported sync op type '{sync_op}', attrs {dir(_pto.PIPE)}."
+            ) from exc
     return sync_op
 
 

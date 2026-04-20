@@ -269,6 +269,19 @@ def subset(source, offsets, sizes):
     return _pto.subset(source, offset_vals, sizes)
 
 
+def getval(src, offset, dtype=None):
+    """Reads a single element from a tile at a linear offset."""
+    if dtype is None:
+        # TODO extract dtype from the src tile
+        raise ValueError("getval requires an explicit dtype argument.")
+    return _pto.tgetval(dtype, src, _unwrap(offset))
+
+
+def setval(dst, offset, val):
+    """Writes a scalar value into a tile at a linear offset."""
+    _pto.tsetval(dst, _unwrap(offset), _unwrap(val))
+
+
 def print(source):
     _pto.tprint(source)
 
@@ -325,4 +338,6 @@ __all__ = [
     "cvt",
     "quant",
     "subset",
+    "getval",
+    "setval",
 ]

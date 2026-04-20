@@ -56,6 +56,14 @@ def set_ffts(ffts):
     return _pto.SetFFTsOp(_unwrap(ffts))
 
 
+def sync_set(pipe, event_id, ffts_mode=2):
+    return _pto.sync_set(pipe, event_id, ffts_mode)
+
+
+def sync_wait(pipe, event_id):
+    return _pto.sync_wait(pipe, event_id)
+
+
 def addptr(ptr, offset):
     """Return ptr advanced by offset elements, preserving the !pto.ptr type.
 
@@ -252,6 +260,8 @@ __all__ = [
     "get_block_num",
     "call",
     "set_ffts",
+    "sync_set",
+    "sync_wait",
     "addptr",
     "as_tensor",
     "slice_view",

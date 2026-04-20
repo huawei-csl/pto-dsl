@@ -63,20 +63,28 @@ def _has_func_return(block):
     return last_name == "func.return"
 
 
+def _get_globals(fn):
+    while hasattr(fn, "__wrapped__"):
+        fn = fn.__wrapped__
+    return fn.__globals__
+
+
 def _inject_globals(fn, values):
+    globs = _get_globals(fn)
     old = {}
     for name, value in values.items():
-        old[name] = fn.__globals__.get(name, None)
-        fn.__globals__[name] = value
+        old[name] = globs.get(name, None)
+        globs[name] = value
     return old
 
 
 def _restore_globals(fn, old, names):
+    globs = _get_globals(fn)
     for name in names:
-        if old[name] is None and name in fn.__globals__:
-            del fn.__globals__[name]
+        if old[name] is None and name in globs:
+            del globs[name]
         else:
-            fn.__globals__[name] = old[name]
+            globs[name] = old[name]
 
 
 def _define(module, ctx, meta_map, fn, *, name=None, entry=False, kernel=None):

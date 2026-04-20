@@ -20,7 +20,11 @@ def __getattr__(name):
     }:
         return getattr(scalar, name)
     if name == "ffts_type":
-        return MemRefType.get([256], IntegerType.get_signless(64))
+        return MemRefType.get([256], IntegerType.get_unsigned(64))
+
+    if name.startswith("PIPE_"):
+        return _pto.PipeAttr.get(getattr(_pto.PIPE, name))
+
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 
