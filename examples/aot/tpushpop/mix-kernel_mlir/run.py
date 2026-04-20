@@ -11,8 +11,7 @@ from ptodsl.npu_info import get_num_cube_cores, get_test_device
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_LIB_PATH = os.path.join(THIS_DIR, "build_artifacts", "tpushpop_mlir_lib.so")
 DEFAULT_COMPILE_SCRIPT = os.path.join(THIS_DIR, "compile.sh")
-DEFAULT_FIFO_BYTES = 4 * 1024
-DEFAULT_FIFO_BYTES_BOTH = 8 * 1024
+FIFO_BYTES_PER_BLOCK = 8 * 1024
 M = 16
 N = 16
 ATOL = 1e-4
@@ -53,25 +52,20 @@ def make_gm_slot_buffer(*, fifo_bytes: int, device: str) -> torch.Tensor:
 
 
 def block_dim_for_mode(mode: str) -> int:
-    return get_num_cube_cores() if mode in ("c2v", "bidi") else 1
+    return get_num_cube_cores()
 
 
 def make_io_tensors(
-    *, mode: str, block_dim: int, device: str
+    *, block_dim: int, device: str
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    shape = (block_dim, M, N) if mode in ("c2v", "bidi") else (M, N)
+    shape = (block_dim, M, N)
     x = torch.rand(shape, dtype=torch.float32, device=device) - 0.5
     y = torch.zeros(shape, dtype=torch.float32, device=device)
     return x, y
 
 
-def fifo_bytes_for_mode(mode: str, *, block_dim: int) -> int:
-    per_block = (
-        DEFAULT_FIFO_BYTES_BOTH
-        if mode in ("c2v", "c2v_add", "v2c", "bidi")
-        else DEFAULT_FIFO_BYTES
-    )
-    return per_block * block_dim
+def fifo_bytes_for_block_dim(block_dim: int) -> int:
+    return FIFO_BYTES_PER_BLOCK * block_dim
 
 
 def run_kernel(
@@ -118,11 +112,11 @@ def main() -> None:
     lib = load_lib(DEFAULT_LIB_PATH)
     block_dim = block_dim_for_mode(args.mode)
     gm_slot_buffer = make_gm_slot_buffer(
-        fifo_bytes=fifo_bytes_for_mode(args.mode, block_dim=block_dim),
+        fifo_bytes=fifo_bytes_for_block_dim(block_dim),
         device=device,
     )
     torch.set_printoptions(precision=1, threshold=2000, linewidth=250, sci_mode=False)
-    x, y = make_io_tensors(mode=args.mode, block_dim=block_dim, device=device)
+    x, y = make_io_tensors(block_dim=block_dim, device=device)
 
     print(y)
     run_kernel(lib, block_dim=block_dim, gm_slot_buffer=gm_slot_buffer, x=x, y=y)
