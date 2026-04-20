@@ -154,7 +154,7 @@ def hadamard_quant_ref(
             q_offset, dtype=x.dtype
         )
 
-    return x.float().clamp(-128, 127).to(torch.int8)
+    return x.float().to(torch.int32).to(torch.int8)
 
 
 def test_hadamard_quant(quant_func, block_dim=_DEFAULT_NUM_CORES):

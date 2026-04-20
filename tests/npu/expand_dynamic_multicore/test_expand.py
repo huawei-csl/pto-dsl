@@ -59,7 +59,7 @@ def compiled_kernels():
             os.remove(path)
 
 
-_FUSED_KERNELS = {
+_COLEXPAND_FUSED_KERNELS = {
     "colexpand_add",
     "colexpand_sub",
     "colexpand_div",
@@ -67,6 +67,9 @@ _FUSED_KERNELS = {
     "colexpand_min",
     "colexpand_max",
     "colexpand_expdif",
+}
+
+_ROWEXPAND_FUSED_KERNELS = {
     "rowexpand_add",
     "rowexpand_mul",
     "rowexpand_sub",
@@ -80,7 +83,7 @@ _FUSED_KERNELS = {
 def _load_kernel(name):
     lib = ctypes.CDLL(_LIB_PATHS[name])
     fn = getattr(lib, f"call_{name}")
-    if name in _FUSED_KERNELS:
+    if name in _COLEXPAND_FUSED_KERNELS or name in _ROWEXPAND_FUSED_KERNELS:
         # fused: (blockDim, stream, x, y, z, batch, n_cols)
         fn.argtypes = [
             ctypes.c_uint32,
@@ -207,7 +210,7 @@ def test_kernel_precision(compiled_kernels, name, batch, n_cols):
     dst_ref = _reference(name, x, y)
 
     stream_ptr = torch.npu.current_stream()._as_parameter_
-    if name in _FUSED_KERNELS:
+    if name in _COLEXPAND_FUSED_KERNELS or name in _ROWEXPAND_FUSED_KERNELS:
         fn(
             ctypes.c_uint32(_BLOCK_DIM),
             stream_ptr,

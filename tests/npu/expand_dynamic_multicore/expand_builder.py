@@ -17,13 +17,9 @@ def meta_data_expand(dtype="fp32"):
 
     tensor2d_type = pto.TensorType(rank=2, dtype=pto_dtype)
 
-    # For col_expand: src slice is [1, tile_cols] (one row of the input vector)
     subtensor_col_src = pto.SubTensorType(shape=[1, tile_cols], dtype=pto_dtype)
-    # For row_expand: src slice is [tile_rows, 1] (one column of the input vector)
     subtensor_row_src = pto.SubTensorType(shape=[tile_rows, 1], dtype=pto_dtype)
-    # For loading a single scalar element [1, 1]
     subtensor_scalar = pto.SubTensorType(shape=[1, 1], dtype=pto_dtype)
-    # For loading/storing the 2D matrix
     subtensor_dst = pto.SubTensorType(shape=[tile_rows, tile_cols], dtype=pto_dtype)
 
     tile_cfg = pto.TileBufConfig()
@@ -33,6 +29,15 @@ def meta_data_expand(dtype="fp32"):
         dtype=pto_dtype,
         memory_space="VEC",
         config=tile_cfg,
+    )
+
+    x_col_tile_cfg = pto.TileBufConfig(blayout="ColMajor")
+    x_col_tile_type = pto.TileBufType(
+        shape=[tile_rows, 1],
+        valid_shape=[-1, 1],
+        dtype=pto_dtype,
+        memory_space="VEC",
+        config=x_col_tile_cfg,
     )
     return {
         "ptr_type": ptr_type,
@@ -44,18 +49,14 @@ def meta_data_expand(dtype="fp32"):
         "subtensor_scalar": subtensor_scalar,
         "subtensor_dst": subtensor_dst,
         "tile_type": tile_type,
+        "x_col_tile_type": x_col_tile_type,
         "tile_rows": tile_rows,
         "tile_cols": tile_cols,
     }
 
 
 def build_col_expand(dtype="fp32"):
-    """
-    Column-wise broadcast: replicate each element of y[j] across all rows.
-
-    Semantics:
-        X[i, j] = y[j]
-    """
+    """Column-wise broadcast: X[i, j] = y[j]"""
     _meta_data = lambda: meta_data_expand(dtype=dtype)
 
     @to_ir_module(meta_data=_meta_data)
@@ -84,7 +85,6 @@ def build_col_expand(dtype="fp32"):
             col_start = vid * cols_per_core
             col_end = s.min_u(col_start + cols_per_core, n_cols)
 
-            # src[n_cols] represented as 2D [1, n_cols] for uniform slice_view usage
             tv_src = pto.as_tensor(
                 tensor2d_type,
                 ptr=src_ptr,
@@ -101,7 +101,6 @@ def build_col_expand(dtype="fp32"):
             for col in pto.range(col_start, col_end, c_tile_cols):
                 cols_this = s.min_u(c_tile_cols, col_end - col)
 
-                # Load one row of src into the src tile (valid_row=1)
                 tb_src = pto.alloc_tile(tile_type, valid_row=c1, valid_col=cols_this)
                 sv_src = pto.slice_view(
                     subtensor_col_src,
@@ -131,12 +130,7 @@ def build_col_expand(dtype="fp32"):
 
 
 def build_row_expand(dtype="fp32"):
-    """
-    Row-wise broadcast: replicate each element of x[i] across all columns.
-
-    Semantics:
-        Y[i,j] = x[i]
-    """
+    """Row-wise broadcast: Y[i, j] = x[i]"""
     _meta_data = lambda: meta_data_expand(dtype=dtype)
 
     @to_ir_module(meta_data=_meta_data)
@@ -165,7 +159,6 @@ def build_row_expand(dtype="fp32"):
             row_start = vid * rows_per_core
             row_end = s.min_u(row_start + rows_per_core, batch)
 
-            # x[batch] represented as 2D [batch, 1] for uniform slice_view usage
             tv_x = pto.as_tensor(
                 tensor2d_type,
                 ptr=x_ptr,
@@ -182,7 +175,6 @@ def build_row_expand(dtype="fp32"):
             for row in pto.range(row_start, row_end, c_tile_rows):
                 rows_this = s.min_u(c_tile_rows, row_end - row)
 
-                # Load one column of x into the src tile (valid_col=1)
                 tb_src = pto.alloc_tile(tile_type, valid_row=rows_this, valid_col=c1)
                 sv_x = pto.slice_view(
                     subtensor_row_src,
@@ -211,9 +203,6 @@ def build_row_expand(dtype="fp32"):
     return _kernel
 
 
-# Fused col-expand ops: dst[i,j] = src0[i,j] op src1[0,j]
-# src1 is a col-vector tile (valid_row=1, valid_col=cols_this)
-# so src1[0,j] = x[col+j] per the hardware op convention.
 _COL_EXPAND_FUSED_OPS = {
     "colexpand_add": tile.col_expand_add,
     "colexpand_sub": tile.col_expand_sub,
@@ -226,16 +215,7 @@ _COL_EXPAND_FUSED_OPS = {
 
 
 def _build_col_expand_fused(kind, dtype="fp32"):
-    """
-    Fused col-expand: apply element-wise op between Y[i,j] and x[j].
-
-    Semantics:
-        colexpand_mul: Z[i,j] = Y[i,j] * x[j]
-        colexpand_sub: Z[i,j] = Y[i,j] - x[j]
-        colexpand_div: Z[i,j] = Y[i,j] / x[j]
-        colexpand_min: Z[i,j] = min(Y[i,j], x[j])
-        colexpand_max: Z[i,j] = max(Y[i,j], x[j])
-    """
+    """Fused col-expand: Z[i,j] = Y[i,j] op x[j]"""
     col_op = _COL_EXPAND_FUSED_OPS[kind]
     _meta_data = lambda: meta_data_expand(dtype=dtype)
 
@@ -266,21 +246,18 @@ def _build_col_expand_fused(kind, dtype="fp32"):
             col_start = vid * cols_per_core
             col_end = s.min_u(col_start + cols_per_core, n_cols)
 
-            # x[n_cols] represented as 2D [1, n_cols]
             tv_x = pto.as_tensor(
                 tensor2d_type,
                 ptr=x_ptr,
                 shape=[c1, n_cols],
                 strides=[n_cols, c1],
             )
-            # y[batch, n_cols] - input matrix (src0)
             tv_y = pto.as_tensor(
                 tensor2d_type,
                 ptr=y_ptr,
                 shape=[batch, n_cols],
                 strides=[n_cols, c1],
             )
-            # z[batch, n_cols] - output matrix (dst)
             tv_z = pto.as_tensor(
                 tensor2d_type,
                 ptr=z_ptr,
@@ -291,7 +268,6 @@ def _build_col_expand_fused(kind, dtype="fp32"):
             for col in pto.range(col_start, col_end, c_tile_cols):
                 cols_this = s.min_u(c_tile_cols, col_end - col)
 
-                # Load x[col:col+cols_this] into a [1, cols_this] tile
                 tb_src1 = pto.alloc_tile(tile_type, valid_row=c1, valid_col=cols_this)
                 sv_x = pto.slice_view(
                     subtensor_col_src,
@@ -360,9 +336,6 @@ def build_col_expand_expdif(dtype="fp32"):
     return _build_col_expand_fused("colexpand_expdif", dtype=dtype)
 
 
-# Fused row-expand ops: dst[i,j] = src0[i,j] op src1[0,i]
-# src1 is a row-vector tile (valid_row=1, valid_col=rows_this)
-# so src1[0,i] = x[row+i] per the hardware op convention.
 _ROW_EXPAND_FUSED_OPS = {
     "rowexpand_add": tile.row_expand_add,
     "rowexpand_mul": tile.row_expand_mul,
@@ -375,17 +348,7 @@ _ROW_EXPAND_FUSED_OPS = {
 
 
 def _build_row_expand_fused(kind, dtype="fp32"):
-    """
-    Fused row-expand: apply element-wise op between Y[i,j] and x[i].
-
-    Semantics:
-        expand_add: Z[i,j] = Y[i,j] + x[i]
-        expand_mul: Z[i,j] = Y[i,j] * x[i]
-        expand_sub: Z[i,j] = Y[i,j] - x[i]
-        expand_div: Z[i,j] = Y[i,j] / x[i]
-
-    src1 tile is a scalar [1, 1]: src1[0,0] = x[row], one row at a time.
-    """
+    """Fused row-expand: Z[i,j] = Y[i,j] op x[i]."""
     row_op = _ROW_EXPAND_FUSED_OPS[kind]
     _meta_data = lambda: meta_data_expand(dtype=dtype)
 
@@ -399,6 +362,7 @@ def _build_row_expand_fused(kind, dtype="fp32"):
     ) -> None:
         c0 = const(0)
         c1 = const(1)
+        c_tile_rows = const(tile_rows)
         c_tile_cols = const(tile_cols)
 
         batch = s.index_cast(batch_i32)
@@ -415,67 +379,65 @@ def _build_row_expand_fused(kind, dtype="fp32"):
             row_start = vid * rows_per_core
             row_end = s.min_u(row_start + rows_per_core, batch)
 
-            # y[batch, n_cols] - input matrix (src0)
+            tv_x = pto.as_tensor(
+                tensor2d_type,
+                ptr=x_ptr,
+                shape=[batch, c1],
+                strides=[c1, c1],
+                layout="DN",
+            )
             tv_y = pto.as_tensor(
                 tensor2d_type,
                 ptr=y_ptr,
                 shape=[batch, n_cols],
                 strides=[n_cols, c1],
             )
-            # z[batch, n_cols] - output matrix (dst)
             tv_z = pto.as_tensor(
                 tensor2d_type,
                 ptr=z_ptr,
                 shape=[batch, n_cols],
                 strides=[n_cols, c1],
             )
-            # x as column vector [batch, 1]: x[row] stored at tv_x[row, 0]
-            tv_x = pto.as_tensor(
-                tensor2d_type,
-                ptr=x_ptr,
-                shape=[batch, c1],
-                strides=[c1, c1],
-            )
 
-            # Process one row at a time so tb_src1 always has rows_this=1,
-            # making src1[0,0] = x[row] unambiguous for both row/col conventions.
-            for row in pto.range(row_start, row_end, c1):
-                # Load scalar x[row] into a [1, 1] tile: src1[0,0] = x[row]
-                tb_src1 = pto.alloc_tile(tile_type, valid_row=c1, valid_col=c1)
+            for row in pto.range(row_start, row_end, c_tile_rows):
+                rows_this = s.min_u(c_tile_rows, row_end - row)
+
+                # ColMajor [tile_rows, 1] src1 => fused op uses vbrcb to
+                # broadcast x[i] across all output columns internally.
+                tb_x = pto.alloc_tile(x_col_tile_type, valid_row=rows_this)
                 sv_x = pto.slice_view(
-                    subtensor_scalar,
+                    subtensor_row_src,
                     source=tv_x,
                     offsets=[row, c0],
-                    sizes=[c1, c1],
+                    sizes=[rows_this, c1],
                 )
-                pto.load(sv_x, tb_src1)
+                pto.load(sv_x, tb_x)
 
                 for col in pto.range(c0, n_cols, c_tile_cols):
                     cols_this = s.min_u(c_tile_cols, n_cols - col)
 
                     sv_y = pto.slice_view(
-                        subtensor_col_src,
+                        subtensor_dst,
                         source=tv_y,
                         offsets=[row, col],
-                        sizes=[c1, cols_this],
+                        sizes=[rows_this, cols_this],
                     )
                     sv_z = pto.slice_view(
-                        subtensor_col_src,
+                        subtensor_dst,
                         source=tv_z,
                         offsets=[row, col],
-                        sizes=[c1, cols_this],
+                        sizes=[rows_this, cols_this],
                     )
 
-                    # src0 = one row of Y, src1 = scalar x[row], dst = one row of Z
-                    tb_src0 = pto.alloc_tile(
-                        tile_type, valid_row=c1, valid_col=cols_this
+                    tb_y = pto.alloc_tile(
+                        tile_type, valid_row=rows_this, valid_col=cols_this
                     )
-                    pto.load(sv_y, tb_src0)
+                    pto.load(sv_y, tb_y)
 
                     tb_dst = pto.alloc_tile(
-                        tile_type, valid_row=c1, valid_col=cols_this
+                        tile_type, valid_row=rows_this, valid_col=cols_this
                     )
-                    row_op(tb_src0, tb_src1, tb_dst)
+                    row_op(tb_y, tb_x, tb_dst)
 
                     pto.store(tb_dst, sv_z)
 
@@ -513,30 +475,6 @@ def build_row_expand_expdif(dtype="fp32"):
 if __name__ == "__main__":
     import argparse
 
-    _MODES = [
-        "colexpand",
-        "colexpand_sub",
-        "colexpand_div",
-        "colexpand_mul",
-        "colexpand_min",
-        "colexpand_max",
-        "colexpand_add",
-        "colexpand_expdif",
-        "rowexpand",
-        "rowexpand_add",
-        "rowexpand_mul",
-        "rowexpand_sub",
-        "rowexpand_div",
-        "rowexpand_min",
-        "rowexpand_max",
-        "rowexpand_expdif",
-    ]
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", choices=_MODES, default="colexpand")
-    parser.add_argument("--dtype", choices=["fp16", "fp32"], default="fp32")
-    args = parser.parse_args()
-
     builders = {
         "colexpand": build_col_expand,
         "colexpand_sub": build_col_expand_sub,
@@ -555,5 +493,10 @@ if __name__ == "__main__":
         "rowexpand_max": build_row_expand_max,
         "rowexpand_expdif": build_row_expand_expdif,
     }
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mode", choices=list(builders), default="colexpand")
+    parser.add_argument("--dtype", choices=["fp16", "fp32"], default="fp32")
+    args = parser.parse_args()
 
     print(builders[args.mode](dtype=args.dtype))
