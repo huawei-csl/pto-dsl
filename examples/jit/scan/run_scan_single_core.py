@@ -241,7 +241,6 @@ def run_scan_kernel(
 def test_scan(n_tiles=64):
     device = get_test_device()
     torch.npu.set_device(device)
-    torch.set_printoptions(threshold=10000, linewidth=60, sci_mode=False)
 
     total_len = TILE_SIZE * TILE_SIZE * n_tiles
     torch.manual_seed(0)
