@@ -50,6 +50,33 @@ class Value:
     def __rmod__(self, other):
         return Value(arith.RemSIOp(_unwrap(other), _unwrap(self)).result)
 
+    def __and__(self, other):
+        return Value(arith.AndIOp(_unwrap(self), _unwrap(other)).result)
+
+    def __rand__(self, other):
+        return Value(arith.AndIOp(_unwrap(other), _unwrap(self)).result)
+
+    def __or__(self, other):
+        return Value(arith.OrIOp(_unwrap(self), _unwrap(other)).result)
+
+    def __ror__(self, other):
+        return Value(arith.OrIOp(_unwrap(other), _unwrap(self)).result)
+
+    def __xor__(self, other):
+        return Value(arith.XOrIOp(_unwrap(self), _unwrap(other)).result)
+
+    def __rxor__(self, other):
+        return Value(arith.XOrIOp(_unwrap(other), _unwrap(self)).result)
+
+    def __invert__(self):
+        # Bitwise NOT via xor with all-ones of the same integer type.
+        # Implemented as: self XOR (-1) using arith constant of matching type.
+        from mlir.ir import IntegerAttr
+
+        ty = _unwrap(self).type
+        neg_one = arith.ConstantOp(ty, IntegerAttr.get(ty, -1)).result
+        return Value(arith.XOrIOp(_unwrap(self), neg_one).result)
+
     @staticmethod
     def _cmp(lhs, rhs, predicate):
         return Value(arith.CmpIOp(predicate, _unwrap(lhs), _unwrap(rhs)).result)
