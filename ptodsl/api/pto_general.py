@@ -84,6 +84,26 @@ def slice_view(subtensor_type, *, source, offsets, sizes):
     ).result
 
 
+def subview(source, *, offsets, sizes):
+    """Create a strided view of a parent tile buffer (`pto.subview`).
+
+    - ``offsets`` are runtime values (one per source-rank dim).
+    - ``sizes`` are compile-time integers (static shape of the result).
+
+    The result is a ``!pto.tile_buf`` view that aliases ``source`` storage with
+    inherited strides and a dynamic offset. Useful for slicing a vector tile
+    into per-subblock row ranges (vector sub-block parallelism) or splitting an
+    ACC tile along K for sub-tile matmul accumulation.
+    """
+    offset_vals = [_unwrap(v) for v in offsets]
+    return _pto.SubViewOp(source, offset_vals, list(sizes)).result
+
+
+# Legacy alias — ptoas ≤0.27 named this op `pto.subset`. Kept so existing
+# kernels keep importing.
+subset = subview
+
+
 @contextmanager
 def vector_section():
     section = _pto.SectionVectorOp()
@@ -255,6 +275,8 @@ __all__ = [
     "addptr",
     "as_tensor",
     "slice_view",
+    "subview",
+    "subset",
     "vector_section",
     "cube_section",
     "alloc_tile",

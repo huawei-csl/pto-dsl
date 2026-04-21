@@ -221,6 +221,20 @@ _ROUND_MODE = {
 }
 
 
+def reshape(dst_type, src):
+    """Reinterpret a tile's layout without moving data (zero-cost cast).
+
+    Typical use: convert a column-vector [N, 1] ColMajor reduction tile into
+    a row-vector [1, N] RowMajor tile (or vice-versa) so that element-wise
+    ops like TMAX, TSUB, TMUL, TEXP can operate on it in the required layout.
+
+    dst_type: a TileBufType describing the target shape / layout.
+    src:      the source tile value.
+    Returns:  a new tile SSA value with the reinterpreted type.
+    """
+    return _pto.TReshapeOp(dst_type, src).result
+
+
 def muls(src, scalar, dst):
     """Multiply every element of a tile by a scalar value (tile * scalar → tile)."""
     _pto.tmuls(src, _unwrap(scalar), dst)
@@ -229,6 +243,41 @@ def muls(src, scalar, dst):
 def adds(src, scalar, dst):
     """Add a scalar value to every element of a tile (tile + scalar → tile)."""
     _pto.tadds(src, _unwrap(scalar), dst)
+
+
+def subs(src, scalar, dst):
+    """Subtract a scalar from every element of a tile (tile - scalar → tile)."""
+    _pto.tsubs(src, _unwrap(scalar), dst)
+
+
+def divs(src, scalar, dst):
+    """Divide every element of a tile by a scalar value (tile / scalar → tile)."""
+    _pto.tdivs(src, _unwrap(scalar), dst)
+
+
+def maxs(src, scalar, dst):
+    """Element-wise max of a tile and a scalar (max(tile, scalar) → tile)."""
+    _pto.tmaxs(src, _unwrap(scalar), dst)
+
+
+def mins(src, scalar, dst):
+    """Element-wise min of a tile and a scalar (min(tile, scalar) → tile)."""
+    _pto.tmins(src, _unwrap(scalar), dst)
+
+
+def ands(src, scalar, dst):
+    """Bitwise AND of every element of a tile with a scalar value."""
+    _pto.tands(src, _unwrap(scalar), dst)
+
+
+def ors(src, scalar, dst):
+    """Bitwise OR of every element of a tile with a scalar value."""
+    _pto.tors(src, _unwrap(scalar), dst)
+
+
+def xors(src, scalar, dst):
+    """Bitwise XOR of every element of a tile with a scalar value."""
+    _pto.txors(src, _unwrap(scalar), dst)
 
 
 def cvt(src, dst, *, rmode=None):
@@ -322,7 +371,15 @@ __all__ = [
     "sort32",
     "muls",
     "adds",
+    "subs",
+    "divs",
+    "maxs",
+    "mins",
+    "ands",
+    "ors",
+    "xors",
     "cvt",
     "quant",
     "subset",
+    "reshape",
 ]

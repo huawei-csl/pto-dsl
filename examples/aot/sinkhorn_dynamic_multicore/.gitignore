@@ -1,0 +1,7 @@
+*.pto
+*.cpp
+!caller.cpp
+!reference.cpp
+*.so
+*_artifacts/
+__pycache__/
