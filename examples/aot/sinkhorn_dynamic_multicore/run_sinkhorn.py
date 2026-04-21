@@ -124,7 +124,7 @@ def sinkhorn_ref(matrix_in, order, lr, eps):
     )
 
 
-def test_sinkhorn(lib_path, block_dim=_DEFAULT_NUM_CORES):
+def test_sinkhorn(lib_path, block_dim=_DEFAULT_NUM_CORES, rtol=2e-3, atol=1e-3):
     device = get_test_device()
     torch.npu.set_device(device)
 
@@ -187,7 +187,7 @@ def test_sinkhorn(lib_path, block_dim=_DEFAULT_NUM_CORES):
             ("mu2_out", mu2_out, ref_mu2),
         ]:
             try:
-                torch.testing.assert_close(got, want, rtol=5e-2, atol=1e-2)
+                torch.testing.assert_close(got, want, rtol=rtol, atol=atol)
             except AssertionError as err:
                 ok = False
                 details.append(f"  {name}: {str(err).strip()[:200]}")
@@ -202,6 +202,7 @@ def test_sinkhorn(lib_path, block_dim=_DEFAULT_NUM_CORES):
         results.append((N, K, L, order, seed, status))
 
     print("\nsummary:")
+    print(f"  tolerances: rtol={rtol}, atol={atol}")
     counts = {"match": 0, "mismatch": 0, "skip": 0}
     for r in results:
         counts[r[-1]] = counts.get(r[-1], 0) + 1
@@ -214,5 +215,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--lib", default="./sinkhorn_lib.so")
     parser.add_argument("--block-dim", type=int, default=_DEFAULT_NUM_CORES)
+    parser.add_argument(
+        "--rtol",
+        type=float,
+        default=2e-3,
+        help="Relative tolerance (default 2e-3 — the PTODSL kernel passes; "
+        "use 5e-2 to also accept the hand-tuned reference.cpp).",
+    )
+    parser.add_argument(
+        "--atol", type=float, default=1e-3, help="Absolute tolerance (default 1e-3)."
+    )
     args = parser.parse_args()
-    test_sinkhorn(args.lib, block_dim=args.block_dim)
+    test_sinkhorn(args.lib, block_dim=args.block_dim, rtol=args.rtol, atol=args.atol)

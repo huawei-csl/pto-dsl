@@ -69,13 +69,15 @@ PyTorch reference.
 
 ## Files
 
-| File                  | Purpose                                                   |
-| --------------------- | --------------------------------------------------------- |
-| `sinkhorn_builder.py` | PTODSL kernel — emits MLIR via stdout                     |
-| `caller.cpp`          | Thin C wrapper, exports `call_sinkhorn_kernel`            |
-| `compile.sh`          | `python builder > .pto` → `ptoas` → `bisheng` shared lib  |
-| `run_sinkhorn.py`     | Numerical correctness vs PyTorch reference                |
-| `reference.cpp`       | Hand-tuned baseline (kept for documentation)              |
+| File                    | Purpose                                                    |
+| ----------------------- | ---------------------------------------------------------- |
+| `sinkhorn_builder.py`   | PTODSL kernel — emits MLIR via stdout                      |
+| `caller.cpp`            | Thin C wrapper, exports `call_sinkhorn_kernel`             |
+| `compile.sh`            | `python builder > .pto` → `ptoas` → `bisheng` shared lib   |
+| `run_sinkhorn.py`       | Numerical correctness vs PyTorch reference                 |
+| `reference.cpp`         | Hand-tuned baseline (`call_sinkhorn_kernel` self-contained)|
+| `jit_util_sinkhorn.py`  | Cached JIT compile + `ctypes` loader for both kernels      |
+| `bench_sinkhorn.py`     | Throughput benchmark (torch / PTODSL / reference)          |
 
 ## Usage
 
@@ -83,6 +85,30 @@ PyTorch reference.
 # 1. Generate MLIR + compile shared library (inside the NPU container).
 ./compile.sh
 
-# 2. Run correctness check.
+# 2. Run correctness check (66 cases mirroring upstream torch_npu suite).
 python ./run_sinkhorn.py --lib ./sinkhorn_lib.so
+
+# 3. JIT-compile both kernels and benchmark.
+python ./bench_sinkhorn.py
+# Outputs:
+#   outputs/csv/{head_shapes_bench,batched_vs_serial}.csv
+#   outputs/plots/head_shapes_*.png, batched_vs_serial_log.png
 ```
+
+## Throughput (Atlas 800I A2, fp16, order=8, lr=0.9, eps=1e-6)
+
+Single-matrix latency over the transformer-head grid (K ∈ {64, 128, 256},
+L ∈ {32, 64, 128, 256}), 5 warmup + 20 timed runs:
+
+| K   | L   | torch fp16 (µs) | PTODSL (µs) | reference C++ (µs) | PTODSL / torch | PTODSL / ref |
+| --: | --: | --------------: | ----------: | -----------------: | -------------: | -----------: |
+| 64  | 32  | 2170            | 39          | 65                 | **55.6×**      | **1.66×**    |
+| 64  | 256 | 2017            | 57          | 81                 | 35.1×          | 1.41×        |
+| 128 | 128 | 1983            | 79          | 124                | 25.1×          | 1.56×        |
+| 256 | 256 | 2012            | 200         | 282                | 10.1×          | 1.41×        |
+
+Across all 12 shapes the PTODSL kernel is **10–55× faster than torch
+fp16** and **1.40–1.78× faster than the hand-tuned reference C++**. The
+batched-vs-serial sweep (K = L = 128) shows PTODSL holds the same ~80 µs
+from N = 1 to N = 32 (perfect multicore scaling), consistently
+**~1.55–1.63×** ahead of the reference at every batch size.

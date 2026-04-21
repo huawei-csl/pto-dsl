@@ -149,7 +149,7 @@ def compile_pto_lib(
     _bisheng_compile(
         [caller_cpp],
         out_so,
-        defines={"KERNEL_CPP": f'\\"{cpp_path}\\"'},
+        defines={"KERNEL_CPP": f'"{cpp_path}"'},
         verbose=verbose,
     )
     return out_so
