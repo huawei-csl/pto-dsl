@@ -1,0 +1,66 @@
+mode = "create"
+
+kernel_dir  = "examples/aot/geglu_dynamic_multicore"  # reference for API/build patterns
+kernel_name = "rms_norm"
+create_file = "rms_norm_builder.py"
+
+build_cmd = ["bash", "compile.sh"]
+test_cmd  = ["python", "run_rms_norm.py"]
+bench_cmd = ["python", "_bench_wrapper.py"]
+
+create_prompt = """
+Implement RMS Layer Normalisation: y = x * rsqrt(mean(x^2) + eps) * weight
+PyTorch reference: torch.nn.functional.rms_norm(x, (n_cols,), weight, eps=1e-6)
+
+Inputs:
+  x      — fp32 tensor (batch, n_cols)
+  weight — fp32 tensor (n_cols,)  — per-element learnable scale (gamma)
+Output:
+  out    — fp32 tensor (batch, n_cols)  — normalised and scaled values
+
+The kernel signature in caller.cpp should be:
+    extern "C" void call_kernel(uint32_t blockDim, void *stream,
+                                uint8_t *x, uint8_t *weight, uint8_t *out,
+                                uint32_t batch, uint32_t n_cols)
+
+The .so produced by compile.sh should be named rms_norm_lib.so.
+
+The test script run_rms_norm.py should:
+  - Use batch=16, n_cols=1024 (or similar)
+  - Compare against torch.nn.functional.rms_norm(x, (n_cols,), weight, eps=1e-6)
+  - Check max absolute difference < 1e-3 (fp32 tolerance)
+
+The bench wrapper _bench_wrapper.py should print latency_ms=<value>.
+
+Implementation notes:
+  - Process one row per loop iteration.
+  - Load weight once before the loop (it is shared across all rows).
+  - For each row:
+      1. Load x[row, :] into a tile.
+      2. Square element-wise: tmp = x * x.
+      3. Compute row sum of tmp → scalar tile (row_sum).
+      4. Divide scalar by n_cols → mean of squares.
+      5. Add eps (store eps as a scalar constant and add it using tile.add or a scalar op).
+      6. rsqrt of the scalar → rms_inv.
+      7. Broadcast rms_inv across a row tile and multiply x by it.
+      8. Multiply element-wise by weight.
+      9. Store result to out[row, :].
+  - eps = 1e-6; represent as a tile filled with that constant for tile.add,
+    or add it to the scalar before rsqrt.
+"""
+
+# Reference files from geglu — agent should adapt these for rms_norm
+preload_files = ["compile.sh", "caller.cpp", "geglu_builder.py", "run_geglu.py", "_bench_wrapper.py"]
+
+# Local PTO-DSL API files (authoritative)
+local_context_files = [
+    "ptodsl/api/pto.py",
+    "ptodsl/api/tile.py",
+    "ptodsl/api/scalar.py",
+    "ptodsl/api/control_flow.py",
+    "ptodsl/api/synchronization.py",
+]
+
+[[context_urls]]
+url   = "https://github.com/zhangstevenunity/PTOAS/blob/main/python/pto/dialects/pto.py"
+label = "PTO Python bindings"

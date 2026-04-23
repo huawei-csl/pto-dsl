@@ -1,0 +1,63 @@
+# Kernel optimizer configuration
+# Pass to agent_search.py with: python agent_search.py --config kernel_config.toml
+
+# Path to the kernel directory (relative to repo root, or absolute)
+kernel_dir = "examples/aot/fast_hadamard"
+
+# Working directory where edits happen (original files are never touched).
+# Relative paths are resolved from repo root. Defaults to "{kernel_dir}_opt".
+# work_dir = "examples/aot/fast_hadamard_opt"
+
+# Shell commands (relative paths resolved from kernel_dir)
+build_cmd = ["bash", "compile.sh"]
+test_cmd  = ["python", "run_hadamard.py"]
+bench_cmd = ["python", "_bench_wrapper.py"]
+
+# Files whose content is snapshotted as the baseline for reset/revert
+baseline_files = ["hadamard_builder.py"]
+
+# The first file the agent should read to understand the kernel
+main_file = "hadamard_builder.py"
+
+# Human-readable name used in prompts
+kernel_name = "fast_hadamard"
+
+# Free-form tuning notes injected into the system prompt
+tuning_notes = """
+- The kernel operates on fp16 tensors in-place: shape (batch, N), N must be a power of 2.
+- ELEMENTS_PER_TILE = 16384 (32KB UB / sizeof(fp16)). N must be <= this.
+- samples_per_load controls how many rows are processed per chunk (currently 1).
+  Increasing it may improve throughput if UB pressure allows.
+- Two ping/pong tile sets (event_id 0/1) are used to hide DMA latency.
+- The auto-sync variant relies on `ptoas --enable-insert-sync`; no manual barriers needed.
+- Benchmark config: batch=32, N=8192, block_dim=24 (see _bench_wrapper.py).
+"""
+
+# Files the agent must NOT modify (enforced via system-prompt rules)
+readonly_files = ["run_hadamard.py", "caller.cpp"]
+
+# Files embedded verbatim in the system prompt so the agent starts with full context
+# (saves turns that would otherwise be spent on read_file calls)
+preload_files = ["hadamard_builder.py", "compile.sh", "caller.cpp"]
+
+# Remote reference docs fetched at startup and embedded in the system prompt.
+# GitHub blob URLs are auto-converted to raw. gitcode.com is not fetchable.
+# Reference only (not fetchable): https://gitcode.com/cann/pto-isa/tree/master/docs/isa
+# Reference only (not fetchable): https://gitcode.com/cann/pto-isa/tree/master/include/pto/npu/a2a3
+# Reference only (not fetchable): https://gitcode.com/cann/pto-isa/blob/master/tests/npu/a2a3/src/st/testcase/
+# Local PTO-DSL API files (authoritative, read from repo)
+local_context_files = [
+    "ptodsl/api/pto.py",
+    "ptodsl/api/tile.py",
+    "ptodsl/api/scalar.py",
+    "ptodsl/api/control_flow.py",
+    "ptodsl/api/synchronization.py",
+]
+
+[[context_urls]]
+url   = "https://github.com/zhangstevenunity/PTOAS/blob/main/include/PTO/IR/PTOOps.td"
+label = "PTO MLIR op definitions (PTOOps.td)"
+
+[[context_urls]]
+url   = "https://github.com/zhangstevenunity/PTOAS/blob/main/python/pto/dialects/pto.py"
+label = "PTO Python bindings (pto.py)"

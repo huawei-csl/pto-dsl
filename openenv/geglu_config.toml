@@ -1,0 +1,46 @@
+# Kernel optimizer configuration — GEGLU dynamic multicore
+# Usage: python openenv/agent_search.py --config openenv/geglu_config.toml
+
+kernel_dir = "examples/aot/geglu_dynamic_multicore"
+
+# work_dir = "examples/aot/geglu_dynamic_multicore_opt"
+
+build_cmd = ["bash", "compile.sh"]
+test_cmd  = ["python", "run_geglu.py"]
+bench_cmd = ["python", "_bench_wrapper.py"]
+
+baseline_files = ["geglu_builder.py"]
+main_file      = "geglu_builder.py"
+kernel_name    = "geglu"
+
+tuning_notes = """
+- Computes c = gelu_approx(a) * b  (in-place tanh-GELU gate, fp16).
+- ELEMENTS_PER_TILE = 16384 (32KB UB / sizeof(fp16)). n_cols must be <= this.
+- Currently uses 5 UB tiles (160 KB / 192 KB). One extra tile is available.
+- Constants 1.0 and 2.0 are derived via exp(a-a)=1 (no scalar-tile broadcast).
+- Rows are distributed across vector cores; rows_per_core = ceil(batch / num_cores).
+- Benchmark config: batch=1024, n_cols=8192, block_dim=24 (see _bench_wrapper.py).
+- Key tuning ideas: reduce ops per row (reuse intermediates), pipeline loads with
+  compute using double-buffering, or explore different tile sizes.
+"""
+
+readonly_files = ["run_geglu.py", "caller.cpp"]
+
+preload_files = ["geglu_builder.py", "compile.sh", "caller.cpp"]
+
+# Local PTO-DSL API files (authoritative, read from repo)
+local_context_files = [
+    "ptodsl/api/pto.py",
+    "ptodsl/api/tile.py",
+    "ptodsl/api/scalar.py",
+    "ptodsl/api/control_flow.py",
+    "ptodsl/api/synchronization.py",
+]
+
+[[context_urls]]
+url   = "https://github.com/zhangstevenunity/PTOAS/blob/main/include/PTO/IR/PTOOps.td"
+label = "PTO MLIR op definitions (PTOOps.td)"
+
+[[context_urls]]
+url   = "https://github.com/zhangstevenunity/PTOAS/blob/main/python/pto/dialects/pto.py"
+label = "PTO Python bindings (pto.py)"
