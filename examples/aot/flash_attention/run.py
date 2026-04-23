@@ -9,8 +9,8 @@
 
 import ctypes
 import os
-import subprocess
 import sys
+import math
 
 import torch
 import torch_npu  # noqa: F401
@@ -32,7 +32,6 @@ from ptodsl import do_bench  # noqa: E402
 from ptodsl.utils.npu_info import get_num_cube_cores, get_test_device  # noqa: E402
 
 DEFAULT_LIB_PATH = os.path.join(THIS_DIR, "build_artifacts", "fa.so")
-DEFAULT_COMPILE_SCRIPT = os.path.join(THIS_DIR, "compile.sh")
 
 ATOL = 1e-3
 RTOL = 1e-3
@@ -48,10 +47,6 @@ def get_slot_elems(block_dim: int) -> int:
 
 def torch_to_ctypes(t: torch.Tensor) -> ctypes.c_void_p:
     return ctypes.c_void_p(t.data_ptr())
-
-
-def compile_example(compile_script: str) -> None:
-    subprocess.run(["bash", compile_script], check=True, cwd=THIS_DIR)
 
 
 def load_lib(lib_path: str) -> ctypes.CDLL:
@@ -70,8 +65,6 @@ def load_lib(lib_path: str) -> ctypes.CDLL:
 
 
 def fa_reference(q, k, v):
-    import math
-
     scale = 1.0 / math.sqrt(q.shape[1])
     scores = q.float() @ k.float().T * scale
     attn = torch.softmax(scores, dim=-1)
@@ -79,8 +72,6 @@ def fa_reference(q, k, v):
 
 
 def fused_attention(q, k, v, is_causal=False):
-    import math
-
     scale = 1.0 / math.sqrt(q.shape[1])
     out, _ = torch_npu.npu_fused_infer_attention_score(
         q.unsqueeze(0),
@@ -198,7 +189,6 @@ def benchmark_flash(lib, device, warmup=10, iters=100):
 
 
 def main():
-    compile_example(DEFAULT_COMPILE_SCRIPT)
     device = get_test_device()
     torch.npu.set_device(device)
     lib = load_lib(DEFAULT_LIB_PATH)
