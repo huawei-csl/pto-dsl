@@ -47,8 +47,8 @@ jobs:
 
     env:
       RELEASE_REPO: zhangstevenunity/PTOAS
-      RELEASE_VER: 0.27
-      RELEASE_TAG: v0.27
+      RELEASE_VER: 0.29
+      RELEASE_TAG: v0.29
       CLI_DIR: /installers/ptoas-cli
       PTOISA_COMMIT: 01666f3b386f296c95e6e05825fe63b8e6bb4ef4
 
