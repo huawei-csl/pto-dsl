@@ -101,10 +101,10 @@ def sinkhorn_k4_fp16(
         row_stat = pto.alloc_tile(col_vec_fp16, valid_row=cK, valid_col=c1)
         col_stat = pto.alloc_tile(row_vec_fp16, valid_row=c1, valid_col=cK)
 
-        mat_kk = tile.subset(mat_full, [c0, c0], [K, K])
+        mat_kk = tile.subview(mat_full, [c0, c0], [K, K])
         # Match hand-tuned C++: TADDS on the first K×TILE_DIM rows (eps on padding too).
-        mat_eps_rows = tile.subset(mat_full, [c0, c0], [K, TILE_DIM])
-        scratch_kk = tile.subset(scratch_full, [c0, c0], [K, K])
+        mat_eps_rows = tile.subview(mat_full, [c0, c0], [K, TILE_DIM])
+        scratch_kk = tile.subview(scratch_full, [c0, c0], [K, K])
 
         for mi in pto.range(wid, nm, num_workers):
             row0 = mi * cK
