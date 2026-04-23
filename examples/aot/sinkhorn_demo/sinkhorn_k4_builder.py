@@ -1,13 +1,5 @@
 """
 PTO-DSL builder for the minimal fp16 Sinkhorn K=4 kernel.
-
-Vector section, K=4, UB tiles 16×16 with valid 4×4 math (same iteration
-order as the usual hand-tuned C++ demo).  Full rebuild::
-
-    ./compile.sh
-
-The emitted ``__global__`` entry point is ``sinkhorn_k4_fp16``;
-``caller_sinkhorn_k4.cpp`` wraps it as ``call_sinkhorn`` for the ctypes host ABI.
 """
 
 from ptodsl import pto, tile, to_ir_module
