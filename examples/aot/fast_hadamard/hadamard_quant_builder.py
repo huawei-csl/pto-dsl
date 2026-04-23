@@ -160,10 +160,10 @@ def build_fast_hadamard_quant_autosync(group_size=None):
                         pto.load(sv_x, tb_x)
 
                         # ── Hadamard transform (in-place on tb_x) ─────────
-                        tb_first = tile.subset(
+                        tb_first = tile.subview(
                             tb_x, [c0, c0], [1, HALF_ELEMENTS_PER_TILE]
                         )
-                        tb_second = tile.subset(
+                        tb_second = tile.subview(
                             tb_x, [c0, n_half], [1, HALF_ELEMENTS_PER_TILE]
                         )
 
@@ -181,8 +181,8 @@ def build_fast_hadamard_quant_autosync(group_size=None):
 
                             for g in pto.range(c0, groups_per_row, c1):
                                 g_off = g * c_gs
-                                xg = tile.subset(tb_x, [c0, g_off], [1, group_size])
-                                yg = tile.subset(tb_y, [c0, g_off], [1, group_size])
+                                xg = tile.subview(tb_x, [c0, g_off], [1, group_size])
+                                yg = tile.subview(tb_y, [c0, g_off], [1, group_size])
 
                                 with pto.if_context(has_gs, has_else=True) as sbr:
                                     scale_idx = s.select(
@@ -348,10 +348,10 @@ def build_fast_hadamard_quant_manualsync(group_size=None):
                         pto.record_wait_pair("LOAD", "VEC", event_id=event_id)
 
                         # ── Hadamard transform (in-place on tb_x) ─────────
-                        tb_first = tile.subset(
+                        tb_first = tile.subview(
                             tb_x, [c0, c0], [1, HALF_ELEMENTS_PER_TILE]
                         )
-                        tb_second = tile.subset(
+                        tb_second = tile.subview(
                             tb_x, [c0, n_half], [1, HALF_ELEMENTS_PER_TILE]
                         )
 
@@ -371,8 +371,8 @@ def build_fast_hadamard_quant_manualsync(group_size=None):
 
                             for g in pto.range(c0, groups_per_row, c1):
                                 g_off = g * c_gs
-                                xg = tile.subset(tb_x, [c0, g_off], [1, group_size])
-                                yg = tile.subset(tb_y, [c0, g_off], [1, group_size])
+                                xg = tile.subview(tb_x, [c0, g_off], [1, group_size])
+                                yg = tile.subview(tb_y, [c0, g_off], [1, group_size])
 
                                 with pto.if_context(has_gs, has_else=True) as sbr:
                                     scale_idx = s.select(

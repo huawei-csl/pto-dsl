@@ -221,6 +221,21 @@ _ROUND_MODE = {
 }
 
 
+def reshape(dst_type, src):
+    """Reinterpret a tile's layout without moving data.
+
+    dst_type: a TileBufType describing the target shape / layout.
+    src:      the source tile value.
+    Returns:  a new tile SSA value with the reinterpreted type.
+    """
+    return _pto.TReshapeOp(dst_type, src).result
+
+
+def subview(source, offsets, sizes):
+    offset_vals = [_unwrap(v) for v in offsets]
+    return _pto.subview(source, offset_vals, list(sizes))
+
+
 def muls(src, scalar, dst):
     """Multiply every element of a tile by a scalar value (tile * scalar → tile)."""
     _pto.tmuls(src, _unwrap(scalar), dst)
@@ -262,11 +277,6 @@ def quant(src, fp, dst, quant_type, *, offset=None):
     """
     qtype_attr = _pto.QuantTypeAttr.get(_QUANT_TYPE[quant_type])
     _pto.TQuantOp(src=src, fp=fp, dst=dst, quant_type=qtype_attr, offset=offset)
-
-
-def subset(source, offsets, sizes):
-    offset_vals = [_unwrap(v) for v in offsets]
-    return _pto.subview(source, offset_vals, sizes)
 
 
 def print(source):
@@ -320,9 +330,10 @@ __all__ = [
     "row_expand_expdif",
     "mrgsort",
     "sort32",
+    "reshape",
     "muls",
     "adds",
     "cvt",
     "quant",
-    "subset",
+    "subview",
 ]
