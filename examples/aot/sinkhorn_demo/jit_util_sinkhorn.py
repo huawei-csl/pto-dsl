@@ -2,6 +2,7 @@
 The device kernel is loaded from ``outputs/kernel_sinkhorn.so``, which must be
 built first (see ``compile.sh`` in this directory).
 """
+
 import ctypes
 from pathlib import Path
 
@@ -12,7 +13,9 @@ _HERE = Path(__file__).resolve().parent
 _KERNEL_SO = _HERE / "outputs" / "kernel_sinkhorn.so"
 
 
-def sinkhorn_normalize_ref(x: torch.Tensor, repeat: int = 10, eps: float = 1e-6) -> torch.Tensor:
+def sinkhorn_normalize_ref(
+    x: torch.Tensor, repeat: int = 10, eps: float = 1e-6
+) -> torch.Tensor:
     """Exact copy of ``sinkhorn_normalize_ref`` from deepseek-ai/TileKernels."""
     x = x.softmax(-1) + eps
     x = x / (x.sum(-2, keepdim=True) + eps)
@@ -70,7 +73,9 @@ def _run_kernel(x: torch.Tensor, out: torch.Tensor, repeat: int, eps: float) -> 
     )
 
 
-def sinkhorn_normalize(x: torch.Tensor, repeat: int = 10, eps: float = 1e-6) -> torch.Tensor:
+def sinkhorn_normalize(
+    x: torch.Tensor, repeat: int = 10, eps: float = 1e-6
+) -> torch.Tensor:
     """Run the PTO kernel (forward only). ``x`` must be fp16 on NPU, shape ``(..., 4, 4)``."""
     assert x.dtype == torch.float16, "demo requires fp16"
     assert x.shape[-2:] == (4, 4), "demo supports K=4 only"

@@ -1,6 +1,7 @@
 """
 Forward-only check: PTODSL-generated kernel vs ``sinkhorn_normalize_ref``.
 """
+
 import pytest
 import torch
 import torch_npu  # noqa: F401
@@ -10,7 +11,9 @@ from jit_util_sinkhorn import sinkhorn_normalize, sinkhorn_normalize_ref
 
 def _generate(n0: int, n1: int, mhc: int, device: str):
     return {
-        "comb_res_mix": torch.randn((n0, n1, mhc, mhc), dtype=torch.float16, device=device),
+        "comb_res_mix": torch.randn(
+            (n0, n1, mhc, mhc), dtype=torch.float16, device=device
+        ),
         "repeat": 10,
         "eps": 1e-6,
     }
