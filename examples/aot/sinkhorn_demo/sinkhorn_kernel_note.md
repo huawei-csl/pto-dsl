@@ -68,7 +68,7 @@ PyTorch does **stabilized softmax**: subtract row max, exponentiate, divide by r
 
 | PyTorch | PTO-DSL | Comment |
 |---------|---------|--------|
-| `x.sum(-2, keepdim=True)` | `tile.col_sum(mat_kk, scratch_kk, col_stat, is_binary=True)` | One sum **per column** into `col_stat` |
+| `x.sum(-2, keepdim=True)` | `tile.col_sum(mat_kk, scratch_kk, col_stat)` | One sum **per column** into `col_stat` (`is_binary` defaults to `True` in `ptodsl`) |
 | `+ eps` | `tile.adds(col_stat, eps_h, col_stat)` | ε on each column statistic |
 | Division broadcast on columns | `tile.col_expand_div(mat_kk, col_stat, mat_kk)` | Each column divided by its (sum + ε) |
 

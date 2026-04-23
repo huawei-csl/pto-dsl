@@ -266,7 +266,7 @@ def quant(src, fp, dst, quant_type, *, offset=None):
 
 def subset(source, offsets, sizes):
     offset_vals = [_unwrap(v) for v in offsets]
-    return _pto.subset(source, offset_vals, sizes)
+    return _pto.subview(source, offset_vals, sizes)
 
 
 def print(source):
