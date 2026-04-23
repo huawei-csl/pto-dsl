@@ -38,11 +38,11 @@ ARG CLI_TAR_NAME=ptoas-bin-${ARCH}.tar.gz
 WORKDIR /installers/
 
 # download assets from https://github.com/hw-native-sys/PTOAS/releases
-RUN wget https://github.com/${RELEASE_REPO}/releases/download/nightly/${WHEEL_NAME}
+RUN wget https://github.com/${RELEASE_REPO}/releases/download/${RELEASE_TAG}/${WHEEL_NAME}
 RUN pip install ./${WHEEL_NAME}
 RUN python -c "import mlir.ir; from mlir.dialects import pto"
 
-RUN wget https://github.com/${RELEASE_REPO}/releases/download/nightly/${CLI_TAR_NAME}
+RUN wget https://github.com/${RELEASE_REPO}/releases/download/${RELEASE_TAG}/${CLI_TAR_NAME}
 
 # set up correct lib path for `ptoas` cli
 ARG CLI_DIR=/installers/ptoas-cli
