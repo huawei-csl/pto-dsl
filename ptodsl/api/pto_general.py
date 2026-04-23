@@ -189,24 +189,6 @@ def aiv_initialize_pipe(
     )
 
 
-# -----------------------------------------------------------------------------
-# Multi-pipe initializers (newer dialect ops, support per-pipe slot_num)
-# -----------------------------------------------------------------------------
-def _resolve_pipe_attr(pipe):
-    """Convert a string ('M', 'V', 'MTE2', 'PIPE_M', …) or PIPE enum to a PipeAttr."""
-    if isinstance(pipe, str):
-        normalized = pipe.strip().upper()
-        if not normalized.startswith("PIPE_"):
-            normalized = f"PIPE_{normalized}"
-        try:
-            pipe = getattr(_pto.PIPE, normalized)
-        except AttributeError as exc:
-            raise ValueError(f"Unknown PTO pipe '{pipe}'.") from exc
-    if isinstance(pipe, _pto.PIPE):
-        return _pto.PipeAttr.get(pipe)
-    return pipe
-
-
 def initialize_l2g2l_pipe(
     *,
     dir_mask,
