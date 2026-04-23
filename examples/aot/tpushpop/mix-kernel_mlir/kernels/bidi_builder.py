@@ -47,11 +47,11 @@ def module():
 
         # DIR_BOTH uses two 4-slot logical FIFOs. Give every launched
         # AIC/AIV block pair its own 8192-byte GM slot region:
-        # 2 directions * 4 slots * 1024 bytes. addptr offsets are in f32
+        # 2 directions * 4 slots * 1024 bytes. add_ptr offsets are in f32
         # elements, so 8192 / sizeof(f32) = 2048.
         block_idx = s.index_cast(pto.get_block_idx())
         block_num = s.index_cast(pto.get_block_num())
-        block_gm_slot_buffer = pto.addptr(gm_slot_buffer, block_idx * c2048)
+        block_gm_slot_buffer = pto.add_ptr(gm_slot_buffer, block_idx * c2048)
         c2v_import = pto.import_reserved_buffer(
             name="c2v_fifo",
             peer_func="@vector_kernel",
@@ -115,7 +115,7 @@ def module():
         # Must match cube_kernel's per-block FIFO pointer exactly; otherwise
         # launched block pairs would contend for the same GM FIFO slots.
         block_idx = s.index_cast(pto.get_block_idx())
-        block_gm_slot_buffer = pto.addptr(gm_slot_buffer, block_idx * c2048)
+        block_gm_slot_buffer = pto.add_ptr(gm_slot_buffer, block_idx * c2048)
         c2v_local = pto.reserve_buffer(name="c2v_fifo", size=4096, location="VEC")
         v2c_import = pto.import_reserved_buffer(
             name="v2c_fifo",

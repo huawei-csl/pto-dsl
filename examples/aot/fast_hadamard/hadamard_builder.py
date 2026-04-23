@@ -110,10 +110,10 @@ def fast_hadamard_autosync(
                         )
                         # Alias row halves inside UB row tile (no GM round-trip
                         # per Hadamard iteration).
-                        tb_first = tile.subset(
+                        tb_first = tile.subview(
                             tb_row, [c0, c0], [1, HALF_ELEMENTS_PER_TILE]
                         )
-                        tb_second = tile.subset(
+                        tb_second = tile.subview(
                             tb_row, [c0, n_half], [1, HALF_ELEMENTS_PER_TILE]
                         )
 
@@ -215,10 +215,10 @@ def fast_hadamard_manualsync(
                         )
                         # Alias row halves inside UB row tile (no GM round-trip
                         # per Hadamard iteration).
-                        tb_first = tile.subset(
+                        tb_first = tile.subview(
                             tb_row, [c0, c0], [1, HALF_ELEMENTS_PER_TILE]
                         )
-                        tb_second = tile.subset(
+                        tb_second = tile.subview(
                             tb_row, [c0, n_half], [1, HALF_ELEMENTS_PER_TILE]
                         )
 

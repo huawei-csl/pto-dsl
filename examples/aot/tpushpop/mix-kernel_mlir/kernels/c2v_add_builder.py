@@ -39,10 +39,10 @@ def module():
         # TPipe does not shard gm_slot_buffer by block id. Give every launched
         # AIC/AIV block pair its own 8-slot C2V FIFO region in GM.
         # slot_size=1024 bytes, slot_num=8 => 8192 bytes per block.
-        # addptr offsets are in f32 elements, so 8192 / sizeof(f32) = 2048.
+        # add_ptr offsets are in f32 elements, so 8192 / sizeof(f32) = 2048.
         block_idx = s.index_cast(pto.get_block_idx())
         block_num = s.index_cast(pto.get_block_num())
-        block_gm_slot_buffer = pto.addptr(gm_slot_buffer, block_idx * c2048)
+        block_gm_slot_buffer = pto.add_ptr(gm_slot_buffer, block_idx * c2048)
         c2v_import = pto.import_reserved_buffer(
             name="c2v_fifo",
             peer_func="@vector_kernel",
@@ -95,7 +95,7 @@ def module():
         # multiple launched blocks would contend for the same GM FIFO slots.
         block_idx = s.index_cast(pto.get_block_idx())
         block_num = s.index_cast(pto.get_block_num())
-        block_gm_slot_buffer = pto.addptr(gm_slot_buffer, block_idx * c2048)
+        block_gm_slot_buffer = pto.add_ptr(gm_slot_buffer, block_idx * c2048)
         c2v_local = pto.reserve_buffer(name="c2v_fifo", size=8192, location="VEC")
 
         pto.aiv_initialize_pipe(

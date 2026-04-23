@@ -28,7 +28,7 @@ Core idea:
 - `run.py` launches `get_num_cube_cores()` blocks for every mode.
 - Inputs and outputs are shaped as `[block_dim, 16, 16]`.
 - Each launched block pair gets its own `8 KiB` GM slot region and uses
-  `get_block_idx()` plus `addptr` so blocks do not overwrite each other's FIFO
+  `get_block_idx()` plus `add_ptr` so blocks do not overwrite each other's FIFO
   slots or input/output tiles.
 
 ## C2V

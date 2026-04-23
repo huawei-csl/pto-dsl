@@ -56,7 +56,7 @@ def set_ffts(ffts):
     return _pto.SetFFTsOp(_unwrap(ffts))
 
 
-def addptr(ptr, offset):
+def add_ptr(ptr, offset):
     """Return ptr advanced by offset elements, preserving the !pto.ptr type.
 
     The offset is in elements of the pointer's element type, not bytes.
@@ -149,14 +149,17 @@ def aic_initialize_pipe(
     gm_slot_buffer=None,  # only needed on a2/a3?
     c2v_consumer_buf,
     v2c_consumer_buf,
+    id=None,
+    nosplit=None,
 ):
-    # wrap aic_initialize_pipe(dir_mask, slot_size, c2v_consumer_buf, v2c_consumer_buf, *, gm_slot_buffer=None, loc=None, ip=None) -> mlir._mlir_libs._mlir.ir.Operation
     return _pto.AicInitializePipeOp(
         dir_mask,
         slot_size,
         c2v_consumer_buf=_unwrap(c2v_consumer_buf),
         v2c_consumer_buf=_unwrap(v2c_consumer_buf),
         gm_slot_buffer=_unwrap(gm_slot_buffer),
+        id=id,
+        nosplit=nosplit,
     )
 
 
@@ -172,48 +175,104 @@ def aiv_initialize_pipe(
     gm_slot_buffer=None,  # only needed on a2/a3
     c2v_consumer_buf,
     v2c_consumer_buf,
+    id=None,
+    nosplit=None,
 ):
-    # wrap aiv_initialize_pipe(dir_mask, slot_size, c2v_consumer_buf, v2c_consumer_buf, *, gm_slot_buffer=None, loc=None, ip=None) -> mlir._mlir_libs._mlir.ir.Operation
     return _pto.AivInitializePipeOp(
         dir_mask,
         slot_size,
         c2v_consumer_buf=_unwrap(c2v_consumer_buf),
         v2c_consumer_buf=_unwrap(v2c_consumer_buf),
         gm_slot_buffer=_unwrap(gm_slot_buffer),
+        id=id,
+        nosplit=nosplit,
     )
 
 
+def initialize_l2g2l_pipe(
+    *,
+    dir_mask,
+    slot_size,
+    slot_num,
+    gm_addr,
+    local_addr,
+    peer_local_addr=None,
+    local_slot_num=None,
+    flag_base=None,
+):
+    """Initialize a local-to-global-to-local pipe handle.
+
+    Returns a `!pto.pipe` value usable with downstream pipe ops. Unlike the
+    legacy `aic/aiv_initialize_pipe` (which is hard-capped at one pipe per
+    function with DIR_BOTH 4+4 slots on a3), this op accepts an explicit
+    ``slot_num`` (e.g. 8) and is the basis for L2 prefetch / GM_FIFO patterns
+    used by the reference flash attention performance kernel.
+    """
+    return _pto.InitializeL2G2LPipeOp(
+        dir_mask,
+        slot_size,
+        slot_num,
+        _unwrap(gm_addr),
+        _unwrap(local_addr),
+        local_slot_num=local_slot_num,
+        flag_base=flag_base,
+        peer_local_addr=(
+            _unwrap(peer_local_addr) if peer_local_addr is not None else None
+        ),
+    ).result
+
+
+# -----------------------------------------------------------------------------
+# Pipe-handle generic tpush/tpop/tfree (used with `initialize_l2g2l_pipe`handles, as opposed to the legacy *_to_aic / *_to_aiv
+# / *_from_aic / *_from_aiv variants tied to the function-scoped legacy pipe).
+# -----------------------------------------------------------------------------
+def tpush(tile, pipe_handle, split):
+    """Push a tile onto a pipe handle (l2g2l or l2l)."""
+    return _pto.TPushOp(_unwrap(tile), _unwrap(pipe_handle), split)
+
+
+def tpop(tile_type, pipe_handle, split):
+    """Pop the next tile from a pipe handle.
+
+    The underlying ``pto.tpop`` op is destination-passing: it writes into a
+    pre-allocated tile. This wrapper allocates a fresh tile of ``tile_type``,
+    pops into it, and returns the tile value.
+    """
+    dest = _pto.AllocTileOp(tile_type).result
+    _pto.TPopOp(dest, _unwrap(pipe_handle), split)
+    return dest
+
+
+def tfree(pipe_handle, split):
+    """Release the slot most recently popped from a pipe handle."""
+    return _pto.TFreeOp(_unwrap(pipe_handle), split)
+
+
 # pto.tpush_to_aiv(%acc_tile : !pto.tile_buf<loc=acc, dtype=f32, ..., pad=0>) {split = 0}
-def tpush_to_aiv(tile, split):
-    # wrap tpush_to_aiv(tile, split, *, loc=None, ip=None) -> mlir._mlir_libs._mlir.ir.Operation
-    return _pto.TPushToAivOp(_unwrap(tile), split)
+def tpush_to_aiv(tile, split, *, id=None):
+    return _pto.TPushToAivOp(_unwrap(tile), split, id=id)
 
 
-def tpush_to_aic(tile, split):
-    # wrap: tpush_to_aic(tile, split, *, loc=None, ip=None) -> mlir._mlir_libs._mlir.ir.Operation
-    return _pto.TPushToAicOp(_unwrap(tile), split)
+def tpush_to_aic(tile, split, *, id=None):
+    return _pto.TPushToAicOp(_unwrap(tile), split, id=id)
 
 
 # %recv_tile = pto.tpop_from_aic {split = 0} -> !pto.tile_buf<loc=vec, ... fractal=512, pad=0>
-def tpop_from_aic(tile_type, split):
-    # wrap tpop_from_aic(tile, split, *, loc=None, ip=None) -> mlir._mlir_libs._mlir.ir.Value
-    return _pto.TPopFromAicOp(tile_type, split).result
+def tpop_from_aic(tile_type, split, *, id=None):
+    return _pto.TPopFromAicOp(tile_type, split, id=id).result
 
 
-def tpop_from_aiv(tile_type, split):
-    # wraps tpop_from_aiv(tile, split, *, loc=None, ip=None) -> mlir._mlir_libs._mlir.ir.Value
-    return _pto.TPopFromAivOp(tile_type, split).result
+def tpop_from_aiv(tile_type, split, *, id=None):
+    return _pto.TPopFromAivOp(tile_type, split, id=id).result
 
 
 # pto.tfree_from_aic {split = 0}
-def tfree_from_aic(split):
-    # wrap tfree_from_aic(split, *, loc=None, ip=None) -> mlir._mlir_libs._mlir.ir.Operation
-    return _pto.TFreeFromAicOp(split)
+def tfree_from_aic(split, *, id=None):
+    return _pto.TFreeFromAicOp(split, id=id)
 
 
-def tfree_from_aiv(split):
-    # wrap tfree_from_aiv(split, *, loc=None, ip=None) -> mlir._mlir_libs._mlir.ir.Operation
-    return _pto.TFreeFromAivOp(split)
+def tfree_from_aiv(split, *, id=None):
+    return _pto.TFreeFromAivOp(split, id=id)
 
 
 def load_scalar(result_type, ptr, offset):
@@ -252,7 +311,7 @@ __all__ = [
     "get_block_num",
     "call",
     "set_ffts",
-    "addptr",
+    "add_ptr",
     "as_tensor",
     "slice_view",
     "vector_section",
@@ -262,6 +321,7 @@ __all__ = [
     "import_reserved_buffer",
     "aic_initialize_pipe",
     "aiv_initialize_pipe",
+    "initialize_l2g2l_pipe",
     "load_scalar",
     "load",
     "store",
@@ -271,5 +331,8 @@ __all__ = [
     "tpop_from_aiv",
     "tfree_from_aic",
     "tfree_from_aiv",
+    "tpush",
+    "tpop",
+    "tfree",
     "print",
 ]
