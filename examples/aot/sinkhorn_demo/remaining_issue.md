@@ -14,9 +14,11 @@ Closing the performance gap requires either **proving or encoding** the interlea
 
 ## Current blockers (Python v2 vs C++ v2)
 
-### 1. No first-class strided UB ↔ UB layout transform
+### 1. No first-class strided UB ↔ UB layout transform in PTODSL
 
-C++ v2 uses `stridedUBCopy` (burst length + `srcGap` / `dstGap` in 32-byte block units) to move data between **batch order** and **tall / interleaved** UB views. PTODSL today relies on **`tile.mov` on row stripes** and/or **`tile.reshape`**. Reshape is only safe when its linearization is **identical** to the layout produced by the reference’s strided copy. Without a binding to the same copy primitive (or a verified lowering of reshape to it), the interleaved fast path is either **wrong** (NaNs) or **unavailable**.
+The C++ v2 reference (`cpp_ref/kernel_sinkhorn_v2.cpp`) interleaves / de-interleaves each within-matrix row using **`pto::TCopy`** on **`Tile2D<half, TALL_ROWS, TILE_COLS>`** views (`#include <pto/npu/a2a3/TCopy.hpp>`): `validRow = group_size`, `validCol = K`, and compile-time **half-element row strides** `K * TILE_COLS` (batch) and `TILE_COLS` (WORK). That matches the former `copy_ubuf_to_ubuf` burst pattern without calling **`__builtin_cce_copy_ubuf_to_ubuf`** from the demo kernel.
+
+PTODSL still has no direct equivalent: authors rely on **`tile.mov` on row stripes** and/or **`tile.reshape`**. Reshape is only safe when its linearization is **identical** to the layout produced by the same `TCopy` semantics. A Python binding that lowers to **`TCopy`** (or the same `copy_ubuf_to_ubuf` row loop with explicit strides) would align the interleaved fast path with this reference.
 
 ### 2. Batched column normalize vs per-matrix `col_sum` loop
 

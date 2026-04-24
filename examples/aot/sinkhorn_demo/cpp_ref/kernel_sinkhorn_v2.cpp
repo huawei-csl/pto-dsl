@@ -46,6 +46,7 @@ See LICENSE in the root of the software repository for the full License text.
  */
 
 #include <pto/pto-inst.hpp>
+#include <pto/npu/a2a3/TCopy.hpp>
 
 #ifndef GM_ADDR
 #define GM_ADDR __gm__ uint8_t *
@@ -104,27 +105,37 @@ AICORE inline void drainPipelineFlags() {
 }
 
 // ==========================================================================
-// Strided UB→UB copy (wraps copy_ubuf_to_ubuf)
+// Interleave / de-interleave row stripes (BATCH_UB ↔ WORK_UB)
+//
+// Implemented with ``pto::TCopy`` on matching 2D tile views so the same
+// pattern maps cleanly to PTODSL ``tile`` UB copies (stride + validRow /
+// validCol) instead of calling ``__builtin_cce_copy_ubuf_to_ubuf`` directly.
+// For each within-matrix row index ``row`` (0..K-1), we copy ``group_size``
+// rows; source stride in batch layout is ``K * TILE_COLS`` half elements
+// between matrices, destination stride in WORK is ``TILE_COLS`` half
+// elements per tall row.  ``validCol == K`` selects the ``validCol < Cols``
+// branch of ``TCopy.hpp`` (per-row ``copy_ubuf_to_ubuf`` with blockLen from
+// ``K``).  De-interleave swaps strides.
 // ==========================================================================
-namespace pto {
-template <typename TileDescriptor>
-__tf__ AICORE inline void stridedUBCopyImpl(
-    typename TileDescriptor::TileDType __out__ dstTile,
-    typename TileDescriptor::TileDType __in__ srcTile, uint16_t nBurst,
-    uint16_t lenBurst, uint16_t srcGap, uint16_t dstGap) {
-  __ubuf__ void *dst = (__ubuf__ void *)__cce_get_tile_ptr(dstTile);
-  __ubuf__ void *src = (__ubuf__ void *)__cce_get_tile_ptr(srcTile);
-  __builtin_cce_copy_ubuf_to_ubuf(dst, src, (uint8_t)0, nBurst, lenBurst,
-                                  srcGap, dstGap);
-}
-}  // namespace pto
 
-template <typename TileT>
-AICORE inline void stridedUBCopy(TileT &dst, TileT &src, uint16_t nBurst,
-                                 uint16_t lenBurst, uint16_t srcGap,
-                                 uint16_t dstGap) {
-  pto::stridedUBCopyImpl<TileT>(dst.data(), src.data(), nBurst, lenBurst,
-                                srcGap, dstGap);
+template <typename TileHalf>
+AICORE inline void sinkhornInterleaveRowStripeUB(TileHalf &dst_view,
+                                               TileHalf &src_view,
+                                               uint64_t group_size) {
+  constexpr unsigned SrcStrideHalf = K * TILE_COLS;
+  constexpr unsigned DstStrideHalf = TILE_COLS;
+  pto::TCopy<TileHalf, TileHalf, 1, SrcStrideHalf, DstStrideHalf>(
+      dst_view.data(), src_view.data(), group_size, K);
+}
+
+template <typename TileHalf>
+AICORE inline void sinkhornDeinterleaveRowStripeUB(TileHalf &dst_view,
+                                                 TileHalf &src_view,
+                                                 uint64_t group_size) {
+  constexpr unsigned SrcStrideHalf = TILE_COLS;
+  constexpr unsigned DstStrideHalf = K * TILE_COLS;
+  pto::TCopy<TileHalf, TileHalf, 1, SrcStrideHalf, DstStrideHalf>(
+      dst_view.data(), src_view.data(), group_size, K);
 }
 
 // ==========================================================================
@@ -249,9 +260,6 @@ AICORE void sinkhornFastPath(__gm__ T *gm_in, __gm__ T *gm_out, uint32_t N,
       const unsigned group_batch_offset =
           batch_ub + group_start * K * TILE_COLS * sizeof(T);
 
-      constexpr uint16_t tile_row_blocks = TILE_COLS * sizeof(half) / 32;
-      constexpr uint16_t src_gap_blocks = (uint16_t)(K - 1) * tile_row_blocks;
-
       if (group_size < GROUP_SIZE_STATIC) {
         FlatVec<T, K * ROW_BLOCK_COLS> work_flat(1, K * ROW_BLOCK_COLS);
         TASSIGN(work_flat, WORK_UB);
@@ -266,8 +274,7 @@ AICORE void sinkhornFastPath(__gm__ T *gm_in, __gm__ T *gm_out, uint32_t N,
         TASSIGN(src_view, group_batch_offset + row * MATRIX_ROW_BYTES);
         TASSIGN(dst_view,
                 WORK_UB + row * ROW_BLOCK_COLS * (unsigned)sizeof(half));
-        stridedUBCopy(dst_view, src_view, (uint16_t)group_size, tile_row_blocks,
-                      src_gap_blocks, (uint16_t)0);
+        sinkhornInterleaveRowStripeUB(dst_view, src_view, group_size);
       }
       pipe_barrier(PIPE_V);
 
@@ -344,8 +351,7 @@ AICORE void sinkhornFastPath(__gm__ T *gm_in, __gm__ T *gm_out, uint32_t N,
         TASSIGN(src_view,
                 WORK_UB + row * ROW_BLOCK_COLS * (unsigned)sizeof(half));
         TASSIGN(dst_view, group_batch_offset + row * MATRIX_ROW_BYTES);
-        stridedUBCopy(dst_view, src_view, (uint16_t)group_size, tile_row_blocks,
-                      (uint16_t)0, src_gap_blocks);
+        sinkhornDeinterleaveRowStripeUB(dst_view, src_view, group_size);
       }
       pipe_barrier(PIPE_V);
     }
