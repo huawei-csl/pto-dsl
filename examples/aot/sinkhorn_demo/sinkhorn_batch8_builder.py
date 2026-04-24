@@ -1,6 +1,6 @@
 """
 PTO-DSL builder for the fp16 Sinkhorn K=4 kernel with BATCH=8 stacked loads
-(`kernel_sinkhorn.cpp` in pto-kernels-sinkhorn-demo).
+(same algorithm as ``cpp_ref/kernel_sinkhorn.cpp`` in this demo).
 
 Each vector core processes up to eight 4×4 matrices per group: one load / one
 store for the stack, batched row-wise ops (softmax, row-normalize), and a small

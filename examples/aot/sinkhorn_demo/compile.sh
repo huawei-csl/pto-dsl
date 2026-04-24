@@ -36,3 +36,5 @@ bisheng "${BFLAGS[@]}" \
   -o outputs/kernel_sinkhorn_naive.so
 
 echo "Built outputs/kernel_sinkhorn.so (batched) and outputs/kernel_sinkhorn_naive.so (naive)."
+
+bash cpp_ref/compile.sh

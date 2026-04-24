@@ -65,6 +65,11 @@ def _load_kernel(so_path: Path) -> ctypes.CDLL:
     return _libs[key]
 
 
+def load_sinkhorn_host_lib(so_path: Path) -> ctypes.CDLL:
+    """Load any shared library exporting ``call_sinkhorn`` (same ABI as this demo)."""
+    return _load_kernel(so_path)
+
+
 def _run_kernel(
     lib: ctypes.CDLL,
     x: torch.Tensor,
@@ -118,12 +123,24 @@ def bench_sinkhorn_forward_gbs(
     repeat: int,
     eps: float,
     *,
-    impl: str,
+    impl: str | None = None,
+    lib: ctypes.CDLL | None = None,
     warmup: int = 5,
     iters: int = 20,
 ) -> float:
-    """Median effective GB/s for one forward pass (read input + write output)."""
-    lib = _load_kernel(_KERNEL_SO_BATCHED if impl == "batched" else _KERNEL_SO_NAIVE)
+    """Median effective GB/s for one forward pass (read input + write output).
+
+    Pass exactly one of ``impl`` (``"batched"`` or ``"naive"`` — loads this
+    demo's ``outputs/*.so``) or ``lib`` (any ``call_sinkhorn`` host ABI, e.g.
+    hand-written ``cpp_ref/kernel_sinkhorn.cpp`` in this demo).
+    """
+    if lib is None:
+        if impl is None:
+            raise ValueError("bench_sinkhorn_forward_gbs requires impl or lib")
+        lib = _load_kernel(_KERNEL_SO_BATCHED if impl == "batched" else _KERNEL_SO_NAIVE)
+    elif impl is not None:
+        raise ValueError("pass only one of impl and lib")
+
     x_flat = x.reshape(-1, 4, 4).contiguous()
     out_flat = torch.empty_like(x_flat)
     nmat = x_flat.shape[0]
