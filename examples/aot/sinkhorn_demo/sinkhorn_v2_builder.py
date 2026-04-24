@@ -1,14 +1,15 @@
 """
 PTO-DSL port of ``kernel_sinkhorn_v2.cpp`` (K=4, fp16).
 
-- **Total** ``N >= 2048`` matrices: **fast path** — same stacked pattern as
-  ``sinkhorn_batch8_builder.py`` with ``BATCH=32`` (128-row stack): row softmax
-  + row normalize on the stack, ``eps`` on the tile and in row/col sums like
-  the batched demo (the hand C++ v2 fast path elides some ``eps`` adds; this
-  port keeps them so the forward matches ``sinkhorn_normalize_ref`` under
-  ``test_sinkhorn.py``).
-- **Total** ``N < 2048`` matrices: **small path** — same per-matrix numerics as
-  ``sinkhorn_k4_builder.py`` (``eps`` after softmax and in sums).
+**Large ``N`` (``>= 2048``):** batched fast path — up to **32** matrices per
+chunk (``128×16`` UB tile, same row packing as ``sinkhorn_batch8_builder.py``
+but ``BATCH=32``). One bulk load/store per chunk, batched row softmax on the
+``chunk_rows×K`` stack, then a short ``pto.range`` over matrices for
+``tile.col_sum`` + ``eps`` + divide. This avoids the hand-interleaved layout
+that must match ``tile.reshape`` byte-for-byte (a mismatch there produced
+NaNs); it still cuts GM traffic and row-op fusion versus the small-``N`` path.
+
+**Small ``N``:** same as ``sinkhorn_k4_builder.py`` (per-matrix, ``eps``).
 
 Static ``repeat=10`` (host must pass 10).
 """
@@ -20,9 +21,9 @@ const = s.const
 
 K = 4
 TILE_COLS = 16
-# Matrices per chunk / stack height (32 matrices → 128 rows). Sized for UB.
-CHUNK_MATRICES = 32
-MAX_BATCH_ROWS = CHUNK_MATRICES * K
+BATCH = 32
+MAX_BATCH_ROWS = BATCH * K  # 128
+CHUNK_MATRICES = BATCH
 
 repeat = 10
 N_FAST_THRESHOLD = 2048
@@ -39,7 +40,7 @@ def meta_data():
     row_cfg = pto.TileBufConfig()
     col_cfg = pto.TileBufConfig(blayout="ColMajor")
 
-    matrix_batch_fp16 = pto.TileBufType(
+    stack_fp16 = pto.TileBufType(
         shape=[MAX_BATCH_ROWS, TILE_COLS],
         valid_shape=[-1, -1],
         dtype=fp16,
@@ -53,7 +54,7 @@ def meta_data():
         memory_space="VEC",
         config=col_cfg,
     )
-    row_vec_fp16 = pto.TileBufType(
+    row_vec_k_fp16 = pto.TileBufType(
         shape=[1, TILE_COLS],
         valid_shape=[-1, -1],
         dtype=fp16,
@@ -75,13 +76,6 @@ def meta_data():
         memory_space="VEC",
         config=col_cfg,
     )
-    row_vec_k_fp16 = pto.TileBufType(
-        shape=[1, TILE_COLS],
-        valid_shape=[-1, -1],
-        dtype=fp16,
-        memory_space="VEC",
-        config=row_cfg,
-    )
     sub_kk_fp16 = pto.SubTensorType(shape=[K, K], dtype=fp16)
 
     return locals()
@@ -98,7 +92,6 @@ def sinkhorn_v2_fp16(
     c0 = const(0)
     c1 = const(1)
     cK = const(K)
-    cTILE = const(TILE_COLS)
     c2048 = const(N_FAST_THRESHOLD)
     f0 = const(0.0, s.float32)
     f0_h = s.truncf(f0, s.float16)
@@ -159,57 +152,61 @@ def sinkhorn_v2_fp16(
                     sizes=[chunk_rows, cK],
                 )
 
-                mat_stack = pto.alloc_tile(
-                    matrix_batch_fp16, valid_row=chunk_rows, valid_col=cK
+                mat_batch = pto.alloc_tile(
+                    stack_fp16, valid_row=chunk_rows, valid_col=cK
                 )
-                scratch_stack = pto.alloc_tile(
-                    matrix_batch_fp16, valid_row=chunk_rows, valid_col=cK
+                scratch_batch = pto.alloc_tile(
+                    stack_fp16, valid_row=chunk_rows, valid_col=cK
                 )
                 row_stat = pto.alloc_tile(
                     col_vec_stack_fp16, valid_row=chunk_rows, valid_col=c1
                 )
                 col_stat = pto.alloc_tile(
-                    row_vec_fp16, valid_row=c1, valid_col=cK
+                    row_vec_k_fp16, valid_row=c1, valid_col=cK
                 )
 
                 mat_wide = tile.subview(
-                    mat_stack, [c0, c0], [MAX_BATCH_ROWS, TILE_COLS]
+                    mat_batch, [c0, c0], [MAX_BATCH_ROWS, TILE_COLS]
                 )
                 tile.muls(mat_wide, f0_h, mat_wide)
-                mat_rk = tile.subview(mat_stack, [c0, c0], [MAX_BATCH_ROWS, K])
+                mat_rk = tile.subview(mat_batch, [c0, c0], [MAX_BATCH_ROWS, K])
                 pto.load(gm_in, mat_rk)
 
-                tile.row_max(mat_stack, scratch_stack, row_stat)
-                tile.row_expand_sub(mat_stack, row_stat, mat_stack)
-                tile.exp(mat_stack, mat_stack)
-                tile.row_sum(mat_stack, scratch_stack, row_stat)
-                tile.row_expand_div(mat_stack, row_stat, mat_stack)
+                tile.row_max(mat_batch, scratch_batch, row_stat)
+                tile.row_expand_sub(mat_batch, row_stat, mat_batch)
+                tile.exp(mat_batch, mat_batch)
+                tile.row_sum(mat_batch, scratch_batch, row_stat)
+                tile.row_expand_div(mat_batch, row_stat, mat_batch)
 
                 mat_eps = tile.subview(
-                    mat_stack, [c0, c0], [MAX_BATCH_ROWS, TILE_COLS]
+                    mat_batch, [c0, c0], [MAX_BATCH_ROWS, TILE_COLS]
                 )
                 tile.adds(mat_eps, eps_h, mat_eps)
 
                 for m in pto.range(c0, chunk_mat, c1):
                     m_row = m * cK
-                    mat_m = tile.subview(mat_stack, [m_row, c0], [K, K])
-                    scratch_m = tile.subview(scratch_stack, [m_row, c0], [K, K])
-                    tile.col_sum(mat_m, scratch_m, col_stat)
+                    mat_m = tile.subview(mat_batch, [m_row, c0], [K, K])
+                    scratch_m = tile.subview(
+                        scratch_batch, [m_row, c0], [K, K]
+                    )
+                    tile.col_sum(mat_m, scratch_m, col_stat, is_binary=True)
                     tile.adds(col_stat, eps_h, col_stat)
                     tile.col_expand_div(mat_m, col_stat, mat_m)
 
                 for _ in range(1, repeat):
-                    tile.row_sum(mat_stack, scratch_stack, row_stat)
+                    tile.row_sum(mat_batch, scratch_batch, row_stat)
                     tile.adds(row_stat, eps_h, row_stat)
-                    tile.row_expand_div(mat_stack, row_stat, mat_stack)
+                    tile.row_expand_div(mat_batch, row_stat, mat_batch)
 
                     for m in pto.range(c0, chunk_mat, c1):
                         m_row = m * cK
-                        mat_m = tile.subview(mat_stack, [m_row, c0], [K, K])
+                        mat_m = tile.subview(mat_batch, [m_row, c0], [K, K])
                         scratch_m = tile.subview(
-                            scratch_stack, [m_row, c0], [K, K]
+                            scratch_batch, [m_row, c0], [K, K]
                         )
-                        tile.col_sum(mat_m, scratch_m, col_stat)
+                        tile.col_sum(
+                            mat_m, scratch_m, col_stat, is_binary=True
+                        )
                         tile.adds(col_stat, eps_h, col_stat)
                         tile.col_expand_div(mat_m, col_stat, mat_m)
 
@@ -250,14 +247,16 @@ def sinkhorn_v2_fp16(
                 tile.row_sum(mat_kk, scratch_kk, row_stat_s)
                 tile.row_expand_div(mat_kk, row_stat_s, mat_kk)
                 tile.adds(mat_eps_rows, eps_h, mat_eps_rows)
-                tile.col_sum(mat_kk, scratch_kk, col_stat_s)
+                tile.col_sum(mat_kk, scratch_kk, col_stat_s, is_binary=True)
                 tile.adds(col_stat_s, eps_h, col_stat_s)
                 tile.col_expand_div(mat_kk, col_stat_s, mat_kk)
                 for _ in range(1, repeat):
                     tile.row_sum(mat_kk, scratch_kk, row_stat_s)
                     tile.adds(row_stat_s, eps_h, row_stat_s)
                     tile.row_expand_div(mat_kk, row_stat_s, mat_kk)
-                    tile.col_sum(mat_kk, scratch_kk, col_stat_s)
+                    tile.col_sum(
+                        mat_kk, scratch_kk, col_stat_s, is_binary=True
+                    )
                     tile.adds(col_stat_s, eps_h, col_stat_s)
                     tile.col_expand_div(mat_kk, col_stat_s, mat_kk)
                 pto.store(mat_kk, gm_out_s)
