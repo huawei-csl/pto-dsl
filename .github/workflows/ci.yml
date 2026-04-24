@@ -46,11 +46,11 @@ jobs:
       image: quay.io/ascend/cann:8.5.0-910b-ubuntu22.04-py3.11
 
     env:
-      RELEASE_REPO: zhangstevenunity/PTOAS
-      RELEASE_VER: 0.29
-      RELEASE_TAG: v0.29
+      RELEASE_REPO: hw-native-sys/PTOAS
+      RELEASE_VER: 0.31
+      RELEASE_TAG: v0.31
       CLI_DIR: /installers/ptoas-cli
-      PTOISA_COMMIT: a9613ba881d926fc61f37d12f68658435f3bac9e
+      PTOISA_COMMIT: 0af942568a4f2868673da0a35b0f5b64f27a20d5
 
     steps:
       - name: Install system packages

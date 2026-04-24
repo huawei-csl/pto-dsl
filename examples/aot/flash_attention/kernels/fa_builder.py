@@ -1,4 +1,4 @@
-# Flash-Attention kernel builder – PERF VARIANT, ports the reference
+# Flash-Attention kernel builder. Ports the reference
 # `fa_performance_kernel.cpp` (a2a3) software-pipelined schedule onto the
 # pto-dsl multi-pipe primitives (ptoas >= 0.29).
 #
@@ -42,6 +42,7 @@ from ptodsl import pto, tile, to_ir_module
 from ptodsl import scalar as s
 
 import math
+import os
 
 const = s.const
 
@@ -51,20 +52,23 @@ const = s.const
 S0 = 32  # Q rows per block
 S0_HALF = S0 // 2  # rows per AIV sub-block
 HEAD = 32  # attention head dimension
-S1_TILE = 512  # K/V columns per tile  (perf4: same as perf3)
-NUM_TILES = 16  # number of K/V tiles  (S1_TOTAL = 512 * 16 = 8192)
+S1_TILE = 512  # K/V columns per tile
+# NUM_TILES is overridable via the FA_NUM_TILES env var so the same builder
+# can produce kernels for different sequence lengths
+# (S1_TOTAL = S1_TILE * NUM_TILES). 16 → 8k, 32 → 16k, 64 → 32k, 128 → 64k.
+# Constraint: (NUM_TILES - QK_PRELOAD) must be even (steady-state pair unroll).
+NUM_TILES = int(os.environ.get("FA_NUM_TILES", "16"))
 
 S1_TOTAL = S1_TILE * NUM_TILES
 
 Q_ROWS = 2048
 NUM_Q_BLOCKS = Q_ROWS // S0  # 64 row-blocks
 
-# QK preload depth — must be >= 1; reference uses 2.
-# With NUM_TILES=32 and QK_PRELOAD=2: vec pre-softmaxes tiles 0,1 then
-# steady-state loop interleaves softmax(t+2) with gu(t) for t=0..29, then
-# the epilogue does only gu(30), gu(31). NUM_TILES - QK_PRELOAD must be
-# even because we unroll the steady-state loop in pairs of 2 (for the
-# exp_max ring ping-pong). 32-2 = 30 ✓.
+# QK preload depth — must be >= 1; reference uses 2. The vec pre-softmaxes
+# tiles 0..QK_PRELOAD-1, then the steady-state loop interleaves softmax(t+QK_PRELOAD)
+# with gu(t), and the epilogue drains the last QK_PRELOAD gu's.
+# (NUM_TILES - QK_PRELOAD) must be even — steady state is pair-unrolled to
+# ping-pong the exp_max ring (see below).
 QK_PRELOAD = 2
 assert (
     NUM_TILES - QK_PRELOAD
@@ -78,11 +82,11 @@ SLOT_SIZE_P = S0 * S1_TILE * 2  # fp16 P matrix sent vec → cube
 
 # `dir_mask = 1/2` always lowers to slot_num = 8 on a3 (design doc §4.4).
 SLOT_NUM = 8
-# perf4: kept at 1 — bumping to 2 overflows VEC UB at S1_TILE=512.
+# Kept at 1: bumping to 2 overflows VEC UB at S1_TILE=512.
 QK_LOCAL_SLOT_NUM = 1
-# perf4: PV converted from legacy aic/aiv_initialize_pipe to lower-level
-# l2g2l_pipe with local_slot_num=1 (legacy ops force local = SLOT_NUM=8
-# = 32 KB). With local=1 the PV vec fifo is just 4 KB.
+# PV uses lower-level l2g2l_pipe with local_slot_num=1; the legacy
+# aic/aiv_initialize_pipe path forces local = SLOT_NUM = 8 (32 KB MAT)
+# whereas local=1 here is just 4 KB.
 PV_LOCAL_SLOT_NUM = 1
 
 # GM-staged FIFO bytes / fp32 elements per AIC block.
@@ -257,18 +261,10 @@ def module():
             nosplit=False,
         )
 
-        # Ping-pong (NB=2) every cube tile-buffer that crosses an iteration
-        # boundary. The MTE2 load of buffer[t+1] runs concurrently with the
-        # MTE1 / M of buffer[t].
-        # NOTE perf3: RIGHT memspace is only 64 KB. With S1_TILE=512 each
-        # k_right/v_right = 32 KB so we cannot ping-pong them (would need
-        # 128 KB total). MAT-side ping-pong (k_mat/v_mat) still gives
-        # MTE2/MTE1 overlap; the RIGHT mov is short.
-        # perf3: cube buffers reverted to single-buffered (no NB ping-pong).
-        # At S1_TILE=512 the L1 budgets cannot fit 2x ping-pong of all stages
-        # (RIGHT 64 KB; ACC; LEFT). The whole point of perf3 is to test
-        # whether vec is the bottleneck via larger S1_TILE — cube ping-pong
-        # was already shown not to help (perf vs perf2 = flat).
+        # All cube tile-buffers are single-buffered: at S1_TILE=512 the
+        # RIGHT space (64 KB) cannot host a ping-pong (k_right + v_right
+        # are 32 KB each), and earlier experiments showed cube-side
+        # ping-pong gives no measurable speedup once vec is the bottleneck.
         q_mat = pto.alloc_tile(q_mat_ty)
         q_left = pto.alloc_tile(q_left_ty)
         k_mat_s = pto.alloc_tile(k_mat_ty)
@@ -279,8 +275,8 @@ def module():
         v_mat_s = pto.alloc_tile(v_mat_ty)
         v_right_s = pto.alloc_tile(v_right_ty)
         pv_acc_s = pto.alloc_tile(pv_acc_ty)
-        # Aliasing wrappers so the rest of the cube body keeps the perf2
-        # `[buf]` indexing pattern.
+        # Aliasing wrappers: keep the per-iteration `[buf]` indexing pattern
+        # in the body even though all slots currently point at one alloc.
         k_mat = [k_mat_s, k_mat_s]
         k_right = [k_right_s, k_right_s]
         qk_acc = [qk_acc_s, qk_acc_s]

@@ -15,7 +15,7 @@ extern "C" void call_kernel(
     uint8_t *q,
     uint8_t *k,     // K: [S1_TOTAL, HEAD] fp16
     uint8_t *v,
-    uint8_t *o)     // output [S0, HEAD] fp32
+    uint8_t *o)     // output O: [Q_ROWS, HEAD] fp32
 {
     void *fftsAddr = nullptr;
     uint32_t fftsLen = 0;

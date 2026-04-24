@@ -1,8 +1,10 @@
 # Flash-Attention DSL kernel — feature gaps vs. `fa_performance_kernel.cpp`
 
 This folder contains a multi-pipe, software-pipelined Flash-Attention kernel
-written in pto-dsl. It currently reaches **0.94× of `npu_fused_infer_attention_score`**
-at `(Q_ROWS=2048, S1=8192, HEAD=32)` (185 µs vs 175 µs).
+written in pto-dsl. At `(Q_ROWS=2048, HEAD=32)` it reaches **0.97×** of
+`npu_fused_infer_attention_score` at S1=8k (178 µs vs 173 µs) and degrades to
+**0.73×** at S1=64k — the gap widens because most items below disable batched
+FFTS / wider K reuse that the reference uses to amortize vec work.
 
 ## Usage
 
@@ -19,31 +21,41 @@ ptoas / pto-dsl features needed to close the gap, ordered by impact.
 
 ---
 
-## 1. Sub-tile views on L1/L0/UB `TileBuf` — **biggest blocker**
+## 1. Sub-tile views on L1/L0/UB `TileBuf` — **partially supported**
 
-**Need:** a `pto.tile_subview(tile, offsets, sizes)` op returning a strided view
-into a sub-region of an existing `TileBuf` (analogous to `pto.slice_view` for GM
-tensors), plus a `tile.matmul` overload accepting a subview as its `out` operand.
+**Status:** ACC column subviews **work end-to-end** today via
+`tile.subview(acc_tile, offsets, sizes)` (lowered through ptoas + bisheng to a
+strided `Tile<Acc, ...>` view; experimentally validated in this kernel).
+**MAT and RIGHT** column subviews are still rejected by the ptoas verifier:
 
-**What it unlocks:** the reference's `kTileFactor = TILE_S1 / CUBE_S1 = 2`
-decomposition — one wide ACC tile filled by N narrower matmuls writing into
-column slices, then one push to vec:
+```
+'pto.subview' op boxed RowMajor subview must keep full cols
+```
+
+so the reference's "load wide K once, subview column halves on the RIGHT side"
+pattern still cannot be expressed. The workaround is to allocate N narrow
+RIGHT/MAT tiles and load each from its own GM `slice_view`, which adds MTE2
+traffic and forfeits MAT-side ping-pong on K.
+
+**Reference pattern (now expressible on the ACC side):**
 ```cpp
 TileBuf<S0, 256, fp32, ACC> qk_acc;
-matmul(q_left, k_right_lo, qk_acc[:, 0:128]);     // needs subview
-matmul(q_left, k_right_hi, qk_acc[:, 128:256]);   // needs subview
-tpush(qk_acc, qk_pipe);                           // single 256-wide push
+matmul(q_left, k_right_lo, qk_acc[:, 0:128]);     // ACC subview ✅
+matmul(q_left, k_right_hi, qk_acc[:, 128:256]);   // ACC subview ✅
+tpush(qk_acc, qk_pipe);                            // single 256-wide push
 ```
-Without it our cube-side `S1_TILE` is forced to equal `CUBE_S1`, so vec pays
-its per-tile overhead (softmax setup, FFTS acks, pipe push/pop sync) twice as
-often as the reference.
 
-**Underlying machinery:** `memref.subview` already works on
-`#pto.address_space<acc>` / `<vec>` / `<mat>` in MLIR — the codegen path exists.
-Only the Python wrapper + matmul-into-subview support are missing.
+**What's still missing:** lift the "must keep full cols" restriction for MAT
+and RIGHT memory spaces (or document why it's fundamental for boxed RowMajor
+layouts). Without this, the cube side cannot share one wide K-load across N
+narrow matmuls — defeating the main motivation for sub-tile views.
 
-**Expected impact:** ~2× vec amortization. Closes the largest single piece of
-the perf gap.
+**Empirical impact at our shape** (`S1_TILE=512`, `CUBE_S1=256`, `N_QK_SUB=2`):
+an ACC-subview-only experiment (with the MAT/RIGHT split workaround) ran at
+**~0.94×** of `npu_fused_attn` vs **~0.97×** for the wide single-matmul path now
+in tree. The ACC subview itself is free, but having to split the K-load (because
+MAT/RIGHT subviews are rejected) more than eats the gain. A real ~2× vec
+amortization would require the MAT/RIGHT verifier rule to be relaxed.
 
 ---
 
