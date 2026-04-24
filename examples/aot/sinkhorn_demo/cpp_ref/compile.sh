@@ -22,4 +22,12 @@ bisheng \
   kernel_sinkhorn.cpp \
   -o outputs/kernel_sinkhorn.so
 
-echo "Built $(pwd)/outputs/kernel_sinkhorn.so (C++ reference)"
+bisheng \
+  -fPIC -shared -xcce -DMEMORY_BASE \
+  -O2 -std=c++17 -Wno-ignored-attributes \
+  --cce-aicore-arch=dav-c220-vec \
+  "-I${PTO_ROOT}/include" \
+  kernel_sinkhorn_v2.cpp \
+  -o outputs/kernel_sinkhorn_v2.so
+
+echo "Built $(pwd)/outputs/kernel_sinkhorn.so (C++ BATCH=8) and $(pwd)/outputs/kernel_sinkhorn_v2.so (C++ v2)"

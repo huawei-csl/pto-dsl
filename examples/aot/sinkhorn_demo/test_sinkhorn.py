@@ -1,8 +1,9 @@
 """
 Forward-only check: PTODSL-generated kernel vs ``sinkhorn_normalize_ref``.
 
-Tests both the batched stack-load kernel (``sinkhorn_batch8_builder.py``) and
-the naive per-matrix kernel (``sinkhorn_k4_builder.py``).
+Tests the batched stack-load kernel (``sinkhorn_batch8_builder.py``), the naive
+per-matrix kernel (``sinkhorn_k4_builder.py``), and the v2 port
+(``sinkhorn_v2_builder.py``).
 """
 
 import pytest
@@ -27,7 +28,7 @@ def device(npu_device):
     return npu_device
 
 
-@pytest.mark.parametrize("impl", ["batched", "naive"])
+@pytest.mark.parametrize("impl", ["batched", "naive", "v2"])
 @pytest.mark.parametrize("n0", [1, 2])
 @pytest.mark.parametrize("n1", [1, 1024, 4096])
 @pytest.mark.parametrize("mhc", [4])

@@ -2,9 +2,9 @@
 """
 Median effective memory bandwidth (GB/s) for Sinkhorn forward:
 
-- **Batched** / **naive**: PTODSL builders from this directory (after ``./compile.sh``).
-- **C++ ref**: hand-written ``cpp_ref/kernel_sinkhorn.cpp`` (same ``call_sinkhorn`` ABI).
-  Use ``--build-cpp`` to run ``cpp_ref/compile.sh`` if the ``.so`` is missing.
+- **Batched** / **naive** / **v2 (PTODSL)**: builders from this directory (after ``./compile.sh``).
+- **C++ v1 / v2**: ``cpp_ref/outputs/kernel_sinkhorn*.so`` (same ``call_sinkhorn`` ABI).
+  Use ``--build-cpp`` to run ``cpp_ref/compile.sh`` if a ``.so`` is missing.
 
 Uses ``jit_util_sinkhorn.bench_sinkhorn_forward_gbs`` (read fp16 + write fp16 per launch).
 """
@@ -33,6 +33,10 @@ def cpp_ref_dir() -> Path:
 
 def default_cpp_kernel_so() -> Path:
     return cpp_ref_dir() / "outputs" / "kernel_sinkhorn.so"
+
+
+def default_cpp_v2_kernel_so() -> Path:
+    return cpp_ref_dir() / "outputs" / "kernel_sinkhorn_v2.so"
 
 
 def default_cpp_kernel_src() -> Path:
@@ -102,6 +106,7 @@ def main() -> None:
 
     cpp_so: Path | None = None
     cpp_lib = None
+    cpp_v2_lib = None
     if not args.no_cpp:
         cpp_so = args.cpp_so or default_cpp_kernel_so()
         if not cpp_so.is_file() and args.build_cpp:
@@ -117,16 +122,25 @@ def main() -> None:
                 f"note: skipping C++ reference (no {cpp_so}). "
                 "Run ./compile.sh or: python3 bench_sinkhorn_bandwidth.py --build-cpp\n"
             )
+        cpp_v2_so = default_cpp_v2_kernel_so()
+        if cpp_v2_so.is_file():
+            cpp_v2_lib = load_sinkhorn_host_lib(cpp_v2_so)
 
     print(f"device={device} warmup={args.warmup} iters={args.iters} repeat={args.repeat}")
     if cpp_lib is not None:
-        print(
-            "shape (matrices) | batched GB/s | naive GB/s | C++ ref GB/s | batched/naive | batched/C++"
-        )
-        print("---|---:|---:|---:|---:|---:")
+        if cpp_v2_lib is not None:
+            print(
+                "shape (matrices) | batched | naive | v2 Py | C++ v1 | C++ v2 | batched/naive | v2 Py/C++ v2"
+            )
+            print("---|---:|---:|---:|---:|---:|---:|---:")
+        else:
+            print(
+                "shape (matrices) | batched GB/s | naive GB/s | v2 Py GB/s | C++ ref GB/s | batched/naive | batched/C++"
+            )
+            print("---|---:|---:|---:|---:|---:|---:")
     else:
-        print("shape (matrices) | batched GB/s | naive GB/s | batched/naive")
-        print("---|---:|---:|---:")
+        print("shape (matrices) | batched GB/s | naive GB/s | v2 Py GB/s | batched/naive")
+        print("---|---:|---:|---:|---:")
 
     for n1 in n1_list:
         torch.manual_seed(1)
@@ -147,6 +161,14 @@ def main() -> None:
             warmup=args.warmup,
             iters=args.iters,
         )
+        bw_v2 = bench_sinkhorn_forward_gbs(
+            x,
+            args.repeat,
+            args.eps,
+            impl="v2",
+            warmup=args.warmup,
+            iters=args.iters,
+        )
         ratio_bn = bw_b / bw_n if bw_n > 0 else float("nan")
         nmat = n1
         if cpp_lib is not None:
@@ -159,13 +181,28 @@ def main() -> None:
                 iters=args.iters,
             )
             ratio_bc = bw_b / bw_c if bw_c > 0 else float("nan")
-            print(
-                f"(1, {n1}, 4, 4) ({nmat} matrices) | {bw_b:.3f} | {bw_n:.3f} | {bw_c:.3f} | "
-                f"{ratio_bn:.3f} | {ratio_bc:.3f}"
-            )
+            if cpp_v2_lib is not None:
+                bw_cv2 = bench_sinkhorn_forward_gbs(
+                    x,
+                    args.repeat,
+                    args.eps,
+                    lib=cpp_v2_lib,
+                    warmup=args.warmup,
+                    iters=args.iters,
+                )
+                ratio_v2 = bw_v2 / bw_cv2 if bw_cv2 > 0 else float("nan")
+                print(
+                    f"(1, {n1}, 4, 4) ({nmat} matrices) | {bw_b:.3f} | {bw_n:.3f} | {bw_v2:.3f} | "
+                    f"{bw_c:.3f} | {bw_cv2:.3f} | {ratio_bn:.3f} | {ratio_v2:.3f}"
+                )
+            else:
+                print(
+                    f"(1, {n1}, 4, 4) ({nmat} matrices) | {bw_b:.3f} | {bw_n:.3f} | {bw_v2:.3f} | {bw_c:.3f} | "
+                    f"{ratio_bn:.3f} | {ratio_bc:.3f}"
+                )
         else:
             print(
-                f"(1, {n1}, 4, 4) ({nmat} matrices) | {bw_b:.3f} | {bw_n:.3f} | {ratio_bn:.3f}"
+                f"(1, {n1}, 4, 4) ({nmat} matrices) | {bw_b:.3f} | {bw_n:.3f} | {bw_v2:.3f} | {ratio_bn:.3f}"
             )
 
 

@@ -18,6 +18,9 @@ ptoas --enable-insert-sync outputs/sinkhorn_batch8.pto -o outputs/sinkhorn_batch
 python3 sinkhorn_k4_builder.py > outputs/sinkhorn_k4.pto
 ptoas --enable-insert-sync outputs/sinkhorn_k4.pto -o outputs/sinkhorn_k4_generated.cpp
 
+python3 sinkhorn_v2_builder.py > outputs/sinkhorn_v2.pto
+ptoas --enable-insert-sync outputs/sinkhorn_v2.pto -o outputs/sinkhorn_v2_generated.cpp
+
 BFLAGS=(
   -fPIC -shared -xcce -DMEMORY_BASE
   -O2 -std=c++17 -Wno-ignored-attributes
@@ -35,6 +38,11 @@ bisheng "${BFLAGS[@]}" \
   caller_sinkhorn_k4.cpp \
   -o outputs/kernel_sinkhorn_naive.so
 
-echo "Built outputs/kernel_sinkhorn.so (batched) and outputs/kernel_sinkhorn_naive.so (naive)."
+bisheng "${BFLAGS[@]}" \
+  -DKERNEL_CPP=\"outputs/sinkhorn_v2_generated.cpp\" \
+  caller_sinkhorn_v2.cpp \
+  -o outputs/kernel_sinkhorn_v2.so
+
+echo "Built outputs/kernel_sinkhorn.so (batched), outputs/kernel_sinkhorn_naive.so (naive), outputs/kernel_sinkhorn_v2.so (v2)."
 
 bash cpp_ref/compile.sh

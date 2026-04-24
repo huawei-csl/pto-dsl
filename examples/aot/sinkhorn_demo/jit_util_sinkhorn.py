@@ -1,7 +1,8 @@
 """
 The device kernels are loaded from ``outputs/kernel_sinkhorn.so`` (batched
-BATCH=8 stack load) and ``outputs/kernel_sinkhorn_naive.so`` (one matrix per
-vector iteration). Build both via ``compile.sh``.
+BATCH=8 stack load), ``outputs/kernel_sinkhorn_naive.so`` (one matrix per
+vector iteration), and ``outputs/kernel_sinkhorn_v2.so`` (v2-style interleaved
+column normalize). Build them via ``compile.sh``.
 """
 
 import ctypes
@@ -13,6 +14,7 @@ import torch
 _HERE = Path(__file__).resolve().parent
 _KERNEL_SO_BATCHED = _HERE / "outputs" / "kernel_sinkhorn.so"
 _KERNEL_SO_NAIVE = _HERE / "outputs" / "kernel_sinkhorn_naive.so"
+_KERNEL_SO_V2 = _HERE / "outputs" / "kernel_sinkhorn_v2.so"
 
 _KERNEL_ARGTYPES = [
     ctypes.c_uint32,
@@ -101,6 +103,7 @@ def sinkhorn_normalize(
     impl:
       ``"batched"`` — ``sinkhorn_batch8_builder.py`` (stacked load, matches jit C++ demo).
       ``"naive"`` — ``sinkhorn_k4_builder.py`` (one matrix per inner iteration).
+      ``"v2"`` — ``sinkhorn_v2_builder.py`` (interleaved col norm for large ``N``).
     """
     assert x.dtype == torch.float16, "demo requires fp16"
     assert x.shape[-2:] == (4, 4), "demo supports K=4 only"
@@ -108,8 +111,10 @@ def sinkhorn_normalize(
         so = _KERNEL_SO_BATCHED
     elif impl == "naive":
         so = _KERNEL_SO_NAIVE
+    elif impl == "v2":
+        so = _KERNEL_SO_V2
     else:
-        raise ValueError(f"impl must be 'batched' or 'naive', got {impl!r}")
+        raise ValueError(f"impl must be 'batched', 'naive', or 'v2', got {impl!r}")
 
     x_flat = x.reshape(-1, 4, 4).contiguous()
     out_flat = torch.empty_like(x_flat)
@@ -130,14 +135,22 @@ def bench_sinkhorn_forward_gbs(
 ) -> float:
     """Median effective GB/s for one forward pass (read input + write output).
 
-    Pass exactly one of ``impl`` (``"batched"`` or ``"naive"`` — loads this
-    demo's ``outputs/*.so``) or ``lib`` (any ``call_sinkhorn`` host ABI, e.g.
-    hand-written ``cpp_ref/kernel_sinkhorn.cpp`` in this demo).
+    Pass exactly one of ``impl`` (``"batched"``, ``"naive"``, or ``"v2"`` —
+    loads this demo's ``outputs/*.so``) or ``lib`` (any ``call_sinkhorn`` host
+    ABI, e.g. hand-written ``cpp_ref/kernel_sinkhorn.cpp`` in this demo).
     """
     if lib is None:
         if impl is None:
             raise ValueError("bench_sinkhorn_forward_gbs requires impl or lib")
-        lib = _load_kernel(_KERNEL_SO_BATCHED if impl == "batched" else _KERNEL_SO_NAIVE)
+        if impl == "batched":
+            so = _KERNEL_SO_BATCHED
+        elif impl == "naive":
+            so = _KERNEL_SO_NAIVE
+        elif impl == "v2":
+            so = _KERNEL_SO_V2
+        else:
+            raise ValueError(impl)
+        lib = _load_kernel(so)
     elif impl is not None:
         raise ValueError("pass only one of impl and lib")
 
