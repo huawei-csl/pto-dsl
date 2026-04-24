@@ -25,11 +25,11 @@ python3 bench_sinkhorn_bandwidth.py --npu 0
 # optional: --shapes 65536,262144 --build-cpp --warmup 8 --iters 24 --no-cpp
 ```
 
-Sample run on **Ascend 910B2**, `repeat=10`, `warmup=8`, `iters=24`, C++ ref from `cpp_ref/`:
+Sample run on **Ascend 910B2**, `repeat=10`, `warmup=8`, `iters=24`, C++ ref from `cpp_ref/` (batched kernel uses a static unrolled tail, ``repeat=10`` in `sinkhorn_batch8_builder.py`):
 
 | Shape (matrices) | Batched GB/s | Naive GB/s | C++ ref GB/s | Batched / naive | Batched / C++ |
 |------------------|-------------:|-----------:|-------------:|----------------:|--------------:|
-| (1, 65536, 4, 4) — 65536 matrices | 1.508 | 1.162 | 1.434 | 1.30 | 1.05 |
-| (1, 262144, 4, 4) — 262144 matrices | 1.593 | 1.185 | 1.495 | 1.34 | 1.07 |
+| (1, 65536, 4, 4) — 65536 matrices | 1.511 | 1.161 | 1.431 | 1.30 | 1.06 |
+| (1, 262144, 4, 4) — 262144 matrices | 1.594 | 1.184 | 1.507 | 1.35 | 1.06 |
 
 PTODSL batched matches the C++ reference algorithm (BATCH=8 stack); effective GB/s can differ slightly from the hand kernel (auto-inserted sync, codegen). Absolute GB/s varies by chip and load.

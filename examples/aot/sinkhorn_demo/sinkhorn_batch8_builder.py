@@ -5,6 +5,10 @@ PTO-DSL builder for the fp16 Sinkhorn K=4 kernel with BATCH=8 stacked loads
 Each vector core processes up to eight 4×4 matrices per group: one load / one
 store for the stack, batched row-wise ops (softmax, row-normalize), and a small
 loop for per-matrix column-normalize.
+
+The Sinkhorn tail (``repeat - 1`` row/col iterations) is a **static** Python
+``range(1, repeat)`` so it unrolls at IR build time; ``repeat`` must match the
+host ``repeat_i32`` argument (10 in this demo).
 """
 
 from ptodsl import pto, tile, to_ir_module
@@ -16,6 +20,10 @@ K = 4
 TILE_DIM = 16
 BATCH = 8
 STACK_ROWS = BATCH * K  # 32
+
+# Static Sinkhorn outer iteration count for the tail loop (build-time unroll).
+# Host code must pass the same value as ``repeat_i32`` (this demo uses 10).
+repeat = 10
 
 
 def meta_data():
@@ -72,7 +80,6 @@ def sinkhorn_k4_fp16(
     f0_h = s.truncf(f0, s.float16)
 
     nm = s.index_cast(num_matrices_i32)
-    repeat_idx = s.index_cast(repeat_i32)
     eps_h = s.truncf(eps, s.float16)
 
     with pto.vector_section():
@@ -155,7 +162,7 @@ def sinkhorn_k4_fp16(
                 tile.adds(col_stat, eps_h, col_stat)
                 tile.col_expand_div(mat_m, col_stat, mat_m)
 
-            for _ in pto.range(c1, repeat_idx, c1):
+            for _ in range(1, repeat):
                 tile.row_sum(mat_stack, scratch_stack, row_stat)
                 tile.adds(row_stat, eps_h, row_stat)
                 tile.row_expand_div(mat_stack, row_stat, mat_stack)
