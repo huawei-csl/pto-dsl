@@ -130,6 +130,10 @@ def sparse_attn(
 
     f0 = const(0.0, s.float32)
     f1 = const(1.0, s.float32)
+    # Use a very large finite negative as -inf substitute (PTO C++ codegen
+    # does not currently emit a valid literal for IEEE -inf).
+    f_neg_inf = const(-1.0e30, s.float32)
+    i32_zero = const(0, s.int32)
 
     B = s.index_cast(B_i32)
     M = s.index_cast(M_i32)
@@ -213,47 +217,51 @@ def sparse_attn(
             tile.muls(q_fp32, f0, ones_HD)
             tile.adds(ones_HD, f1, ones_HD)
 
+            # Initialise running stats (canonical FlashAttention init):
+            #   m_prev = -inf, l_run = 0, acc_o = 0.
+            # This handles the `idx == -1` sentinel cleanly: skipped
+            # iterations leave m_prev=-inf so the first valid position
+            # naturally produces exp(-inf - finite)=0 and exp(0)=1, i.e.
+            # acc_o = kv_row_HD, l_run = 1, m_prev = logit (correct).
+            # If ALL idx are -1, l_run += exp(sink-(-inf))=+inf, and
+            # acc_o / +inf = 0 (matches reference).
+            tile.muls(ones_HD, f0, l_run_HD)
+            tile.muls(ones_HD, f0, acc_o)
+            tile.muls(ones_HD, f0, m_prev_HD)
+            tile.adds(m_prev_HD, f_neg_inf, m_prev_HD)
+
             idx_base = bm * TOPK
             kv_base = b * N
 
             for k in pto.range(c0, TOPK, c1):
-                is_first = s.eq(k, c0)
-
-                # ---- Gather one KV row by index --------------------
+                # ---- Gather one KV row by index (skip if -1) ------
                 idx_off = idx_base + k
                 idx_i32 = pto.load_scalar(s.int32, idx_ptr, idx_off)
-                idx_idx = s.index_cast(idx_i32)
-                kv_row_off = kv_base + idx_idx
-                kv_view = pto.slice_view(
-                    sv_kvrow,
-                    source=tvKV,
-                    offsets=[kv_row_off, c0],
-                    sizes=[c1, cD],
-                )
-                pto.load(kv_view, kv_row_fp16)
-                tile.cvt(kv_row_fp16, kv_row_fp32)
+                is_valid = s.ge(idx_i32, i32_zero)
+                with pto.if_context(is_valid):
+                    idx_idx = s.index_cast(idx_i32)
+                    kv_row_off = kv_base + idx_idx
+                    kv_view = pto.slice_view(
+                        sv_kvrow,
+                        source=tvKV,
+                        offsets=[kv_row_off, c0],
+                        sizes=[c1, cD],
+                    )
+                    pto.load(kv_view, kv_row_fp16)
+                    tile.cvt(kv_row_fp16, kv_row_fp32)
 
-                # Broadcast kv_row [1, D] across heads → kv_row_HD [H, D].
-                tile.col_expand_mul(ones_HD, kv_row_fp32, kv_row_HD)
+                    # Broadcast kv_row [1, D] → kv_row_HD [H, D].
+                    tile.col_expand_mul(ones_HD, kv_row_fp32, kv_row_HD)
 
-                # ---- QK: logit_col[h] = (q · kv_row)[h] * scale ----
-                tile.col_expand_mul(q_fp32, kv_row_fp32, tmp_HD)
-                tile.row_sum(tmp_HD, red_tmp, logit_col)
-                # Broadcast logit_col [H, 1] col-major → [H, D] row-major
-                # via row_expand_mul against the ones tile.
-                tile.row_expand_mul(ones_HD, logit_col, tmp_HD)
-                tile.muls(tmp_HD, scale_f32, tmp_HD)
-                # tmp_HD now holds logit replicated across D.
+                    # QK: logit_col[h] = (q · kv_row)[h] * scale.
+                    tile.col_expand_mul(q_fp32, kv_row_fp32, tmp_HD)
+                    tile.row_sum(tmp_HD, red_tmp, logit_col)
+                    # Broadcast logit_col [H, 1] col-major → [H, D] row-major.
+                    tile.row_expand_mul(ones_HD, logit_col, tmp_HD)
+                    tile.muls(tmp_HD, scale_f32, tmp_HD)
+                    # tmp_HD now holds logit replicated across D.
 
-                with pto.if_context(is_first, has_else=True) as br:
-                    # First position: m_prev = logit; l_run = 1;
-                    # acc_o[h, d] = kv_row[d] (broadcast).
-                    tile.muls(tmp_HD, f1, m_prev_HD)
-                    tile.muls(tmp_HD, f0, l_run_HD)
-                    tile.adds(l_run_HD, f1, l_run_HD)
-                    tile.muls(kv_row_HD, f1, acc_o)
-
-                with br.else_context():
+                    # Online softmax update.
                     # m_new = max(m_prev, logit)   (per-head, replicated)
                     tile.max(m_prev_HD, tmp_HD, m_new_HD)
                     # exp_diff = exp(m_prev - m_new)

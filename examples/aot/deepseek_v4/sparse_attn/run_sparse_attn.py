@@ -29,24 +29,37 @@ def main() -> int:
     scale = 1.0 / (D**0.5)
 
     cases = [
-        (1, 1, BLOCK * 2, BLOCK),
-        (1, 4, BLOCK * 4, BLOCK * 2),
-        (2, 2, BLOCK * 8, BLOCK * 2),
+        # (B, M, N, K, H, sentinel_frac)
+        (1, 1, BLOCK * 2, BLOCK, H_PAD, 0.0),
+        (1, 4, BLOCK * 4, BLOCK * 2, H_PAD, 0.0),
+        (2, 2, BLOCK * 8, BLOCK * 2, H_PAD, 0.0),
+        # Padded-heads case (TileLang parity: wrapper pads h<16 → 16):
+        (1, 2, BLOCK * 4, BLOCK * 2, 8, 0.0),
+        (1, 2, BLOCK * 4, BLOCK, 1, 0.0),
+        # Sentinel masking: ~25% of top-k slots are -1 (TileLang parity).
+        (1, 4, BLOCK * 4, BLOCK * 2, H_PAD, 0.25),
+        (1, 2, BLOCK * 4, BLOCK, 4, 0.25),
     ]
-    for B, M, N, K in cases:
-        q = torch.randn(B, M, H_PAD, D, device=device).to(torch.float16)
+    for B, M, N, K, H, sentinel_frac in cases:
+        q = torch.randn(B, M, H, D, device=device).to(torch.float16)
         kv = torch.randn(B, N, D, device=device).to(torch.float16)
-        attn_sink = torch.randn(H_PAD, dtype=torch.float32, device=device)
+        attn_sink = torch.randn(H, dtype=torch.float32, device=device)
         topk_idxs = (
             torch.stack([torch.randperm(N, device=device)[:K] for _ in range(B * M)])
             .reshape(B, M, K)
             .to(torch.int32)
         )
+        if sentinel_frac > 0.0:
+            mask = torch.rand(B, M, K, device=device) < sentinel_frac
+            topk_idxs = torch.where(mask, torch.full_like(topk_idxs, -1), topk_idxs)
 
         o_pto = sparse_attn(q, kv, attn_sink, topk_idxs, scale)
         o_ref = sparse_attn_ref(q, kv, attn_sink, topk_idxs, scale)
         torch.testing.assert_close(o_pto, o_ref, rtol=5e-3, atol=5e-3)
-        print(f"sparse_attn B={B} M={M} N={N} K={K}: OK")
+        print(
+            f"sparse_attn B={B} M={M} N={N} K={K} H={H} "
+            f"sentinel={sentinel_frac}: OK"
+        )
     print("sparse_attn: all shapes PASSED")
     return 0
 

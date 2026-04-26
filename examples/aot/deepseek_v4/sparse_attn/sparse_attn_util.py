@@ -27,15 +27,15 @@ BLOCK = 64
 
 
 def sparse_attn_ref(
-    q: torch.Tensor,  # [B, M, H_PAD, D] fp16
+    q: torch.Tensor,  # [B, M, H, D] fp16  (H may be < H_PAD)
     kv: torch.Tensor,  # [B, N, D] fp16
-    attn_sink: torch.Tensor,  # [H_PAD] fp32
-    topk_idxs: torch.Tensor,  # [B, M, K] int32
+    attn_sink: torch.Tensor,  # [H] fp32
+    topk_idxs: torch.Tensor,  # [B, M, K] int32 (-1 marks invalid slot)
     scale: float,
 ) -> torch.Tensor:
     B, M, H, Dq = q.shape
     Bk, N, Dk = kv.shape
-    assert (B, Dq) == (Bk, Dk) and H == H_PAD and Dq == D
+    assert (B, Dq) == (Bk, Dk) and H <= H_PAD and Dq == D
     K = topk_idxs.shape[-1]
 
     qf = q.to(torch.float32)
@@ -44,14 +44,20 @@ def sparse_attn_ref(
     out = torch.zeros_like(qf)
     for b in range(B):
         for m in range(M):
-            idx = topk_idxs[b, m].to(torch.long)  # [K]
-            kv_sel = kf[b, idx]  # [K, D]
+            raw_idx = topk_idxs[b, m]  # [K] int32, may be -1
+            invalid = raw_idx == -1  # [K]
+            safe_idx = raw_idx.clone().to(torch.long)
+            safe_idx[invalid] = 0  # avoid OOB gather
+            kv_sel = kf[b, safe_idx]  # [K, D]
             logits = (qf[b, m] @ kv_sel.T) * scale  # [H, K]
-            # Append per-head sink logit, softmax, drop the sink entry from V mix.
+            logits[:, invalid] = float("-inf")  # mask sentinel slots
             sink = attn_sink.to(torch.float32).view(H, 1)  # [H, 1]
             logits_full = torch.cat([logits, sink], dim=-1)  # [H, K+1]
             p = torch.softmax(logits_full, dim=-1)
             p_kv = p[:, :K]  # [H, K]
+            # Zero contribution from invalid slots (softmax already gave 0
+            # because logits were -inf, but be defensive against NaN).
+            p_kv = torch.where(invalid.view(1, K), torch.zeros_like(p_kv), p_kv)
             out[b, m] = p_kv @ kv_sel  # [H, D]
     return out.to(torch.float16)
 
@@ -94,6 +100,15 @@ def sparse_attn(q, kv, attn_sink, topk_idxs, scale: float):
     B, M, H, Dq = q.shape
     Bk, N, Dk = kv.shape
     K = topk_idxs.shape[-1]
+    assert H <= H_PAD and Dq == D
+    orig_H = H
+    # Pad heads to H_PAD: kernel statically expects H == H_PAD == 16.
+    if H < H_PAD:
+        pad_q = q.new_zeros(B, M, H_PAD - H, Dq)
+        q = torch.cat([q, pad_q], dim=2).contiguous()
+        pad_sink = attn_sink.new_zeros(H_PAD - H)
+        attn_sink = torch.cat([attn_sink, pad_sink]).contiguous()
+        H = H_PAD
     o = torch.empty_like(q)
     lib = _load()
     dev = torch.npu.current_device()
@@ -113,4 +128,6 @@ def sparse_attn(q, kv, attn_sink, topk_idxs, scale: float):
         ctypes.c_float(scale),
     )
     torch.npu.synchronize()
+    if orig_H < H_PAD:
+        o = o.narrow(2, 0, orig_H).contiguous()
     return o
