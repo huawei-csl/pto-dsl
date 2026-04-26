@@ -81,12 +81,23 @@ def fused_sparse_attn(q, kv, idx, scale):
 
 
 SHAPES = [
-    # (B, M, N, K)
-    (1, 1, 128, 64),
-    (1, 4, 256, 128),
-    (2, 2, 512, 128),
-    (4, 4, 1024, 128),
-    (8, 8, 2048, 128),
+    # (B, M, N, K) — DeepSeek-V4-style sparse attention (H=16, D=128).
+    # ---- Single-query decode on growing context, fixed top-k ----
+    (1, 1, 2048, 512),
+    (1, 1, 8192, 512),
+    (1, 1, 16384, 512),
+    (1, 1, 32768, 2048),
+    # ---- Batched decode (M=1, B grows) ----
+    (4, 1, 8192, 512),
+    (8, 1, 8192, 512),
+    (16, 1, 8192, 512),
+    (32, 1, 4096, 2048),
+    # ---- Prefill-chunk style (M grows) ----
+    (1, 64, 4096, 2048),
+    (1, 128, 4096, 2048),
+    # ---- Mixed batch + chunk ----
+    (4, 8, 4096, 1024),
+    (8, 4, 4096, 1024),
 ]
 
 

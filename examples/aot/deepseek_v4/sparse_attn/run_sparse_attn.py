@@ -33,12 +33,13 @@ def main() -> int:
         (1, 1, BLOCK * 2, BLOCK, H_PAD, 0.0),
         (1, 4, BLOCK * 4, BLOCK * 2, H_PAD, 0.0),
         (2, 2, BLOCK * 8, BLOCK * 2, H_PAD, 0.0),
+        (8, 2, BLOCK * 4, BLOCK * 2, H_PAD, 0.0),
         # Padded-heads case (TileLang parity: wrapper pads h<16 → 16):
-        (1, 2, BLOCK * 4, BLOCK * 2, 8, 0.0),
-        (1, 2, BLOCK * 4, BLOCK, 1, 0.0),
+        (4, 2, BLOCK * 4, BLOCK * 2, 8, 0.0),
+        (4, 2, BLOCK * 4, BLOCK, 1, 0.0),
         # Sentinel masking: ~25% of top-k slots are -1 (TileLang parity).
-        (1, 4, BLOCK * 4, BLOCK * 2, H_PAD, 0.25),
-        (1, 2, BLOCK * 4, BLOCK, 4, 0.25),
+        (4, 4, BLOCK * 4, BLOCK * 2, H_PAD, 0.25),
+        (8, 2, BLOCK * 4, BLOCK, 4, 0.25),
     ]
     for B, M, N, K, H, sentinel_frac in cases:
         q = torch.randn(B, M, H, D, device=device).to(torch.float16)
