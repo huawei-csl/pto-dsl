@@ -1,9 +1,10 @@
-# fp4_act_quant — PTO DSL port
+# fp4_act_quant — fp16 → mxfp4 (e2m1) per-block quantization
 
-Original (TileLang/GPU): BF16 → FP4(e2m1) per-block quant, block_size=32,
-FP4_max=6, power-of-2 E8M0 scale.
+PTO DSL port of the deepseek_v4 `fp4_act_quant` op. Per `BLOCK_SIZE`
+group of 32 elements computes a shared exponent scale and casts each
+value through a fp4 (e2m1) lookup table.
 
-PTO DSL has no FP4/BF16/E8M0 native support, so this port uses
-FP16 → int8 (range ±7) with FP32 scale = amax / 6. Algorithm and shapes
-mirror the original; round-to-power-of-2 scale and packed FP4 storage are
-omitted.
+```bash
+bash ./compile.sh
+python ./run_fp4_act_quant.py
+```
