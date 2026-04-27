@@ -9,13 +9,6 @@ MLIR_GEN_PATH="${ARTIFACT_DIR}/${MODE}_gen.mlir"
 GENERATED_CPP="${ARTIFACT_DIR}/${MODE}.cpp"
 LIB_PATH="${ARTIFACT_DIR}/tpushpop_mlir_lib.so"
 
-case "${MODE}" in
-  c2v|c2v_add|v2c|bidi) ;;
-  *)
-    echo "Unknown TPUSHPOP_MODE: ${MODE}" >&2
-    exit 2
-    ;;
-esac
 
 mkdir -p "${ARTIFACT_DIR}"
 rm -f "${GENERATED_CPP}" "${LIB_PATH}"
