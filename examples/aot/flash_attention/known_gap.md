@@ -29,7 +29,7 @@ The reference’s hot path is not arbitrary `tile.*` soup; it goes through share
 | Reference include | Role |
 |-------------------|------|
 | [`pto_macro_matmul.hpp`](../../../../pto-isa-master/kernels/manual/common/flash_atten/pto_macro_matmul.hpp) | Cube matmul with **`AccMode`** (e.g. `InitFinalSum` under `UF_ENABLE`), K tiling, and L0-oriented constraints. |
-| [`pto_macro_fa_softmax.hpp`](../../../../pto-isa-master/kernels/manual/common/flash_atten/pto_macro_fa_softmax.hpp) | Streaming softmax: `softmax_opt_fa_init_impl` / `softmax_opt_fa_not_init_impl`, scale = `1/sqrt(HEAD)`, **TROWMAX**, **TROWEXPANDSUB**, **TEXP**, **TROWSUM**, **reshape + TCVT** to fp16, causal branches where applicable. |
+| [`pto_macro_fa_softmax.hpp`](../../../../pto-isa-master/kernels/manual/common/flash_atten/pto_macro_fa_softmax.hpp) | Streaming softmax: `softmax_opt_fa_init_impl` / `softmax_opt_fa_not_init_impl`, scale = `1/sqrt(HEAD)`, **TROWMAX**, **TROWEXPANDSUB**, **TEXP**, **TROWSUM**, and (inside the macro) the sequence that feeds **P**—including **TCVT** where the **macro** emits half for the V2C pipe. **QK** in the reference kernel is still **fp32 in GM** via **`TSTORE`** and **`TLOAD`** in `compute_qk` / `compute_p`; do not conflate macro-internal P conversion with a separate invented “fp16 QK wire”. |
 | [`pto_macro_fa_gu.hpp`](../../../../pto-isa-master/kernels/manual/common/flash_atten/pto_macro_fa_gu.hpp) | **pto_macro_fa_gu** (`TROWEXPANDMUL` + `TADD`), **pto_macro_fa_gu_last** (+ `TROWEXPANDDIV` by `new_global_sum`), **pto_macro_fa_gu_single_and_last_tile**. |
 
 **Goal:** Express the same ordered primitive sequence (and the same init vs non-init / last-tile branching) in `ptodsl` `tile.*` / `pto.*` APIs—or add thin DSL helpers that document a 1:1 mapping to those macros—so the compiler stack can match the reference kernel’s numerics and fusion expectations. Today’s DSL uses composable `tile.row_max`, `tile.exp`, etc.; they must be **audited and aligned** macro-step by macro-step, not assumed equivalent.
@@ -60,28 +60,15 @@ Measured on NPU via `experimental/run.py` (Q=2048, H=128, S1_TILE=256): kernel h
 
 **Takeaway:** With **`S0=128`** landed in the experimental builder, the largest remaining structural gaps versus the reference are **`kTileFactor` / `CUBE_S1` K-split**, **preload / ring depth (`QK_PRELOAD`, CV FIFO)**, and **vec working-tile geometry (`Vec_S0`)** relative to what `l2g2l_pipe` + `TILE_UP_DOWN` imply for UB. Raising `QK_PRELOAD` still needs more `exp_max` slots and recv/GM budget.
 
-| `S0=128` (Apr 2026) | Default `S0` raised to **128** (`FA_S0`). `pto.tpush` from cube still requires **ACC** tiles (PTO verifier: only `AddressSpace::ACC` maps to a producer pipe); staging QK as **fp16 on MAT/LEFT** before push was rejected at MLIR verify, so QK stays **fp32 on the wire** with full `SLOT_SIZE_QK`. Vec softmax reuses **`p_fp32` as `row_max` scratch** (same lifetime as before `row_expand_sub`) plus a **single shared `VEC_RECV_OFF`** sized for the larger of QK/PV half-tiles. `experimental/run.py` + `compile.sh` pass on NPU at ~24 TFLOP/s (unchanged order-of-magnitude vs fused ref). |
+| `S0=128` (Apr 2026) | Default `S0` raised to **128** (`FA_S0`). Cube **`pto.tpush`** uses **`ACC`** QK tiles into `l2g2l_pipe` (same as today’s supported producer); the **reference** path is **`TSTORE`** from acc to **fp32 GM**, not MAT/LEFT→GM—**`PIPE_UNASSIGNED` for MAT/LEFT `tpush` is expected**, not a toolchain defect to “fix” for FA. Builder keeps **fp32 `SLOT_SIZE_QK`**, vec **`p_fp32` as `row_max` scratch**, and a **shared `VEC_RECV_OFF`** for half-tile **`tpop`** scratch. `experimental/run.py` + `compile.sh` pass on NPU at ~24 TFLOP/s (order-of-magnitude below fused ref). |
 
 ---
 
-## PTOAS / PTO dialect / Python binding — feature requests (algorithm parity)
+## PTOAS / PTO dialect / Python binding — reasonable asks (see `ptoas_request.md`)
 
-These are the main **toolchain** gaps noticed while aligning `experimental/fa_kernel` with `cpp_ref/naive_tpush/fa_kernel.cpp`. They are not criticisms of the hand-written reference; they are concrete asks so the **same algorithm config** (tiling, dtypes on wires, vec working set) can be expressed without fighting verifiers or UB.
+Feature requests must **mirror what `fa_kernel.cpp` already does**, not invent paths the reference does not use (e.g. **no** MAT/LEFT→GM for QK, **no** extra **`tile.cvt`** pipeline on QK beyond what the **macros** imply for **P**). FP32 QK in the ref is **`TSTORE`/`TLOAD`** to/from **fp32 GM**; **`ptoas --enable-insert-sync`** remains the **intentional** allowed divergence from hand-placed `TSync_Custom`.
 
-1. **C2V `pto.tpush` producer tiles beyond ACC**  
-   Today `TPushOp::getPipe()` maps **only** `AddressSpace::ACC` → `PIPE_FIX` (see `PTOOps.td`); **MAT** and **LEFT** producers yield `PIPE_UNASSIGNED` and fail verification. The reference keeps QK in **fp32 in GM** (`qk_tile_fifo`) and uses **fp16** only inside vec macros (`TileDataH_T`, `TCVT`). A natural DSL port would **cvt** `TileAcc<f32>` → **`Tile<Mat|Left,f16>`** and `tpush` that tile to halve **`slot_size`** / vec FIFO pressure. **Ask:** allow **fp16 (and/or LEFT/MAT) tiles** as legal C2V `tpush` sources when `slot_size` matches, or document the intended lowering (e.g. MTE path) so Python does not need ACC-only staging.
-
-2. **Decouple `slot_size` from “one full cube row tile” for vec UB accounting**  
-   Reference **`Vec_S0 = Cube_S0 / VEC_CORES / kTileFactor`** (e.g. **32** rows × **256** cols in vec UB) while GM still holds **`Cube_S0 × Tile_S1`** floats per logical tile, assembled from **`kTileFactor`** slices of **`Cube_S0 × Cube_S1`**. The DSL **`l2g2l_pipe`** ties **vec `reserve_buffer`** size to **`SLOT_SIZE_QK`** and **`tpop`** delivers **`S0_HALF × S1_TILE`** per subblock. **Ask:** first-class **“logical tile vs wire chunk”** (multi-slot per tile_id, or column-strip `tpop` into a fixed vec workspace) so vec UB tracks **`Vec_S0`** like the C++ launch, not **`Cube_S0/2`** per `TILE_UP_DOWN` alone.
-
-3. **`kTileFactor` / K-split + softmax without a single 64×256 vec tile**  
-   Matching the reference requires **multiple `compute_p` / `row_slice` passes** per tile and **partial QK layout in GM** (`base_elems + row_offset * Cube_S1`). **Ask:** DSL helpers or ops for **GM strided views** + **event sync** equivalent to `TSync_Custom` / `qk2smSync`, or **documented** mapping from `initialize_l2g2l_pipe` + `tpop` to that pattern so cube can emit **128×128** stores while vec runs **32×256** softmax without holding a **64×256** `qk_vec` buffer per subblock.
-
-4. **`QK_PRELOAD = 4` and deeper CV FIFOs**  
-   Reference uses **`qkPreloadNum = 4`** with **`l1_exp_max_ififo[qkp_tile_fifo_size]`**. DSL stays at **`QK_PRELOAD = 2`** for a smaller **`exp_max` ring**. **Ask:** either **lowered UB cost** for pipe rings (item 1–2) or **optional GM-backed vec inputs** so preload depth can match the C++ launch without manual byte arithmetic.
-
-5. **Python binding ergonomics**  
-   **Ask:** optional **computed layout** (or static asserts) from tensor shapes for **MAT / VEC base offsets** so raising `S0` cannot silently overlap **`MAT_P_FIFO`** with cube tiles; and a **single knob** mirroring `runTFA` template parameters (`CUBE_S0`, `CUBE_S1`, `TILE_S1`, `QK_PRELOAD`, CV FIFO depth) mapped to **`S0`**, **`S1_TILE`**, **`QK_PRELOAD`**, and pipe **`slot_num` / `local_slot_num`**.
+A maintained list of **documentation-first** and **parity** asks (GM packing vs `l2g2l_pipe`, `kTileFactor`/`Vec_S0`, sync equivalence, ergonomics) lives in **`examples/aot/flash_attention/ptoas_request.md`**.
 
 ---
 
@@ -104,7 +91,7 @@ Use this as a work backlog; order roughly reflects suggested priority (tiling/bu
 ### Macro parity in Python (lowering contract)
 
 - [ ] **Matmul:** Port or wrap **`pto_macro_matmul`** semantics in DSL—especially **`AccMode`** (`Init` / `InitFinalSum` / partial vs final slices) and the **K-subslice** interaction with double-buffered K tiles.
-- [ ] **Softmax:** Port **`softmax_opt_fa_init_impl`** and **`softmax_opt_fa_not_init_impl`** (and causal paths if needed) as an explicit sequence of DSL ops matching **TROWMAX → TROWEXPANDSUB → scale → TEXP → TROWSUM → reshape/TCVT** behavior in `pto_macro_fa_softmax.hpp`.
+- [ ] **Softmax:** Port **`softmax_opt_fa_init_impl`** and **`softmax_opt_fa_not_init_impl`** (and causal paths if needed) as an explicit sequence of DSL ops matching the **macro** ordering in `pto_macro_fa_softmax.hpp` (including whatever the macro uses to produce **half** for **P**—e.g. **`TCVT`** inside the macro—not a separate invented QK cast).
 - [ ] **GU:** Port **`pto_macro_fa_gu`**, **`pto_macro_fa_gu_last`**, and **`pto_macro_fa_gu_single_and_last_tile`** as DSL sequences matching **TROWEXPANDMUL / TADD / TROWEXPANDDIV** usage in `pto_macro_fa_gu.hpp`.
 - [ ] **Numerics test:** Keep **`torch.testing.assert_close`** (same `rtol`/`atol` as `run.py` / `experimental/run.py`) as the gate after each macro block port.
 
