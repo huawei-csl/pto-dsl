@@ -3,10 +3,9 @@
 # CANN Open Software License Agreement Version 2.0
 #
 # AOT runner for the multi-pipe FA builder. All .so variants must be built
-# beforehand by `bash compile.sh` (which produces fa.so, fa_32.so, fa_64.so,
-# fa_128.so by default). This script only loads and invokes them.
+# beforehand by `bash compile.sh`. This script only loads and invokes them.
 #
-#   * Correctness check: the default 8k variant (fa.so).
+#   * Correctness check: the first requested benchmark length.
 #   * Benchmark: 8k / 16k / 32k / 64k variants by default. Override with
 #     FA_BENCH_LENGTHS=8192,32768 (each length must be a multiple of S1_TILE).
 
@@ -26,10 +25,11 @@ from ptodsl import do_bench  # noqa: E402
 from ptodsl.utils.npu_info import get_num_cube_cores, get_test_device  # noqa: E402
 
 ARTIFACT_DIR = os.path.join(THIS_DIR, "build_artifacts")
+DEFAULT_PLOT_PATH = os.path.join(ARTIFACT_DIR, "fa_benchmark.png")
 
 # Sequence lengths benchmarked. Override with
 #   FA_BENCH_LENGTHS=8192,32768
-# Each must be a multiple of S1_TILE (=512) and have a matching prebuilt .so.
+# Each must be a multiple of fa_builder.S1_TILE and have a matching prebuilt .so.
 DEFAULT_BENCH_LENGTHS = (8192, 16384, 32768, 65536)
 
 
@@ -117,12 +117,11 @@ def fused_attention(q, k, v, is_causal=False):
     return out.squeeze(0)
 
 
-def test_flash(lib, device):
+def test_flash(lib, device, num_tiles):
     torch.manual_seed(0)
     Q_ROWS = fa_builder.Q_ROWS
     HEAD = fa_builder.HEAD
-    S1_TOTAL = fa_builder.S1_TOTAL
-    NUM_TILES = fa_builder.NUM_TILES
+    S1_TOTAL = fa_builder.S1_TILE * num_tiles
     GM_ELEMS_PER_BLOCK = fa_builder.GM_ELEMS_PER_BLOCK
 
     block_dim = get_block_dim()
@@ -152,7 +151,7 @@ def test_flash(lib, device):
     torch.testing.assert_close(o.cpu().float(), o_ref.cpu(), rtol=RTOL, atol=ATOL)
     print(
         f"[fa] q_rows={Q_ROWS} s1={S1_TOTAL} head={HEAD} "
-        f"({NUM_TILES} tiles, blockDim={block_dim}): PASSED "
+        f"({num_tiles} tiles, blockDim={block_dim}): PASSED "
         f"(atol={ATOL}, rtol={RTOL})  GM/blk={GM_ELEMS_PER_BLOCK} fp32"
     )
 
@@ -220,8 +219,8 @@ def benchmark_flash(lib, device, num_tiles, warmup=10, iters=100):
         "block_dim": block_dim,
         "kernel_us": kernel_us,
         "ref_us": ref_us,
-        "kernel_gflops": flops / (kernel_us * 1e-6) / 1e9,
-        "ref_gflops": flops / (ref_us * 1e-6) / 1e9,
+        "kernel_tflops": flops / (kernel_us * 1e-6) / 1e12,
+        "ref_tflops": flops / (ref_us * 1e-6) / 1e12,
         "speedup": ref_us / kernel_us,
         "kernel_max_err": diff_kernel,
         "fused_max_err": diff_fused,
@@ -231,11 +230,66 @@ def benchmark_flash(lib, device, num_tiles, warmup=10, iters=100):
 def print_bench_row(r):
     print(
         f"  s1={r['seq_len']:>6}  tiles={r['num_tiles']:>3}  "
-        f"fa={r['kernel_us']:8.2f} us ({r['kernel_gflops']:7.1f} GF/s)  "
-        f"ref={r['ref_us']:8.2f} us ({r['ref_gflops']:7.1f} GF/s)  "
+        f"fa={r['kernel_us']:8.2f} us ({r['kernel_tflops']:7.3f} TFLOP/s)  "
+        f"ref={r['ref_us']:8.2f} us ({r['ref_tflops']:7.3f} TFLOP/s)  "
         f"speedup={r['speedup']:.2f}x  "
         f"err: ours={r['kernel_max_err']:.2e} ref={r['fused_max_err']:.2e}"
     )
+
+
+def plot_benchmark_results(results, out_png=None):
+    """Save a throughput plot for PTO FA vs torch_npu reference."""
+    if not results:
+        return
+
+    out_png = out_png or os.environ.get("FA_BENCH_PLOT_PATH", DEFAULT_PLOT_PATH)
+
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError:
+        print("Warning: matplotlib is not installed; skipping plot generation.")
+        return
+
+    style_candidates = ("seaborn-v0_8-whitegrid", "seaborn-whitegrid")
+    for style_name in style_candidates:
+        try:
+            plt.style.use(style_name)
+            break
+        except OSError:
+            continue
+
+    seq_lens = [r["seq_len"] for r in results]
+    fa_tflops = [r["kernel_tflops"] for r in results]
+    ref_tflops = [r["ref_tflops"] for r in results]
+
+    fig, ax_thr = plt.subplots(figsize=(7, 5))
+    fig.patch.set_facecolor("white")
+
+    ax_thr.plot(seq_lens, fa_tflops, "o-", label="PTO flash attention")
+    ax_thr.plot(seq_lens, ref_tflops, "s-", label="torch_npu fused attention")
+    ax_thr.set_title("Throughput")
+    ax_thr.set_xlabel("S1 sequence length")
+    ax_thr.set_ylabel("TFLOP/s")
+    ax_thr.legend()
+    ax_thr.set_xscale("log", base=2)
+    ax_thr.set_xticks(seq_lens)
+    ax_thr.set_xticklabels([str(x) for x in seq_lens], rotation=30)
+
+    fig.suptitle(
+        f"Flash Attention Benchmark: Q={fa_builder.Q_ROWS}, H={fa_builder.HEAD}, "
+        f"S1_TILE={fa_builder.S1_TILE}"
+    )
+    fig.tight_layout()
+
+    out_dir = os.path.dirname(out_png)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+    fig.savefig(out_png, dpi=180)
+    plt.close(fig)
+    print(f"Saved benchmark plot: {out_png}")
 
 
 def main():
@@ -249,9 +303,10 @@ def main():
     for seq_len, nt in required:
         require_lib(nt)
 
-    # ---- correctness on default 8k variant ----
-    default_lib = load_lib(require_lib(16))
-    test_flash(default_lib, device)
+    # ---- correctness on the first requested benchmark variant ----
+    _, first_nt = required[0]
+    default_lib = load_lib(require_lib(first_nt))
+    test_flash(default_lib, device, num_tiles=first_nt)
 
     # ---- benchmark across requested sequence lengths ----
     print(f"\n{'Benchmark (fa)':=^96}")
@@ -270,6 +325,9 @@ def main():
         print_bench_row(r)
         results.append(r)
     print("=" * 96)
+
+    if os.environ.get("FA_BENCH_NO_PLOT", "").lower() not in ("1", "true", "yes"):
+        plot_benchmark_results(results)
 
 
 if __name__ == "__main__":

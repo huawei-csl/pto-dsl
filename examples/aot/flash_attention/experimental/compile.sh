@@ -5,10 +5,11 @@
 # AOT-compile the flash-attention kernel for one or more sequence lengths.
 #
 # Usage:
-#   bash compile.sh                    # build the default set: NUM_TILES = 16,32,64,128
-#                                      # -> fa.so, fa_32.so, fa_64.so, fa_128.so
-#                                      # (NUM_TILES=16 → 8k seqlen → fa.so)
+#   bash compile.sh                    # build variants for 8k / 16k / 32k / 64k
+#                                      # using the current builder S1_TILE
 #   FA_TILES=16,64 bash compile.sh     # build only the listed NUM_TILES variants
+#   FA_BENCH_LENGTHS=8192,32768 bash compile.sh
+#                                      # build variants for selected sequence lengths
 #   FA_TILES=16    bash compile.sh     # single-variant build (legacy behavior)
 #
 # Each NUM_TILES value N produces fa${TAG}.{mlir,cpp,so} where
@@ -40,7 +41,7 @@ build_variant() {
 
     FA_NUM_TILES="${num_tiles}" \
         python "${SCRIPT_DIR}/kernels/fa_builder.py" > "${mlir_path}"
-    ptoas --pto-arch=a3 --enable-insert-sync "${mlir_path}" > "${generated_cpp}"
+    ptoas --pto-arch=a3 --pto-level=level3 --enable-insert-sync "${mlir_path}" > "${generated_cpp}"
 
     bisheng \
         -I"${PTO_LIB_PATH}/include" \
@@ -62,9 +63,38 @@ build_variant() {
     echo "    built ${lib_path}"
 }
 
-# Default tile set covers seqlen = NUM_TILES * S1_TILE = NUM_TILES * 512
-#   16 -> 8k, 32 -> 16k, 64 -> 32k, 128 -> 64k
-FA_TILES="${FA_TILES:-16,32,64,128}"
+# Default tile set covers the same sequence lengths as run.py. Derive it from
+# the builder so changing S1_TILE does not leave compile.sh and run.py out of sync.
+DEFAULT_FA_TILES="$(
+    SCRIPT_DIR="${SCRIPT_DIR}" \
+    FA_BENCH_LENGTHS="${FA_BENCH_LENGTHS:-8192,16384,32768,65536}" \
+    python -c '
+import os
+import re
+
+builder_path = os.path.join(os.environ["SCRIPT_DIR"], "kernels", "fa_builder.py")
+with open(builder_path, "r", encoding="utf-8") as f:
+    builder_src = f.read()
+match = re.search(r"^S1_TILE\s*=\s*(\d+)\b", builder_src, re.MULTILINE)
+if not match:
+    raise SystemExit(f"could not find static S1_TILE assignment in {builder_path}")
+s1_tile = int(match.group(1))
+
+tiles = []
+for raw in os.environ["FA_BENCH_LENGTHS"].split(","):
+    raw = raw.strip()
+    if not raw:
+        continue
+    seq_len = int(raw)
+    if seq_len % s1_tile != 0:
+        raise SystemExit(
+            f"sequence length {seq_len} is not divisible by S1_TILE={s1_tile}"
+        )
+    tiles.append(str(seq_len // s1_tile))
+print(",".join(tiles))
+'
+)"
+FA_TILES="${FA_TILES:-${DEFAULT_FA_TILES}}"
 
 IFS=',' read -r -a tile_list <<< "${FA_TILES}"
 for nt in "${tile_list[@]}"; do
