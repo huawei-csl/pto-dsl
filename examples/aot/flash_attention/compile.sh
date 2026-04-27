@@ -39,7 +39,7 @@ build_variant() {
     rm -f "${mlir_path}" "${generated_cpp}" "${lib_path}"
 
     FA_NUM_TILES="${num_tiles}" \
-        python "${SCRIPT_DIR}/kernels/fa_builder.py" > "${mlir_path}"
+        python "${SCRIPT_DIR}/fa_builder.py" > "${mlir_path}"
     ptoas --pto-arch=a3 --enable-insert-sync "${mlir_path}" > "${generated_cpp}"
 
     bisheng \

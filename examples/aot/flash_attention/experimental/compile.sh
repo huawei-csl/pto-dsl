@@ -40,7 +40,7 @@ build_variant() {
     rm -f "${mlir_path}" "${generated_cpp}" "${lib_path}"
 
     FA_NUM_TILES="${num_tiles}" \
-        python "${SCRIPT_DIR}/kernels/fa_builder.py" > "${mlir_path}"
+        python "${SCRIPT_DIR}/fa_builder.py" > "${mlir_path}"
     ptoas --pto-arch=a3 --pto-level=level3 --enable-insert-sync "${mlir_path}" > "${generated_cpp}"
 
     bisheng \
@@ -72,7 +72,7 @@ DEFAULT_FA_TILES="$(
 import os
 import re
 
-builder_path = os.path.join(os.environ["SCRIPT_DIR"], "kernels", "fa_builder.py")
+builder_path = os.path.join(os.environ["SCRIPT_DIR"], "fa_builder.py")
 with open(builder_path, "r", encoding="utf-8") as f:
     builder_src = f.read()
 match = re.search(r"^S1_TILE\s*=\s*(\d+)\b", builder_src, re.MULTILINE)
