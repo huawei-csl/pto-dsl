@@ -51,11 +51,11 @@ const = s.const
 # ---------------------------------------------------------------------------
 S0 = 32  # Q rows per block
 S0_HALF = S0 // 2  # rows per AIV sub-block
-HEAD = 32  # attention head dimension
-S1_TILE = 512  # K/V columns per tile
+HEAD = 128  # attention head dimension
+S1_TILE = 256  # K/V columns per tile
 # NUM_TILES is overridable via the FA_NUM_TILES env var so the same builder
 # can produce kernels for different sequence lengths
-# (S1_TOTAL = S1_TILE * NUM_TILES). 16 → 8k, 32 → 16k, 64 → 32k, 128 → 64k.
+# (S1_TOTAL = S1_TILE * NUM_TILES).
 # Constraint: (NUM_TILES - QK_PRELOAD) must be even (steady-state pair unroll).
 NUM_TILES = int(os.environ.get("FA_NUM_TILES", "16"))
 
@@ -99,6 +99,38 @@ GM_P_OFF_F32 = GM_PV_OFF_F32 + (SLOT_SIZE_PV * SLOT_NUM) // 4
 FIFO_BYTES_QK = SLOT_SIZE_QK * QK_LOCAL_SLOT_NUM
 FIFO_BYTES_PV = SLOT_SIZE_PV * PV_LOCAL_SLOT_NUM
 FIFO_BYTES_P = SLOT_SIZE_P * SLOT_NUM
+
+# Explicit local-memory layout used when compiling with --pto-level=level3.
+# Offsets are byte offsets within each independent local address space.
+MAT_Q_OFF = 0
+MAT_K_OFF = MAT_Q_OFF + S0 * HEAD * 2
+MAT_P_RECV_OFF = MAT_K_OFF + HEAD * S1_TILE * 2
+MAT_V_OFF = MAT_P_RECV_OFF + S0 * S1_TILE * 2
+MAT_P_FIFO_OFF = 262144
+
+LEFT_Q_OFF = 0
+LEFT_P_OFF = LEFT_Q_OFF + S0 * HEAD * 2
+
+RIGHT_KV_OFF = 0
+
+ACC_QK_OFF = 0
+ACC_PV_OFF = ACC_QK_OFF + S0 * S1_TILE * 4
+
+VEC_QK_FIFO_OFF = 0
+VEC_PV_FIFO_OFF = VEC_QK_FIFO_OFF + FIFO_BYTES_QK
+VEC_TMP_OFF = VEC_PV_FIFO_OFF + FIFO_BYTES_PV
+VEC_P_FP32_OFF = VEC_TMP_OFF + S0_HALF * S1_TILE * 4
+VEC_P_FP16_OFF = VEC_P_FP32_OFF + S0_HALF * S1_TILE * 4
+VEC_O_OFF = VEC_P_FP16_OFF + S0_HALF * S1_TILE * 2
+VEC_RED_BASE_OFF = VEC_O_OFF + S0_HALF * HEAD * 4
+VEC_RED_STRIDE = 512
+VEC_NEW_GLOBAL_MAX_OFF = VEC_RED_BASE_OFF + 0 * VEC_RED_STRIDE
+VEC_LOCAL_MAX_OFF = VEC_RED_BASE_OFF + 1 * VEC_RED_STRIDE
+VEC_NEW_GLOBAL_SUM_OFF = VEC_RED_BASE_OFF + 2 * VEC_RED_STRIDE
+VEC_LOCAL_SUM_OFF = VEC_RED_BASE_OFF + 3 * VEC_RED_STRIDE
+VEC_EXP_MAX_A_OFF = VEC_RED_BASE_OFF + 4 * VEC_RED_STRIDE
+VEC_EXP_MAX_B_OFF = VEC_RED_BASE_OFF + 5 * VEC_RED_STRIDE
+VEC_RECV_OFF = VEC_RED_BASE_OFF + 6 * VEC_RED_STRIDE
 
 ID_QK = 10  # Cube → Vec, dir_mask = 1 (uses lower-level l2g2l)
 ID_PV = 20  # Cube → Vec, dir_mask = 1 (legacy)
@@ -249,7 +281,11 @@ def module():
 
         # ---- Pipe P_V2C (id = 30) ----
         p_v2c_local = pto.reserve_buffer(
-            name="fa_p_v2c_fifo", size=FIFO_BYTES_P, location="MAT"
+            name="fa_p_v2c_fifo",
+            size=FIFO_BYTES_P,
+            location="MAT",
+            auto_alloc=False,
+            base=MAT_P_FIFO_OFF,
         )
         pto.aic_initialize_pipe(
             id=ID_P,
@@ -261,20 +297,22 @@ def module():
             nosplit=False,
         )
 
-        # All cube tile-buffers are single-buffered: at S1_TILE=512 the
-        # RIGHT space (64 KB) cannot host a ping-pong (k_right + v_right
-        # are 32 KB each), and earlier experiments showed cube-side
-        # ping-pong gives no measurable speedup once vec is the bottleneck.
-        q_mat = pto.alloc_tile(q_mat_ty)
-        q_left = pto.alloc_tile(q_left_ty)
-        k_mat_s = pto.alloc_tile(k_mat_ty)
-        k_right_s = pto.alloc_tile(k_right_ty)
-        qk_acc_s = pto.alloc_tile(qk_acc_ty)
-        p_recv_s = pto.alloc_tile(p_recv_ty)
-        p_left_s = pto.alloc_tile(p_left_ty)
-        v_mat_s = pto.alloc_tile(v_mat_ty)
-        v_right_s = pto.alloc_tile(v_right_ty)
-        pv_acc_s = pto.alloc_tile(pv_acc_ty)
+        # All cube tile-buffers are single-buffered. K and V share RIGHT
+        # storage: for HEAD=128, S1_TILE=256 each RIGHT tile is exactly
+        # 64 KB, and the schedule uses V for PV before moving K for QK.
+        # This mirrors the hand-written reference's explicit local-memory
+        # assignment style and avoids asking RIGHT for two full tiles.
+        right_base = const(RIGHT_KV_OFF, s.int64)
+        q_mat = pto.alloc_tile(q_mat_ty, addr=const(MAT_Q_OFF, s.int64))
+        q_left = pto.alloc_tile(q_left_ty, addr=const(LEFT_Q_OFF, s.int64))
+        k_mat_s = pto.alloc_tile(k_mat_ty, addr=const(MAT_K_OFF, s.int64))
+        k_right_s = pto.alloc_tile(k_right_ty, addr=right_base)
+        qk_acc_s = pto.alloc_tile(qk_acc_ty, addr=const(ACC_QK_OFF, s.int64))
+        p_recv_s = pto.alloc_tile(p_recv_ty, addr=const(MAT_P_RECV_OFF, s.int64))
+        p_left_s = pto.alloc_tile(p_left_ty, addr=const(LEFT_P_OFF, s.int64))
+        v_mat_s = pto.alloc_tile(v_mat_ty, addr=const(MAT_V_OFF, s.int64))
+        v_right_s = pto.alloc_tile(v_right_ty, addr=right_base)
+        pv_acc_s = pto.alloc_tile(pv_acc_ty, addr=const(ACC_PV_OFF, s.int64))
         # Aliasing wrappers: keep the per-iteration `[buf]` indexing pattern
         # in the body even though all slots currently point at one alloc.
         k_mat = [k_mat_s, k_mat_s]
@@ -448,7 +486,11 @@ def module():
 
         # ---- Pipe QK_C2V ----
         qk_c2v_local = pto.reserve_buffer(
-            name="fa_qk_c2v_fifo", size=FIFO_BYTES_QK, location="VEC"
+            name="fa_qk_c2v_fifo",
+            size=FIFO_BYTES_QK,
+            location="VEC",
+            auto_alloc=False,
+            base=VEC_QK_FIFO_OFF,
         )
         qk_pipe = pto.initialize_l2g2l_pipe(
             dir_mask=1,
@@ -461,7 +503,11 @@ def module():
 
         # ---- Pipe PV_C2V (lower-level init: PV_LOCAL_SLOT_NUM VEC slots) ----
         pv_c2v_local = pto.reserve_buffer(
-            name="fa_pv_c2v_fifo", size=FIFO_BYTES_PV, location="VEC"
+            name="fa_pv_c2v_fifo",
+            size=FIFO_BYTES_PV,
+            location="VEC",
+            auto_alloc=False,
+            base=VEC_PV_FIFO_OFF,
         )
         pv_pipe = pto.initialize_l2g2l_pipe(
             dir_mask=1,
@@ -489,14 +535,18 @@ def module():
         sb_idx = s.index_cast(pto.get_subblock_idx())
         row_off_sb = sb_idx * cS0_HALF
 
-        tmp_tile = pto.alloc_tile(qk_vec_ty)
-        p_fp32 = pto.alloc_tile(p_fp32_ty)
-        p_fp16 = pto.alloc_tile(p_fp16_ty)
-        o_tile = pto.alloc_tile(o_vec_ty)
-        new_global_max = pto.alloc_tile(red_ty)
-        local_max = pto.alloc_tile(red_ty)
-        new_global_sum = pto.alloc_tile(red_ty)
-        local_sum = pto.alloc_tile(red_ty)
+        tmp_tile = pto.alloc_tile(qk_vec_ty, addr=const(VEC_TMP_OFF, s.int64))
+        p_fp32 = pto.alloc_tile(p_fp32_ty, addr=const(VEC_P_FP32_OFF, s.int64))
+        p_fp16 = pto.alloc_tile(p_fp16_ty, addr=const(VEC_P_FP16_OFF, s.int64))
+        o_tile = pto.alloc_tile(o_vec_ty, addr=const(VEC_O_OFF, s.int64))
+        new_global_max = pto.alloc_tile(
+            red_ty, addr=const(VEC_NEW_GLOBAL_MAX_OFF, s.int64)
+        )
+        local_max = pto.alloc_tile(red_ty, addr=const(VEC_LOCAL_MAX_OFF, s.int64))
+        new_global_sum = pto.alloc_tile(
+            red_ty, addr=const(VEC_NEW_GLOBAL_SUM_OFF, s.int64)
+        )
+        local_sum = pto.alloc_tile(red_ty, addr=const(VEC_LOCAL_SUM_OFF, s.int64))
         # Ring of QK_PRELOAD exp_max tiles. With QK_PRELOAD=2 we use a/b
         # ping-pong: even-parity tiles use exp_max_a, odd-parity tiles use
         # exp_max_b. softmax(t) writes the exp_max for tile t into the
@@ -505,8 +555,8 @@ def module():
         # the steady-state loop must do gu(t) BEFORE softmax(t+QK_PRELOAD)
         # to avoid clobbering.
         assert QK_PRELOAD == 2, "exp_max ring is hard-coded to 2 tiles"
-        exp_max_a = pto.alloc_tile(red_ty)
-        exp_max_b = pto.alloc_tile(red_ty)
+        exp_max_a = pto.alloc_tile(red_ty, addr=const(VEC_EXP_MAX_A_OFF, s.int64))
+        exp_max_b = pto.alloc_tile(red_ty, addr=const(VEC_EXP_MAX_B_OFF, s.int64))
 
         scale = const(1.0 / math.sqrt(HEAD), s.float32)
         f32_one = const(1.0, s.float32)
@@ -520,7 +570,12 @@ def module():
         # `is_init` is a Python bool: True only for the very first softmax
         # of the whole block (tile 0) to take the init branch.
         def emit_softmax_step(exp_max_slot, is_init):
-            qk_recv = pto.tpop(qk_vec_ty, qk_pipe, SPLIT_UP_DOWN)
+            qk_recv = pto.tpop(
+                qk_vec_ty,
+                qk_pipe,
+                SPLIT_UP_DOWN,
+                addr=const(VEC_RECV_OFF, s.int64),
+            )
             tile.muls(qk_recv, scale, qk_recv)
             tile.row_max(qk_recv, tmp_tile, local_max)
 
@@ -553,7 +608,12 @@ def module():
         # Helper: emit a gu step reading from `exp_max_slot`.
         # `is_init` is a Python bool: True only for tile 0 (first PV).
         def emit_gu_step(exp_max_slot, is_init):
-            pv_recv = pto.tpop(pv_vec_ty, pv_pipe, SPLIT_UP_DOWN)
+            pv_recv = pto.tpop(
+                pv_vec_ty,
+                pv_pipe,
+                SPLIT_UP_DOWN,
+                addr=const(VEC_RECV_OFF, s.int64),
+            )
             if is_init:
                 tile.mov(pv_recv, o_tile)
             else:

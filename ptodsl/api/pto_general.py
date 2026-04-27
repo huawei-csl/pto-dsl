@@ -231,14 +231,17 @@ def tpush(tile, pipe_handle, split):
     return _pto.TPushOp(_unwrap(tile), _unwrap(pipe_handle), split)
 
 
-def tpop(tile_type, pipe_handle, split):
+def tpop(tile_type, pipe_handle, split, *, addr=None):
     """Pop the next tile from a pipe handle.
 
     The underlying ``pto.tpop`` op is destination-passing: it writes into a
     pre-allocated tile. This wrapper allocates a fresh tile of ``tile_type``,
     pops into it, and returns the tile value.
     """
-    dest = _pto.AllocTileOp(tile_type).result
+    kwargs = {}
+    if addr is not None:
+        kwargs["addr"] = _unwrap(addr)
+    dest = _pto.AllocTileOp(tile_type, **kwargs).result
     _pto.TPopOp(dest, _unwrap(pipe_handle), split)
     return dest
 
