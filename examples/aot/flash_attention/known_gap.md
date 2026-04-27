@@ -13,7 +13,7 @@ This document compares the AOT flash-attention builders (`fa_builder.py`, `exper
 
 1. **Cube tiling and S1 sub-tiling**  
    Reference: `CUBE_S0 = 128`, `CUBE_S1 = 128`, `TILE_S1 = 256`, so **`kTileFactor = 2`** (two 128-wide K slices per logical 256-wide tile).  
-   DSL (experimental): **`S0 = 32`**, single **`S1_TILE = 256`** matmul per tile. Smaller **M** (32 vs 128) and a different K-splitting strategy typically dominate cube utilization and memory overlap versus the reference.
+   DSL (experimental): **`S0 = 128`** by default (env `FA_S0`), still a **single** **`S1_TILE = 256`** matmul per tile (no K-split). The row-block size now matches reference **M**; the remaining gap is **K micro-tiling / matmul overlap** versus the reference’s two `Cube_S1` passes per logical tile.
 
 2. **Real L1 double-buffering**  
    Reference: `kMatTNBuffers = 2`, `pMatTNBuffers = 2`, `vMatTNBuffers = 2`, plus vec-side ping-pong (`srcVecTNBuffers`, `xexpVecTNBuffers`, `outOTileNBuffers`).  
@@ -58,7 +58,30 @@ Measured on NPU via `experimental/run.py` (Q=2048, H=128, S1_TILE=256): kernel h
 | K-split: two `CUBE_S1=128` matmuls per tile via `tile.subview` on `qk_acc` | Builds and passes `assert_close`; **~7% slower** than one `S1_TILE=256` matmul on this target — **reverted**. |
 | Reorder steady cube step (PV before K load) | **Slight regression** vs original order on sampled runs — **reverted**. |
 
-**Takeaway:** Dominant gap remains **cube M (`S0=32` vs 128)** and **preload/ring depth**; raising `S0` or `QK_PRELOAD` bumps VEC/CUBE footprint and needs a audited memory map (recv scratch ≥ one `qk_vec` tile after `exp_max` slots, `MAT_P_FIFO` after all MAT tiles).
+**Takeaway:** With **`S0=128`** landed in the experimental builder, the largest remaining structural gaps versus the reference are **`kTileFactor` / `CUBE_S1` K-split**, **preload / ring depth (`QK_PRELOAD`, CV FIFO)**, and **vec working-tile geometry (`Vec_S0`)** relative to what `l2g2l_pipe` + `TILE_UP_DOWN` imply for UB. Raising `QK_PRELOAD` still needs more `exp_max` slots and recv/GM budget.
+
+| `S0=128` (Apr 2026) | Default `S0` raised to **128** (`FA_S0`). `pto.tpush` from cube still requires **ACC** tiles (PTO verifier: only `AddressSpace::ACC` maps to a producer pipe); staging QK as **fp16 on MAT/LEFT** before push was rejected at MLIR verify, so QK stays **fp32 on the wire** with full `SLOT_SIZE_QK`. Vec softmax reuses **`p_fp32` as `row_max` scratch** (same lifetime as before `row_expand_sub`) plus a **single shared `VEC_RECV_OFF`** sized for the larger of QK/PV half-tiles. `experimental/run.py` + `compile.sh` pass on NPU at ~24 TFLOP/s (unchanged order-of-magnitude vs fused ref). |
+
+---
+
+## PTOAS / PTO dialect / Python binding — feature requests (algorithm parity)
+
+These are the main **toolchain** gaps noticed while aligning `experimental/fa_kernel` with `cpp_ref/naive_tpush/fa_kernel.cpp`. They are not criticisms of the hand-written reference; they are concrete asks so the **same algorithm config** (tiling, dtypes on wires, vec working set) can be expressed without fighting verifiers or UB.
+
+1. **C2V `pto.tpush` producer tiles beyond ACC**  
+   Today `TPushOp::getPipe()` maps **only** `AddressSpace::ACC` → `PIPE_FIX` (see `PTOOps.td`); **MAT** and **LEFT** producers yield `PIPE_UNASSIGNED` and fail verification. The reference keeps QK in **fp32 in GM** (`qk_tile_fifo`) and uses **fp16** only inside vec macros (`TileDataH_T`, `TCVT`). A natural DSL port would **cvt** `TileAcc<f32>` → **`Tile<Mat|Left,f16>`** and `tpush` that tile to halve **`slot_size`** / vec FIFO pressure. **Ask:** allow **fp16 (and/or LEFT/MAT) tiles** as legal C2V `tpush` sources when `slot_size` matches, or document the intended lowering (e.g. MTE path) so Python does not need ACC-only staging.
+
+2. **Decouple `slot_size` from “one full cube row tile” for vec UB accounting**  
+   Reference **`Vec_S0 = Cube_S0 / VEC_CORES / kTileFactor`** (e.g. **32** rows × **256** cols in vec UB) while GM still holds **`Cube_S0 × Tile_S1`** floats per logical tile, assembled from **`kTileFactor`** slices of **`Cube_S0 × Cube_S1`**. The DSL **`l2g2l_pipe`** ties **vec `reserve_buffer`** size to **`SLOT_SIZE_QK`** and **`tpop`** delivers **`S0_HALF × S1_TILE`** per subblock. **Ask:** first-class **“logical tile vs wire chunk”** (multi-slot per tile_id, or column-strip `tpop` into a fixed vec workspace) so vec UB tracks **`Vec_S0`** like the C++ launch, not **`Cube_S0/2`** per `TILE_UP_DOWN` alone.
+
+3. **`kTileFactor` / K-split + softmax without a single 64×256 vec tile**  
+   Matching the reference requires **multiple `compute_p` / `row_slice` passes** per tile and **partial QK layout in GM** (`base_elems + row_offset * Cube_S1`). **Ask:** DSL helpers or ops for **GM strided views** + **event sync** equivalent to `TSync_Custom` / `qk2smSync`, or **documented** mapping from `initialize_l2g2l_pipe` + `tpop` to that pattern so cube can emit **128×128** stores while vec runs **32×256** softmax without holding a **64×256** `qk_vec` buffer per subblock.
+
+4. **`QK_PRELOAD = 4` and deeper CV FIFOs**  
+   Reference uses **`qkPreloadNum = 4`** with **`l1_exp_max_ififo[qkp_tile_fifo_size]`**. DSL stays at **`QK_PRELOAD = 2`** for a smaller **`exp_max` ring**. **Ask:** either **lowered UB cost** for pipe rings (item 1–2) or **optional GM-backed vec inputs** so preload depth can match the C++ launch without manual byte arithmetic.
+
+5. **Python binding ergonomics**  
+   **Ask:** optional **computed layout** (or static asserts) from tensor shapes for **MAT / VEC base offsets** so raising `S0` cannot silently overlap **`MAT_P_FIFO`** with cube tiles; and a **single knob** mirroring `runTFA` template parameters (`CUBE_S0`, `CUBE_S1`, `TILE_S1`, `QK_PRELOAD`, CV FIFO depth) mapped to **`S0`**, **`S1_TILE`**, **`QK_PRELOAD`**, and pipe **`slot_num` / `local_slot_num`**.
 
 ---
 
@@ -69,7 +92,7 @@ Use this as a work backlog; order roughly reflects suggested priority (tiling/bu
 ### Tiling and cube schedule
 
 - [ ] **Match reference cube geometry:** `CUBE_S0=128`, `CUBE_S1=128`, `TILE_S1=256`, and **`kTileFactor`** loop (two K slices per 256-wide tile) in the DSL builder’s cube kernel, or justify an equivalent FLOP/memory contract with measurements. *(Prototype K-split only: numerics OK, throughput down on current NPU.)*
-- [ ] **Re-evaluate `S0=32`** (and non-experimental builder constants): target the same per-matmul **M** as the reference unless hardware constraints force otherwise. *(VEC `SLOT_SIZE_QK` scales with `S0`; `S0=64` overflowed UB in a back-of-envelope layout.)*
+- [x] **Match reference `CUBE_S0` (128) in experimental builder** — default `S0=128` via `FA_S0` (Apr 2026); UB layout was tightened (shared `tpop` recv sizing, `row_max` scratch reuse, smaller `VEC_RED_STRIDE`). Smaller blocks remain available with `FA_S0=32` etc. if needed.
 - [ ] **Align `QK_PRELOAD`** with the reference launch (**4**) and extend the **`exp_max` / GU ring** logic (or equivalent hazard avoidance) for that depth; assert fifo and UB sizing.
 
 ### Double-buffering and overlap

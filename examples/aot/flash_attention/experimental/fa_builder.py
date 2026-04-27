@@ -44,8 +44,11 @@ const = s.const
 # ---------------------------------------------------------------------------
 # Static shapes (must match run.py constants)
 # ---------------------------------------------------------------------------
-S0 = 32  # Q rows per block
-S0_HALF = S0 // 2  # rows per AIV sub-block
+# Match reference `CUBE_S0 = 128` (`fa_kernel.cpp`).  Vec UB grows with
+# `S0` because the QK/PV pipe mirrors full tiles in UB; override with FA_S0
+# if a smaller block is needed while tooling catches up (see `known_gap.md`).
+S0 = int(os.environ.get("FA_S0", "128"))
+S0_HALF = S0 // 2  # rows per AIV sub-block (TILE_UP_DOWN split)
 HEAD = 128  # attention head dimension
 S1_TILE = 256  # K/V columns per tile
 # NUM_TILES is overridable via the FA_NUM_TILES env var so the same builder
@@ -57,7 +60,7 @@ NUM_TILES = int(os.environ.get("FA_NUM_TILES", "16"))
 S1_TOTAL = S1_TILE * NUM_TILES
 
 Q_ROWS = 2048
-NUM_Q_BLOCKS = Q_ROWS // S0  # 64 row-blocks
+NUM_Q_BLOCKS = Q_ROWS // S0  # e.g. 16 when Q_ROWS=2048 and S0=128
 
 # QK preload depth — must be >= 1; reference launch uses 4, this builder
 # keeps 2 for a smaller VEC exp_max ring (see header comment).
@@ -69,7 +72,8 @@ assert (
 STEADY_PAIRS = (NUM_TILES - QK_PRELOAD) // 2
 
 # Per-pipe slot sizes (bytes).
-SLOT_SIZE_QK = S0 * S1_TILE * 4  # fp32 QK accumulator
+# QK: fp32 on the wire (cube `tpush` only accepts ACC tiles today — see known_gap).
+SLOT_SIZE_QK = S0 * S1_TILE * 4
 SLOT_SIZE_PV = S0 * HEAD * 4  # fp32 PV accumulator
 SLOT_SIZE_P = S0 * S1_TILE * 2  # fp16 P matrix sent vec → cube
 
@@ -99,7 +103,10 @@ MAT_Q_OFF = 0
 MAT_K_OFF = MAT_Q_OFF + S0 * HEAD * 2
 MAT_P_RECV_OFF = MAT_K_OFF + HEAD * S1_TILE * 2
 MAT_V_OFF = MAT_P_RECV_OFF + S0 * S1_TILE * 2
-MAT_P_FIFO_OFF = 262144
+MAT_P_FIFO_OFF = MAT_V_OFF + S1_TILE * HEAD * 2
+# Pad past the last MAT-resident tile; bisheng is sensitive to overlap here.
+if MAT_P_FIFO_OFF < 393216:
+    MAT_P_FIFO_OFF = 393216
 
 LEFT_Q_OFF = 0
 LEFT_P_OFF = LEFT_Q_OFF + S0 * HEAD * 2
@@ -116,13 +123,16 @@ VEC_P_FP32_OFF = VEC_TMP_OFF + S0_HALF * S1_TILE * 4
 VEC_P_FP16_OFF = VEC_P_FP32_OFF + S0_HALF * S1_TILE * 4
 VEC_O_OFF = VEC_P_FP16_OFF + S0_HALF * S1_TILE * 2
 VEC_RED_BASE_OFF = VEC_O_OFF + S0_HALF * HEAD * 4
-VEC_RED_STRIDE = 512
+# Tight packing for reduce / exp_max ring scalars (one column per logical row).
+VEC_RED_STRIDE = ((S0_HALF * 4 + 127) // 128) * 128
 VEC_NEW_GLOBAL_MAX_OFF = VEC_RED_BASE_OFF + 0 * VEC_RED_STRIDE
 VEC_LOCAL_MAX_OFF = VEC_RED_BASE_OFF + 1 * VEC_RED_STRIDE
 VEC_NEW_GLOBAL_SUM_OFF = VEC_RED_BASE_OFF + 2 * VEC_RED_STRIDE
 VEC_LOCAL_SUM_OFF = VEC_RED_BASE_OFF + 3 * VEC_RED_STRIDE
 VEC_EXP_MAX_A_OFF = VEC_RED_BASE_OFF + 4 * VEC_RED_STRIDE
 VEC_EXP_MAX_B_OFF = VEC_RED_BASE_OFF + 5 * VEC_RED_STRIDE
+# Shared recv scratch: max(fp16 QK half-tile, fp32 PV half-tile) for tpop addr=.
+_VEC_RECV_BYTES = max(S0_HALF * S1_TILE * 2, S0_HALF * HEAD * 4)
 VEC_RECV_OFF = VEC_RED_BASE_OFF + 6 * VEC_RED_STRIDE
 
 ID_QK = 10  # Cube → Vec, dir_mask = 1 (uses lower-level l2g2l)
@@ -545,7 +555,7 @@ def module():
                 addr=const(VEC_RECV_OFF, s.int64),
             )
             tile.muls(qk_recv, scale, qk_recv)
-            tile.row_max(qk_recv, tmp_tile, local_max)
+            tile.row_max(qk_recv, p_fp32, local_max)
 
             local_max_r = tile.reshape(red_row_ty, local_max)
             new_global_max_r = tile.reshape(red_row_ty, new_global_max)
