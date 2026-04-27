@@ -13,17 +13,8 @@ See LICENSE in the root of the software repository for the full text of the Lice
 
 #include <pto/pto-inst.hpp>
 #include "runtime/rt.h"
-#if defined(__DAV_C220_CUBE__) || defined(__DAV_C220_VEC__)
 #include <pto/npu/a2a3/custom/TSyncCVID.hpp>
 #include <pto/npu/a2a3/custom/TSync_Custom.hpp>
-#define UF_ENABLE 1
-#elif defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
-#include <pto/npu/a5/custom/TSyncCVID.hpp>
-#include <pto/npu/a5/custom/TSync_Custom.hpp>
-#define UF_ENABLE 1
-#else
-#define UF_ENABLE 0
-#endif
 #include "pto_macro_matmul.hpp"
 #include "pto_macro_fa_softmax.hpp"
 #include "pto_macro_fa_gu.hpp"
@@ -47,7 +38,6 @@ enum FftsBufferFlag : uint32_t
 enum : uint32_t
 {
     PV_EVENT_ID0 = 2,
-    PV_EVENT_ID1 = 3,
 };
 
 constexpr int kHeadSize = 128;
@@ -130,7 +120,7 @@ using TileOutGuT = Tile<TileType::Vec, float, kVecGuRows, kHeadSize, BLayout::Ro
 template <bool CAUSAL_MASK, typename TSyncQK2SM>
 AICORE inline void compute_qk(int tile_id, int sub_tile_id, __gm__ half *q, __gm__ half *k, __gm__ float *qk_tile_fifo,
                               TileMatQData &qMatTile, TileMatKData &kMatTile, TileQKData &qkAccTile,
-                              uint64_t qkMatTileEventId, int accTileEvtID, TSyncQK2SM &qk2smSync, int blk_idx)
+                              uint64_t qkMatTileEventId, TSyncQK2SM &qk2smSync, int blk_idx)
 {
     if constexpr (DAV_CUBE) {
         const int s0_index = blk_idx * kCubeS0;
@@ -164,18 +154,9 @@ AICORE inline void compute_qk(int tile_id, int sub_tile_id, __gm__ half *q, __gm
         set_flag(PIPE_MTE2, PIPE_MTE1, EVENT_ID0);
         wait_flag(PIPE_MTE2, PIPE_MTE1, EVENT_ID0);
 
-#if UF_ENABLE
         pto_macro_matmul<kCubeS0, kHeadSize, kCubeS1>(qMatTile, kMatTile, qkAccTile, AccMode::InitFinalSum);
-#else
-        wait_flag(PIPE_FIX, PIPE_M, accTileEvtID);
-        pto_macro_matmul<kCubeS0, kHeadSize, kCubeS1>(qMatTile, kMatTile, qkAccTile, AccMode::Init);
-#endif
 
         set_flag(PIPE_MTE1, PIPE_MTE2, qkMatTileEventId);
-#if !UF_ENABLE
-        set_flag(PIPE_M, PIPE_FIX, EVENT_ID0);
-        wait_flag(PIPE_M, PIPE_FIX, EVENT_ID0);
-#endif
 
         if (sub_tile_id == 0 && should_wait_consume)
             qk2smSync.allocate();
@@ -186,12 +167,7 @@ AICORE inline void compute_qk(int tile_id, int sub_tile_id, __gm__ half *q, __gm
                                   static_cast<size_t>(sub_tile_id) * kCubeS0 * kCubeS1;
         GlobalDataQK qkGlobalTile(qk_tile_fifo + base_elems);
 
-#if UF_ENABLE
         TSTORE<STPhase::Final>(qkGlobalTile, qkAccTile);
-#else
-        TSTORE(qkGlobalTile, qkAccTile);
-        set_flag(PIPE_FIX, PIPE_M, accTileEvtID);
-#endif
 
         if (sub_tile_id == kTileFactor - 1)
             qk2smSync.record();
@@ -201,7 +177,7 @@ AICORE inline void compute_qk(int tile_id, int sub_tile_id, __gm__ half *q, __gm
 template <typename PPipe, typename TSyncPV2GU>
 AICORE inline void compute_pv(int tile_id, int sub_tile_id, __gm__ half *v, __gm__ float *pv_tile_fifo,
                               TileMatPData &pMatTile, TileMatVData &vMatTile, TilePVData &pvAccTile,
-                              uint64_t svMatTileEventId, int accTileEvtID, PPipe &pPipe, TSyncPV2GU &pv2guSync)
+                              uint64_t svMatTileEventId, PPipe &pPipe, TSyncPV2GU &pv2guSync)
 {
     const int s1_index = tile_id * kTileS1 + sub_tile_id * kCubeS1;
     const bool should_wait_consume = should_wait_consumption(tile_id);
@@ -224,30 +200,14 @@ AICORE inline void compute_pv(int tile_id, int sub_tile_id, __gm__ half *v, __gm
         set_flag(PIPE_MTE2, PIPE_MTE1, EVENT_ID0);
         wait_flag(PIPE_MTE2, PIPE_MTE1, EVENT_ID0);
 
-#if !UF_ENABLE
-        if (sub_tile_id == 0) {
-            wait_flag(PIPE_FIX, PIPE_M, accTileEvtID);
-        }
-#endif
-
-#if UF_ENABLE
         const AccMode accMode = (sub_tile_id == 0) ?
                                     (is_last_subtile ? AccMode::InitFinalSum : AccMode::InitPartialSum) :
                                     (is_last_subtile ? AccMode::AccFinalSum : AccMode::AccPartialSum);
         pto_macro_matmul<kCubeS0, kCubeS1, kHeadSize>(pMatTile, vMatTile, pvAccTile, accMode);
-#else
-        const AccMode accMode = (sub_tile_id == 0) ? AccMode::Init : AccMode::Acc;
-        pto_macro_matmul<kCubeS0, kCubeS1, kHeadSize>(pMatTile, vMatTile, pvAccTile, accMode);
-#endif
 
         set_flag(PIPE_MTE1, PIPE_MTE2, svMatTileEventId);
 
         if (is_last_subtile) {
-#if !UF_ENABLE
-            set_flag(PIPE_M, PIPE_FIX, EVENT_ID0);
-            wait_flag(PIPE_M, PIPE_FIX, EVENT_ID0);
-#endif
-
             if (should_wait_consume)
                 pv2guSync.allocate();
 
@@ -256,12 +216,7 @@ AICORE inline void compute_pv(int tile_id, int sub_tile_id, __gm__ half *v, __gm
             const size_t base_elems_pv = static_cast<size_t>(tile_id % kFifoSize) * kCubeS0 * kHeadSize;
             GlobalDataPV pvGlobalTile((__gm__ float *)(pv_tile_fifo + base_elems_pv));
 
-#if UF_ENABLE
             TSTORE<STPhase::Final>(pvGlobalTile, pvAccTile);
-#else
-            TSTORE(pvGlobalTile, pvAccTile);
-            set_flag(PIPE_FIX, PIPE_M, accTileEvtID);
-#endif
 
             pv2guSync.record();
         }
@@ -520,8 +475,6 @@ __global__ AICORE void runTFA(__gm__ uint64_t *ffts_addr, __gm__ half *q, __gm__
         set_flag(PIPE_MTE1, PIPE_MTE2, EVENT_ID1);
         set_flag(PIPE_MTE1, PIPE_MTE2, EVENT_ID2);
         set_flag(PIPE_MTE1, PIPE_MTE2, EVENT_ID3);
-        set_flag(PIPE_FIX, PIPE_M, EVENT_ID0);
-        set_flag(PIPE_FIX, PIPE_M, EVENT_ID1);
     }
     if constexpr (DAV_VEC) {
         set_flag(PIPE_V, PIPE_MTE2, EVENT_ID0);
@@ -534,19 +487,16 @@ __global__ AICORE void runTFA(__gm__ uint64_t *ffts_addr, __gm__ half *q, __gm__
     int k_src_pingpong_id = 0;    // separate ping-pong for K tiles
     int pv_src_pingpong_id = 0;   // separate ping-pong for P V tiles
 
-    int qkAccTileEvtID = 0;
-    int pvAccTileEvtID = 0;
-
     // QK and P pre-computation (tile_id based)
     for (int preload_tile = 0; preload_tile < kQkPreload && preload_tile < num_tiles_s1;
          ++preload_tile) {
         if constexpr (DAV_CUBE) {
             for (int sub_tile = 0; sub_tile < kTileFactor; ++sub_tile) {
-                qkAccTileEvtID = assign_running_acc_tile(qkAccTile);
+                assign_running_acc_tile(qkAccTile);
                 compute_qk<CAUSAL_MASK>(
                     preload_tile, sub_tile, q_block, k, qk_tile_fifo_block, qMatTile[0],
                     kMatTile[k_src_pingpong_id % kKMatBuffers], qkAccTile, k_src_pingpong_id % kKMatBuffers,
-                    qkAccTileEvtID, qk2smSync, block_idx);
+                    qk2smSync, block_idx);
                 k_src_pingpong_id++;
             }
         }
@@ -571,8 +521,8 @@ __global__ AICORE void runTFA(__gm__ uint64_t *ffts_addr, __gm__ half *q, __gm__
                                (tile_id + kQkPreload);
 
         if (next_qk_tile != -1)
-            qkAccTileEvtID = assign_running_acc_tile(qkAccTile);
-        pvAccTileEvtID = assign_running_acc_tile(pvAccTile);
+            assign_running_acc_tile(qkAccTile);
+        assign_running_acc_tile(pvAccTile);
 
         for (int sub_tile = 0; sub_tile < kTileFactor; ++sub_tile) {
             if constexpr (DAV_CUBE) {
@@ -580,7 +530,7 @@ __global__ AICORE void runTFA(__gm__ uint64_t *ffts_addr, __gm__ half *q, __gm__
                     compute_qk<CAUSAL_MASK>(
                         next_qk_tile, sub_tile, q_block, k, qk_tile_fifo_block, qMatTile[0],
                         kMatTile[k_src_pingpong_id % kKMatBuffers], qkAccTile, k_src_pingpong_id % kKMatBuffers,
-                        qkAccTileEvtID, qk2smSync, block_idx);
+                        qk2smSync, block_idx);
                     k_src_pingpong_id++;
                 }
             }
@@ -602,7 +552,7 @@ __global__ AICORE void runTFA(__gm__ uint64_t *ffts_addr, __gm__ half *q, __gm__
                 compute_pv(
                     tile_id, sub_tile, v, pv_tile_fifo_block, pMatTile[pv_src_pingpong_id % kPMatBuffers],
                     vMatTile[pv_src_pingpong_id % kVMatBuffers], pvAccTile,
-                    pv_src_pingpong_id % kVMatBuffers + PV_EVENT_ID0, pvAccTileEvtID, pPipe, pv2guSync);
+                    pv_src_pingpong_id % kVMatBuffers + PV_EVENT_ID0, pPipe, pv2guSync);
                 pv_src_pingpong_id++;
             }
         }
@@ -627,8 +577,6 @@ __global__ AICORE void runTFA(__gm__ uint64_t *ffts_addr, __gm__ half *q, __gm__
         wait_flag(PIPE_MTE1, PIPE_MTE2, EVENT_ID1);
         wait_flag(PIPE_MTE1, PIPE_MTE2, EVENT_ID2);
         wait_flag(PIPE_MTE1, PIPE_MTE2, EVENT_ID3);
-        wait_flag(PIPE_FIX, PIPE_M, EVENT_ID0);
-        wait_flag(PIPE_FIX, PIPE_M, EVENT_ID1);
         for (int i = 0; i < pending_qk_sm_consumed; ++i)
             qk2smSync.allocate();
         for (int i = 0; i < pending_update_consumed; ++i)
