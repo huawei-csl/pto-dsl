@@ -25,7 +25,9 @@ PTO_LIB_PATH = os.environ["PTO_LIB_PATH"]
 # Compile-time constants from fa_kernel.cpp — must stay in sync
 _CV_FIFO_SIZE = 8  # CV_FIFO_SIZE
 _CUBE_S0 = 128  # CUBE_S0
-_TILE_S1 = 256  # TILE_S1
+_SUPPORTED_TILE_S1 = (256, 512, 1024)
+_DEFAULT_TILE_S1 = 256
+_MAX_TILE_S1 = max(_SUPPORTED_TILE_S1)
 
 
 def torch_to_ctypes(t: torch.Tensor) -> ctypes.c_void_p:
@@ -84,6 +86,7 @@ def load_flash_lib(lib_path: str, check_type: bool = True):
             ctypes.c_int,  # head_size
             ctypes.c_int,  # s0
             ctypes.c_int,  # s1
+            ctypes.c_int,  # tile_s1
             ctypes.c_bool,  # is_causal
             ctypes.c_void_p,  # q
             ctypes.c_void_p,  # k
@@ -112,10 +115,10 @@ def load_flash_lib(lib_path: str, check_type: bool = True):
         _ws["_shape"] = shape
         _ws["o_out"] = torch.empty((s0, head), device=device, dtype=torch.float32)
         _ws["qk_tile_fifo"] = torch.empty(
-            (slots, _CUBE_S0, _TILE_S1), device=device, dtype=torch.float32
+            (slots, _CUBE_S0, _MAX_TILE_S1), device=device, dtype=torch.float32
         )
         _ws["p_tile_fifo"] = torch.empty(
-            (slots, _CUBE_S0, _TILE_S1), device=device, dtype=torch.float16
+            (slots, _CUBE_S0, _MAX_TILE_S1), device=device, dtype=torch.float16
         )
         _ws["exp_max_ififo"] = torch.empty(
             (slots, _CUBE_S0), device=device, dtype=torch.float32
@@ -142,7 +145,15 @@ def load_flash_lib(lib_path: str, check_type: bool = True):
         v: torch.Tensor,
         stream_ptr=default_stream_ptr,
         is_causal=default_causal,
+        tile_s1: int = _DEFAULT_TILE_S1,
     ) -> torch.Tensor:
+        if tile_s1 not in _SUPPORTED_TILE_S1:
+            raise ValueError(
+                f"tile_s1 must be one of {_SUPPORTED_TILE_S1}, got {tile_s1}"
+            )
+        if k.shape[0] % tile_s1 != 0:
+            raise ValueError(f"S1={k.shape[0]} must be divisible by tile_s1={tile_s1}")
+
         _alloc_workspace(q.shape[0], k.shape[0], q.shape[1], q.device)
 
         lib.call_kernel(
@@ -150,6 +161,7 @@ def load_flash_lib(lib_path: str, check_type: bool = True):
             q.shape[1],
             q.shape[0],
             k.shape[0],
+            tile_s1,
             is_causal,
             torch_to_ctypes(q),
             torch_to_ctypes(k),
