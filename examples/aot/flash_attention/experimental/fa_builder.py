@@ -4,20 +4,13 @@
 #
 # This file mirrors the reference C++ scheduler:
 #
-#   constexpr int qkPreloadNum = 2;   // warmup depth
+#   constexpr int qkPreloadNum = 2;   // warmup depth (reference uses 4; UB-limited here)
 #
-#   /* Prologue: cube emits QK[0..QK_PRELOAD-1]; vec consumes them and
-#      pushes P[0..QK_PRELOAD-1]. No PV / gu yet. */
+#   /* Prologue: cube emits QK[0..QK_PRELOAD-1]; vec softmaxes them. */
 #
 #   /* Steady state, tile_id 0..N-1:
-#        cube: if (t+QK_PRELOAD < N) compute_qk(t+QK_PRELOAD);
-#              compute_pv(tile_id);
-#        vec:  if (t+QK_PRELOAD < N) compute_p(t+QK_PRELOAD);
-#              compute_gu(tile_id);
-#      so vec's softmax for the LOOK-AHEAD tile fills the QK consumption
-#      slot WHILE the cube is computing the current PV[t]. The cube
-#      stops being blocked on a freshly-pushed P (softmax of t+2 has
-#      already pushed P[t+2] into the FIFO by the time cube needs it). */
+#        cube: compute QK[t+QK_PRELOAD] while draining PV[t];
+#        vec:  interleave gu(t) with softmax(t+QK_PRELOAD) using exp_max a/b. */
 #
 #   /* Epilogue: drain the last QK_PRELOAD tiles' PV / gu. */
 #
@@ -27,6 +20,8 @@
 # need a 2-deep ring of `exp_max` tiles (`exp_max_a`, `exp_max_b`). We
 # implement the ring by unrolling the steady-state loop in pairs of 2
 # iterations: even iters use `exp_max_a`, odd iters use `exp_max_b`.
+# (Raising preload to 4 like the C++ launch requires a 4-slot ring and more
+# VEC UB headroom; a prototype hit CCU address faults until layout is reworked.)
 #
 # Other state in the softmax (`new_global_max`, `new_global_sum`) does
 # NOT need a ring: it is monotonic accumulator state across all tiles
@@ -64,11 +59,9 @@ S1_TOTAL = S1_TILE * NUM_TILES
 Q_ROWS = 2048
 NUM_Q_BLOCKS = Q_ROWS // S0  # 64 row-blocks
 
-# QK preload depth — must be >= 1; reference uses 2. The vec pre-softmaxes
-# tiles 0..QK_PRELOAD-1, then the steady-state loop interleaves softmax(t+QK_PRELOAD)
-# with gu(t), and the epilogue drains the last QK_PRELOAD gu's.
-# (NUM_TILES - QK_PRELOAD) must be even — steady state is pair-unrolled to
-# ping-pong the exp_max ring (see below).
+# QK preload depth — must be >= 1; reference launch uses 4, this builder
+# keeps 2 for a smaller VEC exp_max ring (see header comment).
+# (NUM_TILES - QK_PRELOAD) must be even — steady state is pair-unrolled.
 QK_PRELOAD = 2
 assert (
     NUM_TILES - QK_PRELOAD
@@ -229,7 +222,6 @@ def module():
     ) -> None:
         c0 = const(0)
         c1 = const(1)
-        c2 = const(2)
         cS0 = const(S0)
         cHEAD = const(HEAD)
         cS1_TILE = const(S1_TILE)
@@ -297,11 +289,8 @@ def module():
             nosplit=False,
         )
 
-        # All cube tile-buffers are single-buffered. K and V share RIGHT
-        # storage: for HEAD=128, S1_TILE=256 each RIGHT tile is exactly
-        # 64 KB, and the schedule uses V for PV before moving K for QK.
-        # This mirrors the hand-written reference's explicit local-memory
-        # assignment style and avoids asking RIGHT for two full tiles.
+        # K and V share one RIGHT bank (sequential use); `[buf]` lists alias
+        # to the same physical tile for each role (schedule is still safe).
         right_base = const(RIGHT_KV_OFF, s.int64)
         q_mat = pto.alloc_tile(q_mat_ty, addr=const(MAT_Q_OFF, s.int64))
         q_left = pto.alloc_tile(q_left_ty, addr=const(LEFT_Q_OFF, s.int64))
@@ -313,8 +302,6 @@ def module():
         v_mat_s = pto.alloc_tile(v_mat_ty, addr=const(MAT_V_OFF, s.int64))
         v_right_s = pto.alloc_tile(v_right_ty, addr=right_base)
         pv_acc_s = pto.alloc_tile(pv_acc_ty, addr=const(ACC_PV_OFF, s.int64))
-        # Aliasing wrappers: keep the per-iteration `[buf]` indexing pattern
-        # in the body even though all slots currently point at one alloc.
         k_mat = [k_mat_s, k_mat_s]
         k_right = [k_right_s, k_right_s]
         qk_acc = [qk_acc_s, qk_acc_s]
@@ -351,8 +338,6 @@ def module():
             tile.mov(q_mat, q_left)
 
             # =================== Cube prologue: emit QK[0..QK_PRELOAD-1] ===================
-            # Each prologue QK uses its own k_mat / k_right / qk_acc slot
-            # so MTE2 load of K[1] overlaps the M of QK[0].
             for k in range(QK_PRELOAD):
                 k_off = const(k * S1_TILE)
                 kt_view_k = pto.slice_view(
@@ -376,16 +361,8 @@ def module():
             pto.load(v_view_0, v_mat[0])
 
             # =================== Cube steady state ===================
-            # Pair-unrolled. Iter t (parity = t%2 → buffer index `b`):
-            #   * load K[next_qk = t+QK_PRELOAD] into k_mat[b]
-            #     (next_qk parity equals t parity since QK_PRELOAD == 2)
-            #   * pop / mov P[t] into p_left[b]; mov V[t] (in v_mat[b]) → v_right[b]
-            #   * preload V[t+1] into v_mat[1-b]
-            #   * matmul PV[t] into pv_acc[b]; push
-            #   * matmul QK[next_qk] into qk_acc[b]; push
-            # Pair handler:
+            # Pair-unrolled; buffer index b = t % 2 (logical ping-pong).
             def emit_cube_step(t_idx, b):
-                # next_qk = t_idx + QK_PRELOAD (only used when in main range)
                 next_qk = t_idx + const(QK_PRELOAD)
                 kt_off = next_qk * cS1_TILE
                 kt_view = pto.slice_view(
@@ -418,18 +395,16 @@ def module():
                 pto.tpush(qk_acc[b], qk_pipe, SPLIT_UP_DOWN)
 
             assert (NUM_TILES - QK_PRELOAD) % 2 == 0
-            for p in pto.range(c0, const((NUM_TILES - QK_PRELOAD) // 2), c1):
+            c2 = const(2)
+            for p in pto.range(c0, const(STEADY_PAIRS), c1):
                 t_a = p * c2
                 emit_cube_step(t_a, 0)
                 t_b = p * c2 + c1
                 emit_cube_step(t_b, 1)
 
             # =================== Cube epilogue: drain last QK_PRELOAD PVs ===================
-            # Tile_id range: NUM_TILES-QK_PRELOAD .. NUM_TILES-1.
-            # NUM_TILES is even and QK_PRELOAD is even, so the first epilogue
-            # tile has parity 0. v_mat[0] holds V[NUM_TILES-QK_PRELOAD] thanks
-            # to the last steady-state preload (it loaded V[t_b+1] = V[NUM_TILES-QK_PRELOAD]
-            # into v_mat[1-1]=v_mat[0]).
+            # Tile ids NUM_TILES-QK_PRELOAD .. NUM_TILES-1; v_mat parity matches
+            # the last steady-state V preload pattern (same as QK_PRELOAD==2 case).
             for k in range(QK_PRELOAD):
                 b = k % 2
                 p_raw = pto.tpop_from_aiv(p_recv_ty, SPLIT_UP_DOWN, id=ID_P)
@@ -461,7 +436,6 @@ def module():
     ) -> None:
         c0 = const(0)
         c1 = const(1)
-        c2 = const(2)
         cS0 = const(S0)
         cS0_HALF = const(S0_HALF)
         cHEAD = const(HEAD)
@@ -547,13 +521,7 @@ def module():
             red_ty, addr=const(VEC_NEW_GLOBAL_SUM_OFF, s.int64)
         )
         local_sum = pto.alloc_tile(red_ty, addr=const(VEC_LOCAL_SUM_OFF, s.int64))
-        # Ring of QK_PRELOAD exp_max tiles. With QK_PRELOAD=2 we use a/b
-        # ping-pong: even-parity tiles use exp_max_a, odd-parity tiles use
-        # exp_max_b. softmax(t) writes the exp_max for tile t into the
-        # corresponding slot; gu(t) reads it from the same slot. Because
-        # softmax(t+QK_PRELOAD) and gu(t) hit the SAME slot (parity matches),
-        # the steady-state loop must do gu(t) BEFORE softmax(t+QK_PRELOAD)
-        # to avoid clobbering.
+        # Two exp_max tiles (a/b). Interleave gu and softmax to avoid clobber.
         assert QK_PRELOAD == 2, "exp_max ring is hard-coded to 2 tiles"
         exp_max_a = pto.alloc_tile(red_ty, addr=const(VEC_EXP_MAX_A_OFF, s.int64))
         exp_max_b = pto.alloc_tile(red_ty, addr=const(VEC_EXP_MAX_B_OFF, s.int64))
@@ -625,29 +593,15 @@ def module():
             o_row_off = qb * cS0
 
             # =================== Vec prologue: softmax(0..QK_PRELOAD-1) ===================
-            # softmax(0): is_init=True (writes exp_max_a, but exp_max_a for tile 0
-            # is unused by gu(0) — gu(0) takes the init branch and just movs PV.
-            # Still we must compute it correctly; the init branch doesn't touch exp_max.
             emit_softmax_step(exp_max_a, is_init=True)
-            # softmax(1): is_init=False (writes exp_max_b)
             emit_softmax_step(exp_max_b, is_init=False)
 
             # =================== Vec steady state ===================
-            # Pair-unrolled: each `p` iteration handles tiles t_a = 2p, t_b = 2p+1.
-            # gu(t_a) reads exp_max_a (set by softmax(t_a) earlier);
-            # softmax(t_a+2) writes exp_max_a (matches parity).
-            # gu(t_b) reads exp_max_b; softmax(t_b+2) writes exp_max_b.
-            # CRITICAL: gu BEFORE softmax in same step to avoid clobbering.
-            #
-            # First pair (p=0, t_a=0, t_b=1) is Python-unrolled so we can
-            # take the `is_init=True` branch on gu(0) (which initializes
-            # o_tile via mov rather than rescale+add).
-            emit_gu_step(exp_max_a, is_init=True)  # tile 0
-            emit_softmax_step(exp_max_a, is_init=False)  # tile 2 → exp_max_a
-            emit_gu_step(exp_max_b, is_init=False)  # tile 1
-            emit_softmax_step(exp_max_b, is_init=False)  # tile 3 → exp_max_b
+            emit_gu_step(exp_max_a, is_init=True)
+            emit_softmax_step(exp_max_a, is_init=False)
+            emit_gu_step(exp_max_b, is_init=False)
+            emit_softmax_step(exp_max_b, is_init=False)
 
-            # Remaining pairs (p=1..STEADY_PAIRS-1) inside a runtime loop.
             for p in pto.range(c1, const(STEADY_PAIRS), c1):
                 emit_gu_step(exp_max_a, is_init=False)
                 emit_softmax_step(exp_max_a, is_init=False)

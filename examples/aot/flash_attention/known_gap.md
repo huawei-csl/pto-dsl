@@ -20,7 +20,7 @@ This document compares the AOT flash-attention builders (`fa_builder.py`, `exper
    DSL: cube **single-buffered** tiles with **aliased** `[k_mat_s, k_mat_s]` / same for P/V; **`QK_LOCAL_SLOT_NUM = 1`** on the QK pipe because deeper local slots overflow vec UB. That limits overlap of **TLOAD** with **TMATMUL** compared to the reference.
 
 3. **Preload depth**  
-   Reference launch uses **`QK_PRELOAD = 4`** (`fa_kernel.cpp`). Experimental DSL uses **`QK_PRELOAD = 2`**. Shallower preload reduces cube/vec overlap on long S1.
+   Reference launch uses **`QK_PRELOAD = 4`** (`fa_kernel.cpp`). Experimental DSL uses **`QK_PRELOAD = 2`**. Shallower preload reduces cube/vec overlap on long S1. A DSL port to 4 needs a **4-deep `exp_max` ring** and more VEC space; an attempt faulted until UB layout (recv scratch, `MAT_P_FIFO` tail) is redesigned.
 
 ### Macro parity (item 5) — port to Python DSL, not “optional tuning”
 
@@ -47,14 +47,29 @@ Closing the gap should **not** rely on turning sync insertion off; it should rel
 
 ---
 
+## Progress log (experimental `fa_builder.py`, Apr 2026)
+
+Measured on NPU via `experimental/run.py` (Q=2048, H=128, S1_TILE=256): kernel holds ~24–26 TFLOP/s vs ~60+ TFLOP/s for `torch_npu` fused ref on the same script; correctness (`assert_close` at `run.py:151`) remains the gate.
+
+| Change attempted | Result |
+|------------------|--------|
+| `QK_PRELOAD=4` + four `exp_max` slots + quad-unrolled vec/cube + true dual MAT banks for K/P/V | AICore CCU address fault (`mte`/`ccu`); likely VEC `tpop` scratch / expanded red region + dual `RIGHT` typing; **reverted**. |
+| True L1 ping-pong (separate `MAT_K0`/`MAT_K1`, …) without preload-4 | Overlapped `MAT_P_FIFO` with tail tiles until `MAT_P_FIFO_OFF` was recomputed; still faulted with dual `RIGHT` `alloc_tile` until fully reverted to aliased single-buffer layout. |
+| K-split: two `CUBE_S1=128` matmuls per tile via `tile.subview` on `qk_acc` | Builds and passes `assert_close`; **~7% slower** than one `S1_TILE=256` matmul on this target — **reverted**. |
+| Reorder steady cube step (PV before K load) | **Slight regression** vs original order on sampled runs — **reverted**. |
+
+**Takeaway:** Dominant gap remains **cube M (`S0=32` vs 128)** and **preload/ring depth**; raising `S0` or `QK_PRELOAD` bumps VEC/CUBE footprint and needs a audited memory map (recv scratch ≥ one `qk_vec` tile after `exp_max` slots, `MAT_P_FIFO` after all MAT tiles).
+
+---
+
 ## TODO: close the gap (Python DSL ↔ reference C++)
 
 Use this as a work backlog; order roughly reflects suggested priority (tiling/buffers first, then macro fidelity, then integration).
 
 ### Tiling and cube schedule
 
-- [ ] **Match reference cube geometry:** `CUBE_S0=128`, `CUBE_S1=128`, `TILE_S1=256`, and **`kTileFactor`** loop (two K slices per 256-wide tile) in the DSL builder’s cube kernel, or justify an equivalent FLOP/memory contract with measurements.
-- [ ] **Re-evaluate `S0=32`** (and non-experimental builder constants): target the same per-matmul **M** as the reference unless hardware constraints force otherwise.
+- [ ] **Match reference cube geometry:** `CUBE_S0=128`, `CUBE_S1=128`, `TILE_S1=256`, and **`kTileFactor`** loop (two K slices per 256-wide tile) in the DSL builder’s cube kernel, or justify an equivalent FLOP/memory contract with measurements. *(Prototype K-split only: numerics OK, throughput down on current NPU.)*
+- [ ] **Re-evaluate `S0=32`** (and non-experimental builder constants): target the same per-matmul **M** as the reference unless hardware constraints force otherwise. *(VEC `SLOT_SIZE_QK` scales with `S0`; `S0=64` overflowed UB in a back-of-envelope layout.)*
 - [ ] **Align `QK_PRELOAD`** with the reference launch (**4**) and extend the **`exp_max` / GU ring** logic (or equivalent hazard avoidance) for that depth; assert fifo and UB sizing.
 
 ### Double-buffering and overlap
