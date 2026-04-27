@@ -18,6 +18,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import torch
+import torch_npu
 from jit_util_flash import jit_compile_flash
 from ptodsl.utils import get_test_device
 from ptodsl.bench import do_bench
