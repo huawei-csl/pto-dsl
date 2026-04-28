@@ -82,9 +82,11 @@ Upstream **PTOAS** paths below are **relative to the `PTOAS/` repository root**.
 
 ## Concrete examples (reference ↔ Python today)
 
+These snippets are for **PTOAS / `ptodsl` authors** mapping hand-written C++ (`fa_kernel.cpp`) to Python builders. Line citations use this repo’s paths.
+
 ### A. QK: **`TSTORE`/`TLOAD`** (ref) vs **`tpush`/`tpop`** + ACC (Python)
 
-**Reference — cube writes fp32 QK slices to GM** (`examples/aot/flash_attention/cpp_ref/naive_tpush/fa_kernel.cpp`):
+**Reference — cube writes one `Cube_S0 × Cube_S1` fp32 strip per `sub_tile_id` to GM** (`compute_qk`):
 
 ```364:376:examples/aot/flash_attention/cpp_ref/naive_tpush/fa_kernel.cpp
         using GlobalDataQK =
@@ -98,7 +100,7 @@ Upstream **PTOAS** paths below are **relative to the `PTOAS/` repository root**.
         TSTORE(qkGlobalTile, qkAccTile);
 ```
 
-**Reference — vec reads fp32 from GM into column strips of `qkVecTile`** (same file, `compute_p`):
+**Reference — vec reads `kTileFactor` GM strips and packs them into one wide `qkVecTile`** (`compute_p`):
 
 ```505:517:examples/aot/flash_attention/cpp_ref/naive_tpush/fa_kernel.cpp
         for (int sub_col = 0; sub_col < static_cast<int>(kTileFactor); ++sub_col) {
@@ -113,11 +115,104 @@ Upstream **PTOAS** paths below are **relative to the `PTOAS/` repository root**.
         }
 ```
 
-**Reasonable Python direction (still 1:1 with ref).** Express the same **GM layout + slice loads** using **`pto.store`** / **`pto.load`** + **`slice_view`** on `__gm__` tensors (or keep **`l2g2l_pipe`** but size **`slot_size`** and **`gm_addr`** offsets to match **`base_elems`** / **`kTileFactor`**). **Do not** introduce **`tile.cvt(qk_acc → mat/left fp16)` + `tpush`** for QK: that is **not** in the reference, and MAT/LEFT **`tpush`** is not a supported producer anyway.
+**Python builder today — cube:** `kTileFactor` **inner** matmuls match the ref’s **K** tiling, but the **GM path** is still one **`ACC`** tile **`tpush`** per logical tile (full `S0 × S1_TILE` fp32), not **`kTileFactor`** separate **`TSTORE`** slots.
 
-**Python builder today** (`experimental/fa_builder.py`): one matmul over full `S1_TILE`, **`pto.tpush(qk_acc[k], qk_pipe)`**, vec **`pto.tpop(qk_vec_ty, …)`** — simpler than ref **`kTileFactor`** loop; **documented** in §1–2 as the gap to close **using ref-shaped stores/loads or matching pipe packing**.
+`accumulate_qk_for_tile` (K strips → **`qk_acc`** column subviews):
 
-### B. P: **V2C `TPipe` with `sizeof(half)`** (ref) vs vec `tile.cvt` + `tpush_to_aic` (Python)
+```359:376:examples/aot/flash_attention/experimental/fa_builder.py
+        def accumulate_qk_for_tile(k_s1_offset, qk_buf, k_mat_buf_idx):
+            for sc in range(K_TILE_FACTOR):
+                k_col = k_s1_offset + const(sc * CUBE_S1)
+                kt_view = pto.slice_view(
+                    kt_sub_slice_ty,
+                    source=tv_k,
+                    offsets=[c0, k_col],
+                    sizes=[cHEAD, cCUBE_S1],
+                )
+                pto.load(kt_view, k_mat[k_mat_buf_idx])
+                tile.mov(k_mat[k_mat_buf_idx], k_right[k_mat_buf_idx])
+                qk_part = tile.subview(
+                    qk_acc[qk_buf],
+                    [c0, const(sc * CUBE_S1)],
+                    [S0, CUBE_S1],
+                )
+                tile.matmul(q_left, k_right[k_mat_buf_idx], qk_part)
+```
+
+Prologue: one **`tpush`** per logical tile after **`accumulate_qk_for_tile`**:
+
+```387:391:examples/aot/flash_attention/experimental/fa_builder.py
+            for k in range(QK_PRELOAD):
+                k_s1_off = const(k * S1_TILE)
+                accumulate_qk_for_tile(k_s1_off, k, k % 2)
+                pto.tpush(qk_acc[k], qk_pipe, SPLIT_UP_DOWN)
+```
+
+**Python builder today — vec:** one **`tpop`** of a **half-tile** `qk_vec_ty` (`S0_HALF × S1_TILE` fp32) per softmax step, not **`Vec_S0 × Cube_S1`** repeated **`TLOAD`**s:
+
+```571:605:examples/aot/flash_attention/experimental/fa_builder.py
+        def emit_softmax_step(exp_max_slot, is_init):
+            qk_recv = pto.tpop(
+                qk_vec_ty,
+                qk_pipe,
+                SPLIT_UP_DOWN,
+                addr=const(VEC_RECV_OFF, s.int64),
+            )
+            tile.muls(qk_recv, scale, qk_recv)
+            tile.row_max(qk_recv, p_fp32, local_max)
+            # ... softmax body ...
+            tile.cvt(p_fp32, p_fp16)
+            pto.tpush_to_aic(p_fp16, SPLIT_UP_DOWN, id=ID_P)
+            pto.tfree(qk_pipe, SPLIT_UP_DOWN)
+```
+
+**Still missing vs ref (PTOAS / docs ask).** Either **document** how **`slot_size` / GM offsets** should reproduce **`base_elems` + `sub_tile_id`** packing, or show **`pto.store`/`pto.load`** that mirror **`TSTORE`/`TLOAD`** exactly. **Do not** document **`tile.cvt` on QK + `tpush` from MAT/LEFT`**; that is not the reference QK path.
+
+### A2. Schedule: **`runTFA`’s `sub_tile` loop** (C++) vs **fused Python steps** (same semantics, different shape)
+
+The reference **interleaves** cube **`compute_qk`** and vec **`compute_p`** at **`kTileFactor`** granularity inside the steady loop:
+
+```848:920:examples/aot/flash_attention/cpp_ref/naive_tpush/fa_kernel.cpp
+    for (int preload_tile = 0; preload_tile < static_cast<int>(qkPreloadNum) && preload_tile < num_tiles_s1;
+         ++preload_tile) {
+        if constexpr (DAV_CUBE) {
+            for (int sub_tile = 0; sub_tile < static_cast<int>(kTileFactor); ++sub_tile) {
+                compute_qk<...>(preload_tile, sub_tile, ...);
+            }
+        }
+        if constexpr (DAV_VEC) {
+            for (int row_slice = 0; row_slice < static_cast<int>(kTileFactor); ++row_slice) {
+                compute_p<...>(preload_tile, row_slice, ...);
+            }
+        }
+    }
+
+    for (int tile_id = 0; tile_id < num_tiles_s1; ++tile_id) {
+        // ...
+        for (int sub_tile = 0; sub_tile < static_cast<int>(kTileFactor); ++sub_tile) {
+            if constexpr (DAV_CUBE) {
+                if (next_qk_tile != -1) {
+                    compute_qk<...>(next_qk_tile, sub_tile, ...);
+                }
+            }
+            if constexpr (DAV_VEC) {
+                if (next_qk_tile != -1) {
+                    compute_p<...>(next_qk_tile, sub_tile, ...);
+                }
+            }
+            if constexpr (DAV_CUBE) {
+                compute_pv<...>(tile_id, sub_tile, ...);
+            }
+        }
+        if constexpr (DAV_VEC) {
+            compute_gu<...>(tile_id, ...);
+        }
+    }
+```
+
+**Python** (`experimental/fa_builder.py`) **fuses** all **`kTileFactor`** QK matmuls **inside** `accumulate_qk_for_tile` before **`tpush`**, and vec **`emit_softmax_step`** does **not** take explicit **`row_slice`** or **`sub_col`** arguments—**`TILE_UP_DOWN`** replaces part of the ref’s **`row_slice × Vec_S0`** story. A **PTOAS-facing doc** should spell out: “**`row_slice` loop** ↔ **`get_subblock_idx()` + fixed `S0_HALF`**” and “**`sub_col` GM loads** ↔ **either** replicated **`slice_view`** **or** one wide **`tpop`**,” so reviewers do not assume bit-identical control flow.
+
+### B. P: **V2C `TPipe` with `sizeof(half)`** (ref) vs vec **`tile.cvt`** + **`tpush_to_aic`** (Python)
 
 **Reference — P FIFO slot is fp16-sized, cube pops into MAT** (`fa_kernel.cpp`):
 
@@ -126,11 +221,172 @@ Upstream **PTOAS** paths below are **relative to the `PTOAS/` repository root**.
         TPipe<BUF1_SM_READY, Direction::DIR_V2C, Cube_S0 * Cube_S1 * sizeof(half), p_tile_fifo_slots, pMatTNBuffers>;
 ```
 
-**Python today** uses **`tile.cvt(p_fp32, p_fp16)`** then **`pto.tpush_to_aic(p_fp16, …)`** — that is a **porting of the vec→cube half path**, not the QK cube→vec path. Any **`TCvt`-like behavior for P** should stay aligned with **`pto_macro_fa_softmax`** / reference packing, not used as a precedent to invent QK dtype tricks.
+**Python — same logical edge (vec → cube), different primitive names:**
+
+```603:604:examples/aot/flash_attention/experimental/fa_builder.py
+            tile.cvt(p_fp32, p_fp16)
+            pto.tpush_to_aic(p_fp16, SPLIT_UP_DOWN, id=ID_P)
+```
+
+**Cube consumer** still **`tpop`**s into **`p_recv_ty`** (MAT), then **`mov`** to **`p_left`** for **`matmul`**—analogous to **`TPOP`** into **`pMatTile`**. The **ask for PTOAS** is macro-order parity (**`pto_macro_fa_softmax`**) and **slot byte size** documentation, not new QK **`TCvt`** ideas.
 
 ### C. **`PIPE_UNASSIGNED` on non-ACC `tpush`**
 
-If someone tries **`pto.tpush`** from a **MAT** or **LEFT** tile, verification fails (`include/PTO/IR/PTOOps.td`, `TPushOp::getPipe`). That is **consistent** with there being **no** ref-style **`TSTORE`** from MAT/LEFT to GM for QK. **Not a PTOAS feature request for FA**—use **ACC → `tpush`** (pipe) or **`pto.store`** from acc/global views like **`TSTORE`**.
+**What fails today (do not suggest as FA “fix”):**
+
+```python
+# Hypothetical / INVALID for QK in current PTO lowering:
+pto.tpush(some_left_tile, qk_pipe, split=1)   # LEFT → pipe: not a supported QK producer
+pto.tpush(some_mat_tile, qk_pipe, split=1)    # MAT → pipe: verifier / PIPE_UNASSIGNED
+```
+
+**What the Python FA builder uses instead (supported):**
+
+```python
+pto.tpush(qk_acc_tile, qk_pipe, SPLIT_UP_DOWN)  # ACC → l2g2l pipe (supported producer)
+```
+
+That matches the **intent** of ref **`TSTORE`** from **accumulator** data to a **visibility** buffer, even though the **packing** still differs from per-**`sub_tile_id`** **`TSTORE`** (§A).
+
+### D. PV: **`AccMode` + `kTileFactor`** in C++ vs **single `matmul`** in Python (verifier gap)
+
+**Reference — outer caller invokes `compute_pv` once per `sub_tile`** (`runTFA`):
+
+```912:918:examples/aot/flash_attention/cpp_ref/naive_tpush/fa_kernel.cpp
+            if constexpr (DAV_CUBE) {
+                compute_pv<HEAD_SIZE, CUBE_S0, CUBE_S1, Tile_S1, qkp_tile_fifo_size, pv_tile_fifo_size,
+                           CV_FIFO_CONS_SYNC_PERIOD, INTERMEDIATE_CHECK>(
+                    tile_id, sub_tile, v, pv_tile_fifo_block, pMatTile[pv_src_pingpong_id % pMatTNBuffers],
+                    vMatTile[pv_src_pingpong_id % vMatTNBuffers], pvAccTile,
+                    pv_src_pingpong_id % vMatTNBuffers + PV_EVENT_ID0, pvAccTileEvtID, pPipe, pv2guSync);
+                pv_src_pingpong_id++;
+            }
+```
+
+**Reference — inner `AccMode` chooses init vs accumulate across K strips** (`compute_pv`):
+
+```400:433:examples/aot/flash_attention/cpp_ref/naive_tpush/fa_kernel.cpp
+        const int s1_index = tile_id * static_cast<int>(Tile_S1) + sub_tile_id * static_cast<int>(Cube_S1);
+        // ...
+        GlobalVT vLoad((__gm__ half *)(v + s1_index * HEAD_SIZE));
+        TLOAD(vMatTile, vLoad);
+
+        TPOP<PPipe, TileMatPData, TileSplitAxis::TILE_UP_DOWN>(pPipe, pMatTile);
+
+        const AccMode accMode = (sub_tile_id == 0) ?
+                                    (is_last_subtile ? AccMode::InitFinalSum : AccMode::InitPartialSum) :
+                                    (is_last_subtile ? AccMode::AccFinalSum : AccMode::AccPartialSum);
+        pto_macro_matmul<Cube_S0, Cube_S1, Cube_HEAD>(pMatTile, vMatTile, pvAccTile, accMode);
+```
+
+**What a literal Python port would look like** (conceptual; **not** all verifiable today):
+
+```python
+# Desired shape: P is MAT, V is MAT, pv is ACC — ref uses pMatTile strips × v strips.
+for sc in range(K_TILE_FACTOR):
+    p_sub = tile.subview(p_mat, [0, sc * CUBE_S1], [S0, CUBE_S1])       # column strip of P on MAT
+    v_sub = tile.subview(v_right, [sc * CUBE_S1, 0], [CUBE_S1, HEAD])  # row strip of V on RIGHT
+    if sc == 0:
+        tile.matmul(p_sub, v_sub, pv_acc)
+    else:
+        tile.matmul_acc(pv_acc, p_sub, v_sub, pv_acc)
+```
+
+**What actually blocks this in `ptodsl` today:**
+
+- **`tile.subview(p_left, …, [S0, CUBE_S1])`** (column strip on default boxed **LEFT** RowMajor **P**) → MLIR: **`boxed RowMajor subview must keep full cols`**.
+- **`tile.matmul(p_sub_mat, v_sub, …)`** with **`p_sub_mat`** on **MAT** → MLIR: **`tmatmul` expects lhs in LEFT`**.
+
+So the **missing PTOAS / dialect / doc** piece is a **supported** way to express **ref `pto_macro_matmul` + `AccMode`** for **PV**—either **documented staging** (**`TMOV`** MAT→LEFT strips with a legal layout, or **`tmatmul`** generalization **only** where it matches the macro contract), not a new FA algorithm.
+
+**Python steady-state PV today** (one full matmul, ref-equivalent **math**, different **micro-schedule**):
+
+```408:423:examples/aot/flash_attention/experimental/fa_builder.py
+                p_raw = pto.tpop_from_aiv(p_recv_ty, SPLIT_UP_DOWN, id=ID_P)
+                tile.mov(p_raw, p_left[b])
+                pto.tfree_from_aiv(SPLIT_UP_DOWN, id=ID_P)
+                tile.mov(v_mat[b], v_right[b])
+                # ... prefetch next V into v_mat[1 - b] ...
+                tile.matmul(p_left[b], v_right[b], pv_acc[b])
+                pto.tpush(pv_acc[b], pv_pipe, SPLIT_UP_DOWN)
+```
+
+### E. **`tile.subview` sizes: Python `int` vs `s.const` (MLIR `I64ArrayAttr`)**
+
+**Fails at Python build time** (`TypeError` from `IntegerAttr.get`):
+
+```python
+cS0 = const(S0)
+cCUBE_S1 = const(CUBE_S1)
+qk_part = tile.subview(qk_acc, [c0, const(sc * CUBE_S1)], [cS0, cCUBE_S1])  # BAD: sizes are Value wrappers
+```
+
+**Works** (sizes are plain integers; offsets can stay dynamic via **`const`** / scalars as today):
+
+```python
+qk_part = tile.subview(qk_acc, [c0, const(sc * CUBE_S1)], [S0, CUBE_S1])
+```
+
+**Ask:** either **unwrap** **`const`** in **`ptodsl.api.tile.subview`** for **`sizes`**, or **document** this in PTOAS / `ptodsl` API reference so FA-style builders do not rediscover it via traceback.
+
+### F. Sync: **`TSync_Custom` + `wait`/`allocate`/`record`/`free`** (C++) vs **pipes + `tfree`** (Python)
+
+**Reference — explicit producer/consumer pairing on the QK path** (`compute_qk` / `compute_p`):
+
+```361:381:examples/aot/flash_attention/cpp_ref/naive_tpush/fa_kernel.cpp
+        if (sub_tile_id == 0 && should_wait_consume)
+            qk2smSync.allocate(); // wait for SM consume data
+        // ...
+        TSTORE(qkGlobalTile, qkAccTile);
+        // ...
+        if (sub_tile_id == static_cast<int>(kTileFactor) - 1)
+            qk2smSync.record(); // notify for QK produce data
+```
+
+```496:520:examples/aot/flash_attention/cpp_ref/naive_tpush/fa_kernel.cpp
+        wait_flag(PIPE_V, PIPE_MTE2, pTileEventId);
+        if (row_slice == 0)
+            qk2smSync.wait(); // wait for QK produce data
+        // ... TLOAD kTileFactor strips ...
+        if (row_slice == static_cast<int>(kTileFactor) - 1 && should_notify_consume)
+            qk2smSync.free(); // notify for SM consume data
+```
+
+**Sync object type** (template parameter baked into `runTFA`):
+
+```817:817:examples/aot/flash_attention/cpp_ref/naive_tpush/fa_kernel.cpp
+    constexpr TSync_Custom<SyncOpType::TSTORE_C2GM, SyncOpType::TLOAD> qk2smSync = {BUF0_QK_READY};
+```
+
+**Python — no named `TSync_Custom`; ordering relies on pipe ops + toolchain-inserted sync** (`--enable-insert-sync` in `experimental/compile.sh`):
+
+```279:281:examples/aot/flash_attention/experimental/fa_builder.py
+        qk_pipe = pto.initialize_l2g2l_pipe(
+            dir_mask=1,
+            slot_size=SLOT_SIZE_QK,
+```
+
+**Ask for PTOAS / docs:** a small **equivalence table** row per ref hook, e.g. **`qk2smSync.record()` after last `TSTORE` of a tile** ↔ **which `tpush` / GM completion barrier** in generated C++ after `ptoas` version *X*, so performance regressions can be bisected without reading all inserted barriers.
+
+### G. Row / column indexing: **`row_slice` + `Vec_S0`** (C++) vs **`get_subblock_idx` + `S0_HALF`** (Python)
+
+**Reference — software row origin per vec core and `row_slice`** (`compute_p`):
+
+```488:492:examples/aot/flash_attention/cpp_ref/naive_tpush/fa_kernel.cpp
+        const size_t subblock_base_rows =
+            static_cast<size_t>(Cube_S0 / VEC_CORES) * static_cast<size_t>(get_subblockid());
+        const size_t row_offset = subblock_base_rows + static_cast<size_t>(row_slice * Vec_S0);
+        const int s0_index = blk_idx * Cube_S0 + row_offset;
+```
+
+**Python — subblock row origin** (half of **`Cube_S0`** per AIV sub-block for **`TILE_UP_DOWN`**):
+
+```540:541:examples/aot/flash_attention/experimental/fa_builder.py
+        sb_idx = s.index_cast(pto.get_subblock_idx())
+        row_off_sb = sb_idx * cS0_HALF
+```
+
+There is **no** Python **`for row_slice in range(kTileFactor):`** around softmax; **`row_slice × Vec_S0`** from the ref is only partially reflected via **`S0_HALF`** recv tiles + pipe **`split`**. The **missing documentation** is a **direct mapping table** (`row_slice`, `Vec_S0`, `kTileFactor`) ↔ (`TILE_UP_DOWN`, `S0_HALF`, `pto.tpop` tile types), so authors do not treat **`split=1`** as a complete substitute for **ref softmax tile decomposition** without proof.
 
 ---
 
