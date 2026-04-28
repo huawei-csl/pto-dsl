@@ -30,11 +30,13 @@ Upstream **PTOAS** paths below are **relative to the `PTOAS/` repository root**.
 
 **What the reference does.** `kTileFactor = Tile_S1 / Cube_S1`; two matmul passes per logical tile; vec softmax tile **`Vec_S0 × Tile_S1`** with **`Vec_S0 = Cube_S0 / VEC_CORES / kTileFactor`** (`runTFA`); **`compute_p`** loads **`kTileFactor`** column strips from GM.
 
-**What the Python builder does today.** One **`HEAD × S1_TILE`** matmul and one full **`S0 × S1_TILE`** `tpush`; vec **`tpop`** **`S0_HALF × S1_TILE`** with **`TILE_UP_DOWN`**.
+**What the Python builder does today (experimental).** **`compute_qk`**: **`kTileFactor`** passes (**`HEAD × Cube_S1`** K slices, **`tile.subview`** on **`qk_acc`** for **`S0 × Cube_S1`** acc columns), then one full **`S0 × S1_TILE`** `tpush`. **`compute_pv`**: still a **single** **`p_left × v_right → pv_acc`** matmul per tile (no K-split / **`AccMode`** striping like the reference yet). Vec **`tpop`** **`S0_HALF × S1_TILE`** with **`TILE_UP_DOWN`**.
 
 **Ask.**
 
-- **Documented** recipes (and, if useful, **ptodsl** helpers only—no new PTO ops required) for: cube **`AccMode`/`InitPartialSum`/`AccPartialSum`**-style sequences matching `compute_qk` + `compute_pv`, and vec **`pto.load`** / **`slice_view`** patterns matching **`TLOAD`** + **`TASSIGN`** column offsets in `compute_p`.
+- **Documented** recipes (and, if useful, **ptodsl** helpers only—no new PTO ops required) for: cube **`AccMode`/`InitPartialSum`/`AccPartialSum`**-style sequences matching **`compute_pv`** (and any edge cases in **`compute_qk`**), and vec **`pto.load`** / **`slice_view`** patterns matching **`TLOAD`** + **`TASSIGN`** column offsets in `compute_p`.
+- **`tile.subview`** Python API: **`sizes`** must be plain **`int`** (they are forwarded to MLIR `I64ArrayAttr`); **`const()`** wrappers currently fail at build time—document or unwrap in **`tile.subview`**.
+- **`compute_pv` K-split in Python:** ref uses **`kTileFactor`** partial matmuls with **P** column strips. **`pto.tmatmul`** requires **`lhs` in LEFT**, but **LEFT** `tile.subview` on default boxed RowMajor **P** rejects column strips (`boxed RowMajor subview must keep full cols`). **MAT** **`p_recv`** allows the same column **`subview`** pattern as **`qk_acc`**, but **MAT cannot be `tmatmul` lhs** today. Reasonable ask: either **document** a supported recipe (e.g. **`TMOV`** staging + layout) or **relax verifier** / **extend `tmatmul`** only where it matches the reference matmul macro contract—not an invented new algorithm.
 - If something in **MLIR verification** blocks a **literal** ref-shaped **`pto.store`**/`load` schedule that is otherwise valid, file that as a **narrow bugfix** with a ref citation—not a new feature.
 
 ---

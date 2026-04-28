@@ -11,9 +11,9 @@ This document compares the AOT flash-attention builders (`fa_builder.py`, `exper
 
 ### Primary performance gaps (largest expected impact)
 
-1. **Cube tiling and S1 sub-tiling**  
-   Reference: `CUBE_S0 = 128`, `CUBE_S1 = 128`, `TILE_S1 = 256`, so **`kTileFactor = 2`** (two 128-wide K slices per logical 256-wide tile).  
-   DSL (experimental): **`S0 = 128`** by default (env `FA_S0`), still a **single** **`S1_TILE = 256`** matmul per tile (no K-split). The row-block size now matches reference **M**; the remaining gap is **K micro-tiling / matmul overlap** versus the reference’s two `Cube_S1` passes per logical tile.
+1. **Cube tiling and S1 sub-tiling (QK vs PV)**  
+   Reference: `CUBE_S0 = 128`, `CUBE_S1 = 128`, `TILE_S1 = 256`, **`kTileFactor = 2`** on **both** **`compute_qk`** and **`compute_pv`** with **`AccMode`** across subtiles.  
+   DSL (experimental): **`S0 = 128`** (env `FA_S0`), **`FA_CUBE_S1`** default **128** — **QK** now runs **`kTileFactor`** matmuls into **`qk_acc`** column **`tile.subview`s** (matches ref **`compute_qk`** geometry). **PV** is still **one** full **`S1_TILE`**-wide matmul per step (no ref-style **`compute_pv`** K-striping yet). Remaining throughput gap vs fused ref is mostly **PV / buffer depth / preload**, not “missing QK K-split”.
 
 2. **Real L1 double-buffering**  
    Reference: `kMatTNBuffers = 2`, `pMatTNBuffers = 2`, `vMatTNBuffers = 2`, plus vec-side ping-pong (`srcVecTNBuffers`, `xexpVecTNBuffers`, `outOTileNBuffers`).  
@@ -49,18 +49,18 @@ Closing the gap should **not** rely on turning sync insertion off; it should rel
 
 ## Progress log (experimental `fa_builder.py`, Apr 2026)
 
-Measured on NPU via `experimental/run.py` (Q=2048, H=128, S1_TILE=256): kernel holds ~24–26 TFLOP/s vs ~60+ TFLOP/s for `torch_npu` fused ref on the same script; correctness (`assert_close` at `run.py:151`) remains the gate.
+Measured on NPU via `experimental/run.py` (Q=2048, H=128, S1_TILE=256): with QK **`kTileFactor=2`**, **~25 TFLOP/s** at S1=8192 (Apr 2026; run-to-run variance ±~1 TFLOP/s) vs **~61 TFLOP/s** for `torch_npu` fused ref on the same script; correctness (`assert_close`) remains the gate.
 
 | Change attempted | Result |
 |------------------|--------|
 | `QK_PRELOAD=4` + four `exp_max` slots + quad-unrolled vec/cube + true dual MAT banks for K/P/V | AICore CCU address fault (`mte`/`ccu`); likely VEC `tpop` scratch / expanded red region + dual `RIGHT` typing; **reverted**. |
 | True L1 ping-pong (separate `MAT_K0`/`MAT_K1`, …) without preload-4 | Overlapped `MAT_P_FIFO` with tail tiles until `MAT_P_FIFO_OFF` was recomputed; still faulted with dual `RIGHT` `alloc_tile` until fully reverted to aliased single-buffer layout. |
-| K-split: two `CUBE_S1=128` matmuls per tile via `tile.subview` on `qk_acc` | Builds and passes `assert_close`; **~7% slower** than one `S1_TILE=256` matmul on this target — **reverted**. |
+| QK K-split: two `CUBE_S1=128` matmuls per tile via `tile.subview` on `qk_acc` | **Landed** for ref **`compute_qk`** parity; `tile.subview` **`sizes`** must be Python **`int`**, not `s.const` (MLIR `I64ArrayAttr`). **PV** ref-style **`kTileFactor`** is **blocked**: **`tmatmul` lhs must be LEFT**, but LEFT P cannot column-**`subview`**; MAT P can **`subview`** but cannot be **`tmatmul` lhs** (see `ptoas_request.md`). |
 | Reorder steady cube step (PV before K load) | **Slight regression** vs original order on sampled runs — **reverted**. |
 
-**Takeaway:** With **`S0=128`** landed in the experimental builder, the largest remaining structural gaps versus the reference are **`kTileFactor` / `CUBE_S1` K-split**, **preload / ring depth (`QK_PRELOAD`, CV FIFO)**, and **vec working-tile geometry (`Vec_S0`)** relative to what `l2g2l_pipe` + `TILE_UP_DOWN` imply for UB. Raising `QK_PRELOAD` still needs more `exp_max` slots and recv/GM budget.
+**Takeaway:** With **`S0=128`** and **QK `kTileFactor`** aligned to the reference, the largest remaining structural gaps versus the reference are **`compute_pv` K-split / `AccMode`**, **preload / ring depth (`QK_PRELOAD`, CV FIFO)**, **true L1 ping-pong**, and **vec working-tile geometry (`Vec_S0`)** relative to what `l2g2l_pipe` + `TILE_UP_DOWN` imply for UB. Raising `QK_PRELOAD` still needs more `exp_max` slots and recv/GM budget.
 
-| `S0=128` (Apr 2026) | Default `S0` raised to **128** (`FA_S0`). Cube **`pto.tpush`** uses **`ACC`** QK tiles into `l2g2l_pipe` (same as today’s supported producer); the **reference** path is **`TSTORE`** from acc to **fp32 GM**, not MAT/LEFT→GM—**`PIPE_UNASSIGNED` for MAT/LEFT `tpush` is expected**, not a toolchain defect to “fix” for FA. Builder keeps **fp32 `SLOT_SIZE_QK`**, vec **`p_fp32` as `row_max` scratch**, and a **shared `VEC_RECV_OFF`** for half-tile **`tpop`** scratch. `experimental/run.py` + `compile.sh` pass on NPU at ~24 TFLOP/s (order-of-magnitude below fused ref). |
+| `S0=128` + QK `kTileFactor` (Apr 2026) | Default `S0` **128** (`FA_S0`), **`FA_CUBE_S1`** default **128**, QK via **`tile.subview`** acc columns. Cube **`pto.tpush`** uses **`ACC`** into `l2g2l_pipe`; ref uses **`TSTORE`** to fp32 GM—**`PIPE_UNASSIGNED` for MAT/LEFT `tpush` is expected**. **`compile.sh`** + **`run.py`** pass on NPU; **~25 TFLOP/s** at 8k vs fused ref **~61 TFLOP/s**. |
 
 ---
 
@@ -78,7 +78,8 @@ Use this as a work backlog; order roughly reflects suggested priority (tiling/bu
 
 ### Tiling and cube schedule
 
-- [ ] **Match reference cube geometry:** `CUBE_S0=128`, `CUBE_S1=128`, `TILE_S1=256`, and **`kTileFactor`** loop (two K slices per 256-wide tile) in the DSL builder’s cube kernel, or justify an equivalent FLOP/memory contract with measurements. *(Prototype K-split only: numerics OK, throughput down on current NPU.)*
+- [x] **QK: match reference `kTileFactor` loop** — two **`Cube_S1`** K slices per logical tile into **`qk_acc`** (`experimental/fa_builder.py`, env **`FA_CUBE_S1`**).  
+- [ ] **PV: match reference `compute_pv`** — **`kTileFactor`** partial matmuls / **`AccMode`**. Blocked in Python today: **`tmatmul` requires LEFT lhs**; LEFT P rejects column **`tile.subview`**; MAT P allows **`subview`** but is not a legal **`tmatmul` lhs** (see **`ptoas_request.md`** §2).
 - [x] **Match reference `CUBE_S0` (128) in experimental builder** — default `S0=128` via `FA_S0` (Apr 2026); UB layout was tightened (shared `tpop` recv sizing, `row_max` scratch reuse, smaller `VEC_RED_STRIDE`). Smaller blocks remain available with `FA_S0=32` etc. if needed.
 - [ ] **Align `QK_PRELOAD`** with the reference launch (**4**) and extend the **`exp_max` / GU ring** logic (or equivalent hazard avoidance) for that depth; assert fifo and UB sizing.
 
