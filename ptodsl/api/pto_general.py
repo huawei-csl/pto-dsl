@@ -111,6 +111,10 @@ def alloc_tile(tile_type, *, addr=None, valid_row=None, valid_col=None):
     return _pto.AllocTileOp(tile_type, **kwargs).result
 
 
+def declare_tile(tile_type):
+    return Operation.create("pto.declare_tile", results=[tile_type]).result
+
+
 # %c2v_local = pto.reserve_buffer {
 #     name = "c2v_fifo",
 #     size = 4096,
@@ -231,6 +235,11 @@ def tpush(tile, pipe_handle, split):
     return _pto.TPushOp(_unwrap(tile), _unwrap(pipe_handle), split)
 
 
+def tpop_into(entry, pipe_handle, split):
+    """Pop the next pipe entry into an existing tile handle."""
+    return _pto.TPopOp(_unwrap(entry), _unwrap(pipe_handle), split)
+
+
 def tpop(tile_type, pipe_handle, split):
     """Pop the next tile from a pipe handle.
 
@@ -317,6 +326,7 @@ __all__ = [
     "vector_section",
     "cube_section",
     "alloc_tile",
+    "declare_tile",
     "reserve_buffer",
     "import_reserved_buffer",
     "aic_initialize_pipe",
@@ -332,6 +342,7 @@ __all__ = [
     "tfree_from_aic",
     "tfree_from_aiv",
     "tpush",
+    "tpop_into",
     "tpop",
     "tfree",
     "print",
