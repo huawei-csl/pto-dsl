@@ -84,7 +84,7 @@ jobs:
 
       - name: Clone pto-isa headers
         run: |
-          git clone -b feature_subtile https://gitcode.com/csjlchen/pto-isa
+          git clone -b feature_subtile https://gitcode.com/csjlchen/pto-isa.git /sources/pto-isa
           cd /sources/pto-isa && git checkout ${PTOISA_COMMIT}
 
       - name: Install ptodsl (${{ matrix.install-mode }})
