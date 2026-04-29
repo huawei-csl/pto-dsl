@@ -3,10 +3,10 @@ Recommend using [Ascend Docker Runtime](https://gitcode.com/Ascend/mind-cluster/
 Then, build and run docker image:
 
 ```bash
-RELEASE_VER=0.29
+RELEASE_VER=0.35
 sudo docker build \
     --build-arg RELEASE_VER=$RELEASE_VER \
-    . -t pto_dsl:$RELEASE_VER
+    . -t pto_dsl:fa_hack
 
 # for specific arch (x86_64 vs aarch64)
 sudo docker build \
@@ -30,7 +30,7 @@ sudo docker run --rm -it --ipc=host --privileged \
     -v /usr/local/Ascend/driver:/usr/local/Ascend/driver:ro \
     -v /etc/ascend_install.info:/etc/ascend_install.info:ro \
     -v $HOME:/mounted_home -w /mounted_home \
-    pto_dsl:$RELEASE_VER /bin/bash
+    pto_dsl:fa_hack /bin/bash
 ```
 
 ## Appendix: NPU driver
