@@ -177,7 +177,9 @@ def module():
         q_view = pto.slice_view(
             q_sub_ty, source=tv_q, offsets=[q_row_off, c0], sizes=[cS0, cHEAD]
         )
+        pto.record_event("STORE_ACC", "MATMUL", event_id=0)
         pto.load(q_view, q_mat)
+        pto.record_wait_pair("LOAD", "MOV_M2L", event_id=0)
         tile.mov(q_mat, q_left)
 
         for tile_id in pto.range(c0, tiles_this_block, c1):
@@ -191,10 +193,23 @@ def module():
                     offsets=[c0, k_col_off],
                     sizes=[cHEAD, cCUBE_S1],
                 )
+                if sub == 1:
+                    pto.wait_event("MOV_M2L", "LOAD", event_id=0)
                 pto.load(kt_view, k_mat)
+                pto.record_wait_pair("LOAD", "MOV_M2L", event_id=1 + sub)
+                if sub == 1:
+                    pto.wait_event("MATMUL", "MOV_M2L", event_id=0)
                 tile.mov(k_mat, k_right)
+                if sub == 0:
+                    pto.record_event("MOV_M2L", "LOAD", event_id=0)
+                pto.record_wait_pair("MOV_M2L", "MATMUL", event_id=sub)
+                pto.wait_event("STORE_ACC", "MATMUL", event_id=sub)
                 tile.matmul(q_left, k_right, qk_acc)
+                if sub == 0:
+                    pto.record_event("MATMUL", "MOV_M2L", event_id=0)
+                pto.record_wait_pair("MATMUL", "STORE_ACC", event_id=sub)
                 pto.tpush(qk_acc, qk_pipe, SPLIT_UP_DOWN)
+                pto.record_event("STORE_ACC", "MATMUL", event_id=1 - sub)
 
             for sub in range(SUBTILES):
                 v_col_off = tile_col_off + const(sub * CUBE_S1)
@@ -204,16 +219,27 @@ def module():
                     offsets=[v_col_off, c0],
                     sizes=[cCUBE_S1, cHEAD],
                 )
+                if sub == 1:
+                    pto.wait_event("MOV_M2L", "LOAD", event_id=1)
                 pto.load(v_view, v_mat)
                 pto.tpop_into(p_recv, p_pipe, SPLIT_UP_DOWN)
+                pto.record_wait_pair("LOAD", "MOV_M2L", event_id=3 + sub)
+                if sub == 1:
+                    pto.wait_event("MATMUL", "MOV_M2L", event_id=1)
                 tile.mov(p_recv, p_left)
                 pto.tfree(p_pipe, SPLIT_UP_DOWN)
                 tile.mov(v_mat, v_right)
                 if sub == 0:
+                    pto.record_event("MOV_M2L", "LOAD", event_id=1)
+                pto.record_wait_pair("MOV_M2L", "MATMUL", event_id=2 + sub)
+                if sub == 0:
                     tile.matmul(p_left, v_right, pv_acc)
+                    pto.record_event("MATMUL", "MOV_M2L", event_id=1)
                 else:
                     tile.matmul_acc(pv_acc, p_left, v_right, pv_acc)
+                    pto.record_wait_pair("MATMUL", "STORE_ACC", event_id=2)
             pto.tpush(pv_acc, qk_pipe, SPLIT_UP_DOWN)
+        pto.wait_event("STORE_ACC", "MATMUL", event_id=0)
 
     @pto.func(kernel="vector")
     def vector_kernel(
@@ -288,31 +314,47 @@ def module():
         scale = const(1.0 / math.sqrt(HEAD), s.float32)
         f32_one = const(1.0, s.float32)
 
+        def vbar():
+            pto.barrier("VEC")
+
         def add_reduce(dst, src):
             dst_r = tile.reshape(red_row_ty, dst)
             src_r = tile.reshape(red_row_ty, src)
+            vbar()
             tile.add(dst_r, src_r, dst_r)
 
         def init_softmax(qk0, qk1):
+            vbar()
             tile.row_max(qk0, reduce_tmp, global_max)
+            vbar()
             tile.row_max(qk1, reduce_tmp, local_max)
             global_max_r = tile.reshape(red_row_ty, global_max)
             local_max_r = tile.reshape(red_row_ty, local_max)
+            vbar()
             tile.max(global_max_r, local_max_r, global_max_r)
 
+            vbar()
             tile.row_expand_sub(qk0, global_max, qk0)
+            vbar()
             tile.muls(qk0, scale, qk0)
+            vbar()
             tile.exp(qk0, qk0)
+            vbar()
             tile.row_sum(qk0, reduce_tmp, global_sum)
 
             tile.row_expand_sub(qk1, global_max, qk1)
+            vbar()
             tile.muls(qk1, scale, qk1)
+            vbar()
             tile.exp(qk1, qk1)
+            vbar()
             tile.row_sum(qk1, reduce_tmp, local_sum)
             add_reduce(global_sum, local_sum)
 
         def update_softmax(qk0, qk1):
+            vbar()
             tile.row_max(qk0, reduce_tmp, local_max)
+            vbar()
             tile.row_max(qk1, reduce_tmp, local_sum)
             local_max_r = tile.reshape(red_row_ty, local_max)
             local_sum_r = tile.reshape(red_row_ty, local_sum)
@@ -320,59 +362,100 @@ def module():
             exp_max_r = tile.reshape(red_row_ty, exp_max)
             global_sum_r = tile.reshape(red_row_ty, global_sum)
 
+            vbar()
             tile.max(local_max_r, local_sum_r, local_max_r)
+            vbar()
             tile.max(local_max_r, global_max_r, local_max_r)
+            vbar()
             tile.sub(global_max_r, local_max_r, exp_max_r)
+            vbar()
             tile.muls(exp_max_r, scale, exp_max_r)
+            vbar()
             tile.exp(exp_max_r, exp_max_r)
             tile.muls(local_max_r, f32_one, global_max_r)
+            vbar()
             tile.mul(global_sum_r, exp_max_r, global_sum_r)
 
             tile.row_expand_sub(qk0, local_max, qk0)
+            vbar()
             tile.muls(qk0, scale, qk0)
+            vbar()
             tile.exp(qk0, qk0)
+            vbar()
             tile.row_sum(qk0, reduce_tmp, local_sum)
+            vbar()
             tile.add(global_sum_r, local_sum_r, global_sum_r)
 
             tile.row_expand_sub(qk1, local_max, qk1)
+            vbar()
             tile.muls(qk1, scale, qk1)
+            vbar()
             tile.exp(qk1, qk1)
+            vbar()
             tile.row_sum(qk1, reduce_tmp, local_sum)
+            vbar()
             tile.add(global_sum_r, local_sum_r, global_sum_r)
 
+        pto.record_event("VEC", "LOAD", event_id=[0, 1, 2, 3])
+        pto.record_event("STORE_VEC", "VEC", event_id=[0, 1])
         for tile_id in pto.range(c0, tiles_this_block, c1):
+            pto.wait_event("VEC", "LOAD", event_id=0)
+            pto.wait_event("VEC", "LOAD", event_id=2)
+            pto.barrier("LOAD")
             pto.tpop_into(recv_tile, qk_pipe, SPLIT_UP_DOWN)
+            pto.record_wait_pair("LOAD", "VEC", event_id=0)
             tile.mov(recv_tile, qk_first)
+            pto.record_event("VEC", "LOAD", event_id=4)
             pto.tfree(qk_pipe, SPLIT_UP_DOWN)
+            pto.wait_event("VEC", "LOAD", event_id=4)
             pto.tpop_into(recv_tile, qk_pipe, SPLIT_UP_DOWN)
+            pto.record_event("LOAD", "VEC", event_id=1)
 
             with pto.if_context(tile_id == c0, has_else=True) as branch:
+                pto.wait_event("LOAD", "VEC", event_id=1)
                 init_softmax(qk_first, recv_tile)
             with branch.else_context():
+                pto.wait_event("LOAD", "VEC", event_id=1)
                 update_softmax(qk_first, recv_tile)
 
+            pto.wait_event("STORE_VEC", "VEC", event_id=0)
             tile.cvt(qk_first, p_fp16, rmode="cast_rint")
+            pto.record_wait_pair("VEC", "STORE_VEC", event_id=0)
             pto.tpush(p_fp16, p_pipe, SPLIT_UP_DOWN)
+            pto.record_wait_pair("STORE_VEC", "VEC", event_id=2)
             tile.cvt(recv_tile, p_fp16, rmode="cast_rint")
+            pto.record_event("VEC", "LOAD", event_id=5)
+            pto.record_wait_pair("VEC", "STORE_VEC", event_id=1)
             pto.tpush(p_fp16, p_pipe, SPLIT_UP_DOWN)
+            pto.record_event("STORE_VEC", "VEC", event_id=0)
             pto.tfree(qk_pipe, SPLIT_UP_DOWN)
 
+            pto.wait_event("VEC", "LOAD", event_id=5)
             pto.tpop_into(recv_tile, qk_pipe, SPLIT_UP_DOWN)
+            pto.record_wait_pair("LOAD", "VEC", event_id=2)
             with pto.if_context(tile_id == c0, has_else=True) as branch:
                 tile.mov(recv_tile, o_tile)
             with branch.else_context():
                 tile.row_expand_mul(o_tile, exp_max, o_tile)
+                vbar()
                 tile.add(o_tile, recv_tile, o_tile)
+            pto.record_event("VEC", "LOAD", event_id=0)
+            pto.record_event("VEC", "LOAD", event_id=2)
             pto.tfree(qk_pipe, SPLIT_UP_DOWN)
 
+        vbar()
         tile.row_expand_div(o_tile, global_sum, o_tile)
+        pto.record_event("VEC", "STORE_VEC", event_id=2)
         o_view = pto.slice_view(
             o_sub_half_ty,
             source=tv_o,
             offsets=[q_row_off_sb, c0],
             sizes=[cS0_HALF, cHEAD],
         )
+        pto.wait_event("VEC", "STORE_VEC", event_id=2)
         pto.store(o_tile, o_view)
+        pto.wait_event("VEC", "LOAD", event_id=[0, 1, 2, 3])
+        pto.wait_event("STORE_VEC", "VEC", event_id=[0, 1])
 
     @pto.func
     def call_both(
