@@ -14,6 +14,9 @@
 
 import random
 import math
+import argparse
+import ctypes
+import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -22,6 +25,8 @@ import torch_npu
 from jit_util_flash import jit_compile_flash
 from ptodsl.utils import get_test_device
 from ptodsl.bench import do_bench
+
+THIS_DIR = Path(__file__).resolve().parent
 
 _DEVICE = get_test_device()
 torch.npu.set_device(_DEVICE)
@@ -94,17 +99,98 @@ def fused_attention(q, k, v, is_causal=False):
     return out.squeeze(0)
 
 
-def test_flash():
+def torch_to_ctypes(t: torch.Tensor) -> ctypes.c_void_p:
+    return ctypes.c_void_p(t.data_ptr())
+
+
+def load_dsl_flash(lib_path: Path | None = None):
+    if lib_path is None:
+        lib_path = THIS_DIR / "build_artifacts" / "fa_dsl.so"
+    if not lib_path.exists():
+        raise FileNotFoundError(f"Missing {lib_path}. Run `bash compile.sh` first.")
+
+    sys.path.insert(0, str(THIS_DIR / "kernels"))
+    import fa_dsl_builder  # noqa: E402
+
+    lib = ctypes.CDLL(str(lib_path))
+    lib.call_kernel.argtypes = [
+        ctypes.c_uint32,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+    ]
+    lib.call_kernel.restype = None
+
+    ws = {}
+
+    def alloc_workspace(s0: int, s1: int, head: int, device):
+        shape = (s0, s1, head, str(device))
+        if ws.get("shape") == shape:
+            return
+        block_dim = s0 // fa_dsl_builder.CUBE_S0
+        ws.clear()
+        ws["shape"] = shape
+        ws["gm_slot"] = torch.empty(
+            (fa_dsl_builder.GM_ELEMS_PER_BLOCK * block_dim,),
+            dtype=torch.float32,
+            device=device,
+        )
+        ws["o"] = torch.empty((s0, head), dtype=torch.float32, device=device)
+
+    def flash(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor):
+        if q.shape[1] != fa_dsl_builder.HEAD:
+            raise ValueError(f"HEAD must be {fa_dsl_builder.HEAD}, got {q.shape[1]}")
+        if q.shape[0] % fa_dsl_builder.CUBE_S0 != 0:
+            raise ValueError(
+                f"S0 must be divisible by CUBE_S0={fa_dsl_builder.CUBE_S0}"
+            )
+        if k.shape[0] % fa_dsl_builder.TILE_S1 != 0:
+            raise ValueError(
+                f"S1 must be divisible by TILE_S1={fa_dsl_builder.TILE_S1}"
+            )
+
+        alloc_workspace(q.shape[0], k.shape[0], q.shape[1], q.device)
+        block_dim = q.shape[0] // fa_dsl_builder.CUBE_S0
+        stream_ptr = torch.npu.current_stream()._as_parameter_
+        lib.call_kernel(
+            block_dim,
+            stream_ptr,
+            torch_to_ctypes(ws["gm_slot"]),
+            torch_to_ctypes(q),
+            torch_to_ctypes(k),
+            torch_to_ctypes(v),
+            torch_to_ctypes(ws["o"]),
+            q.shape[0],
+            k.shape[0],
+        )
+        return ws["o"]
+
+    return flash, fa_dsl_builder.TILE_S1
+
+
+def test_flash(use_dsl: bool = False):
     s0, head = 128 * 24, 128
     s1_values = [1024, 2048, 4096, 8192, 16384, 32768, 64 * 1024, 128 * 1024]
+    is_causal = True
+    tile_s1 = 128 if use_dsl else 256
+    bad_s1 = [s1 for s1 in s1_values if s1 % tile_s1 != 0]
+    if bad_s1:
+        raise ValueError(f"tile_s1={tile_s1} does not divide S1 values: {bad_s1}")
 
     dtype = torch.float16
     q2d = torch.randn((s0, head), dtype=dtype).npu()
 
-    # ==========================
-    # Compile flash ONCE
-    # ==========================
-    flash = jit_compile_flash(verbose=False)
+    if use_dsl:
+        flash, tile_s1 = load_dsl_flash()
+        run_flash = lambda q, k, v: flash(q, k, v)
+    else:
+        flash = jit_compile_flash(verbose=False)
+        run_flash = lambda q, k, v: flash(q, k, v, is_causal=True)
 
     flash_ms_values = []
     npu_ms_values = []
@@ -126,19 +212,19 @@ def test_flash():
         # Benchmark reference ops
         # ==========================
         ref_ms = do_bench(
-            lambda: fa_reference(q2d, k2d, v2d),
+            lambda: fa_reference(q2d, k2d, v2d, is_causal=is_causal),
             warmup_iters=WARMUP,
             benchmark_iters=NUM_ITERATIONS,
             unit="ms",
         )
         npu_ms = do_bench(
-            lambda: fused_attention(q2d, k2d, v2d),
+            lambda: fused_attention(q2d, k2d, v2d, is_causal=is_causal),
             warmup_iters=WARMUP,
             benchmark_iters=NUM_ITERATIONS,
             unit="ms",
         )
         flash_ms = do_bench(
-            lambda: flash(q2d, k2d, v2d),
+            lambda: run_flash(q2d, k2d, v2d),
             warmup_iters=WARMUP,
             benchmark_iters=NUM_ITERATIONS,
             unit="ms",
@@ -154,14 +240,16 @@ def test_flash():
         # ==========================
         # Correctness check
         # ==========================
-        o_out = flash(q2d, k2d, v2d)
-        o_ref = fa_reference(q2d, k2d, v2d).to(torch.float32)
-        o_npu = fused_attention(q2d, k2d, v2d).to(torch.float32)
+        o_out = run_flash(q2d, k2d, v2d)
+        o_ref = fa_reference(q2d, k2d, v2d, is_causal=is_causal).to(torch.float32)
+        o_npu = fused_attention(q2d, k2d, v2d, is_causal=is_causal).to(torch.float32)
 
         print(f"S1                         : {s1}")
+        print(f"Causal                     : {is_causal}")
+        print(f"Tile S1                    : {tile_s1}")
         print(f"FLOPs total                : {flops_total}")
         print(
-            f"JIT flash kernel           : {flash_ms:.3f} ms/iter  "
+            f"{'PTODSL flash kernel' if use_dsl else 'JIT flash kernel':<27}: {flash_ms:.3f} ms/iter  "
             f"({tflops(flops_total, flash_ms):.3f} TFLOP/s)"
         )
         print(
@@ -178,7 +266,9 @@ def test_flash():
         print("vs npu_fused_attention: PASSED")
         print("")
 
-    plot_path = Path(__file__).with_name("naive_tpush_plot.png")
+    plot_path = Path(__file__).with_name(
+        "naive_tpush_dsl_plot.png" if use_dsl else "naive_tpush_plot.png"
+    )
     plt.figure(figsize=(8, 5))
     plt.plot(s1_values, flash_tflops_values, marker="o", label="flash")
     plt.plot(s1_values, ref_tflops_values, marker="o", label="ref")
@@ -188,7 +278,8 @@ def test_flash():
     plt.xlabel("S1")
     plt.ylabel("TFLOP/s")
     plt.title(
-        f"Flash Attention (naive TPUSH/TPOP) TFLOP/s vs S1 (S0={s0}, head={head}, s1_tile=default)"
+        f"Flash Attention (naive TPUSH/TPOP{' PTODSL causal' if use_dsl else ''}) "
+        f"TFLOP/s vs S1 (S0={s0}, head={head}, s1_tile={tile_s1})"
     )
     plt.grid(True, which="both", axis="both", linestyle="--", linewidth=0.5)
     plt.legend()
@@ -199,4 +290,11 @@ def test_flash():
 
 
 if __name__ == "__main__":
-    test_flash()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--dsl",
+        action="store_true",
+        help="run the prebuilt causal PTODSL AOT variant from build_artifacts/fa_dsl.so",
+    )
+    args = parser.parse_args()
+    test_flash(use_dsl=args.dsl)
