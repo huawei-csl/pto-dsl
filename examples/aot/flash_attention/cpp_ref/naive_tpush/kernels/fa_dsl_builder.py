@@ -5,20 +5,20 @@ import math
 
 const = s.const
 
-# C++ reference shape, with CUBE_S0/TILE_S1 simplified so the vector side fits
-# in UB while preserving the same QK -> softmax/P -> PV -> update dataflow.
 CUBE_S0 = 128
 S0_HALF = CUBE_S0 // 2
 HEAD = 128
-TILE_S1 = 128
+CUBE_S1 = 128
+TILE_S1 = 256
+SUBTILES = TILE_S1 // CUBE_S1
 
 SPLIT_UP_DOWN = 1
 SLOT_NUM = 8
 LOCAL_SLOT_NUM = 1
 
-SLOT_SIZE_QK = CUBE_S0 * TILE_S1 * 4
+SLOT_SIZE_QK = CUBE_S0 * CUBE_S1 * 4
 SLOT_SIZE_PV = CUBE_S0 * HEAD * 4
-SLOT_SIZE_P = CUBE_S0 * TILE_S1 * 2
+SLOT_SIZE_P = CUBE_S0 * CUBE_S1 * 2
 
 GM_BYTES_PER_BLOCK = (SLOT_SIZE_QK + SLOT_SIZE_P) * SLOT_NUM
 GM_ELEMS_PER_BLOCK = GM_BYTES_PER_BLOCK // 4
@@ -41,49 +41,49 @@ def meta_data():
     o_tensor_ty = pto.TensorType(rank=2, dtype=fp32)
 
     q_sub_ty = pto.SubTensorType(shape=[CUBE_S0, HEAD], dtype=fp16)
-    kt_sub_ty = pto.SubTensorType(shape=[HEAD, TILE_S1], dtype=fp16)
-    v_sub_ty = pto.SubTensorType(shape=[TILE_S1, HEAD], dtype=fp16)
+    kt_sub_ty = pto.SubTensorType(shape=[HEAD, CUBE_S1], dtype=fp16)
+    v_sub_ty = pto.SubTensorType(shape=[CUBE_S1, HEAD], dtype=fp16)
     o_sub_half_ty = pto.SubTensorType(shape=[S0_HALF, HEAD], dtype=fp32)
 
     q_mat_ty = pto.TileBufType(shape=[CUBE_S0, HEAD], dtype=fp16, memory_space="MAT")
     q_left_ty = pto.TileBufType(shape=[CUBE_S0, HEAD], dtype=fp16, memory_space="LEFT")
     k_mat_ty = pto.TileBufType(
-        shape=[HEAD, TILE_S1],
+        shape=[HEAD, CUBE_S1],
         dtype=fp16,
         memory_space="MAT",
         config=pto.TileBufConfig(blayout="RowMajor", slayout="ColMajor"),
     )
     k_right_ty = pto.TileBufType(
-        shape=[HEAD, TILE_S1], dtype=fp16, memory_space="RIGHT"
+        shape=[HEAD, CUBE_S1], dtype=fp16, memory_space="RIGHT"
     )
     qk_acc_ty = pto.TileBufType(
-        shape=[CUBE_S0, TILE_S1], dtype=fp32, memory_space="ACC"
+        shape=[CUBE_S0, CUBE_S1], dtype=fp32, memory_space="ACC"
     )
 
     p_recv_ty = pto.TileBufType(
-        shape=[CUBE_S0, TILE_S1], dtype=fp16, memory_space="MAT"
+        shape=[CUBE_S0, CUBE_S1], dtype=fp16, memory_space="MAT"
     )
     p_left_ty = pto.TileBufType(
-        shape=[CUBE_S0, TILE_S1], dtype=fp16, memory_space="LEFT"
+        shape=[CUBE_S0, CUBE_S1], dtype=fp16, memory_space="LEFT"
     )
-    v_mat_ty = pto.TileBufType(shape=[TILE_S1, HEAD], dtype=fp16, memory_space="MAT")
+    v_mat_ty = pto.TileBufType(shape=[CUBE_S1, HEAD], dtype=fp16, memory_space="MAT")
     v_right_ty = pto.TileBufType(
-        shape=[TILE_S1, HEAD], dtype=fp16, memory_space="RIGHT"
+        shape=[CUBE_S1, HEAD], dtype=fp16, memory_space="RIGHT"
     )
     pv_acc_ty = pto.TileBufType(shape=[CUBE_S0, HEAD], dtype=fp32, memory_space="ACC")
 
     qk_vec_ty = pto.TileBufType(
-        shape=[S0_HALF, TILE_S1], dtype=fp32, memory_space="VEC"
+        shape=[S0_HALF, CUBE_S1], dtype=fp32, memory_space="VEC"
     )
     p_fp32_ty = pto.TileBufType(
-        shape=[S0_HALF, TILE_S1], dtype=fp32, memory_space="VEC"
+        shape=[S0_HALF, CUBE_S1], dtype=fp32, memory_space="VEC"
     )
     p_fp16_ty = pto.TileBufType(
-        shape=[S0_HALF, TILE_S1], dtype=fp16, memory_space="VEC"
+        shape=[S0_HALF, CUBE_S1], dtype=fp16, memory_space="VEC"
     )
     pv_vec_ty = pto.TileBufType(shape=[S0_HALF, HEAD], dtype=fp32, memory_space="VEC")
     o_vec_ty = pto.TileBufType(shape=[S0_HALF, HEAD], dtype=fp32, memory_space="VEC")
-    tri_ty = pto.TileBufType(shape=[S0_HALF, TILE_S1], dtype=fp32, memory_space="VEC")
+    tri_ty = pto.TileBufType(shape=[S0_HALF, CUBE_S1], dtype=fp32, memory_space="VEC")
     red_ty = pto.TileBufType(
         shape=[S0_HALF, 1],
         dtype=fp32,
@@ -111,6 +111,7 @@ def module():
         cS0 = const(CUBE_S0)
         cHEAD = const(HEAD)
         cTILE = const(TILE_S1)
+        cCUBE_S1 = const(CUBE_S1)
         cGM_BLOCK = const(GM_ELEMS_PER_BLOCK)
 
         bid = s.index_cast(pto.get_block_idx())
@@ -167,6 +168,7 @@ def module():
         k_mat = pto.alloc_tile(k_mat_ty)
         k_right = pto.alloc_tile(k_right_ty)
         qk_acc = pto.alloc_tile(qk_acc_ty)
+        p_recv = pto.alloc_tile(p_recv_ty)
         p_left = pto.alloc_tile(p_left_ty)
         v_mat = pto.alloc_tile(v_mat_ty)
         v_right = pto.alloc_tile(v_right_ty)
@@ -179,25 +181,38 @@ def module():
         tile.mov(q_mat, q_left)
 
         for tile_id in pto.range(c0, tiles_this_block, c1):
-            k_col_off = tile_id * cTILE
-            kt_view = pto.slice_view(
-                kt_sub_ty, source=tv_k, offsets=[c0, k_col_off], sizes=[cHEAD, cTILE]
-            )
-            pto.load(kt_view, k_mat)
-            tile.mov(k_mat, k_right)
-            tile.matmul(q_left, k_right, qk_acc)
-            pto.tpush(qk_acc, qk_pipe, SPLIT_UP_DOWN)
+            tile_col_off = tile_id * cTILE
 
-            p_recv = pto.tpop(p_recv_ty, p_pipe, SPLIT_UP_DOWN)
-            tile.mov(p_recv, p_left)
-            pto.tfree(p_pipe, SPLIT_UP_DOWN)
+            for sub in range(SUBTILES):
+                k_col_off = tile_col_off + const(sub * CUBE_S1)
+                kt_view = pto.slice_view(
+                    kt_sub_ty,
+                    source=tv_k,
+                    offsets=[c0, k_col_off],
+                    sizes=[cHEAD, cCUBE_S1],
+                )
+                pto.load(kt_view, k_mat)
+                tile.mov(k_mat, k_right)
+                tile.matmul(q_left, k_right, qk_acc)
+                pto.tpush(qk_acc, qk_pipe, SPLIT_UP_DOWN)
 
-            v_view = pto.slice_view(
-                v_sub_ty, source=tv_v, offsets=[k_col_off, c0], sizes=[cTILE, cHEAD]
-            )
-            pto.load(v_view, v_mat)
-            tile.mov(v_mat, v_right)
-            tile.matmul(p_left, v_right, pv_acc)
+            for sub in range(SUBTILES):
+                v_col_off = tile_col_off + const(sub * CUBE_S1)
+                v_view = pto.slice_view(
+                    v_sub_ty,
+                    source=tv_v,
+                    offsets=[v_col_off, c0],
+                    sizes=[cCUBE_S1, cHEAD],
+                )
+                pto.load(v_view, v_mat)
+                pto.tpop_into(p_recv, p_pipe, SPLIT_UP_DOWN)
+                tile.mov(p_recv, p_left)
+                pto.tfree(p_pipe, SPLIT_UP_DOWN)
+                tile.mov(v_mat, v_right)
+                if sub == 0:
+                    tile.matmul(p_left, v_right, pv_acc)
+                else:
+                    tile.matmul_acc(pv_acc, p_left, v_right, pv_acc)
             pto.tpush(pv_acc, qk_pipe, SPLIT_UP_DOWN)
 
     @pto.func(kernel="vector")
@@ -259,10 +274,11 @@ def module():
             o_tensor_ty, ptr=gm_o, shape=[s0, cHEAD], strides=[cHEAD, c1]
         )
 
-        p_fp32 = pto.alloc_tile(p_fp32_ty)
+        qk_first = pto.alloc_tile(qk_vec_ty)
+        reduce_tmp = pto.alloc_tile(p_fp32_ty)
         p_fp16 = pto.alloc_tile(p_fp16_ty)
         o_tile = pto.alloc_tile(o_vec_ty)
-        recv_tile = pto.alloc_tile(qk_vec_ty)
+        recv_tile = pto.declare_tile(qk_vec_ty)
         global_max = pto.alloc_tile(red_ty)
         local_max = pto.alloc_tile(red_ty)
         global_sum = pto.alloc_tile(red_ty)
@@ -272,43 +288,72 @@ def module():
         scale = const(1.0 / math.sqrt(HEAD), s.float32)
         f32_one = const(1.0, s.float32)
 
-        def init_softmax(qk_tile):
-            tile.row_max(qk_tile, p_fp32, global_max)
-            tile.row_expand_sub(qk_tile, global_max, p_fp32)
-            tile.muls(p_fp32, scale, p_fp32)
-            tile.exp(p_fp32, p_fp32)
-            tile.row_sum(p_fp32, qk_tile, global_sum)
+        def add_reduce(dst, src):
+            dst_r = tile.reshape(red_row_ty, dst)
+            src_r = tile.reshape(red_row_ty, src)
+            tile.add(dst_r, src_r, dst_r)
 
-        def update_softmax(qk_tile):
-            tile.row_max(qk_tile, p_fp32, local_max)
+        def init_softmax(qk0, qk1):
+            tile.row_max(qk0, reduce_tmp, global_max)
+            tile.row_max(qk1, reduce_tmp, local_max)
+            global_max_r = tile.reshape(red_row_ty, global_max)
             local_max_r = tile.reshape(red_row_ty, local_max)
+            tile.max(global_max_r, local_max_r, global_max_r)
+
+            tile.row_expand_sub(qk0, global_max, qk0)
+            tile.muls(qk0, scale, qk0)
+            tile.exp(qk0, qk0)
+            tile.row_sum(qk0, reduce_tmp, global_sum)
+
+            tile.row_expand_sub(qk1, global_max, qk1)
+            tile.muls(qk1, scale, qk1)
+            tile.exp(qk1, qk1)
+            tile.row_sum(qk1, reduce_tmp, local_sum)
+            add_reduce(global_sum, local_sum)
+
+        def update_softmax(qk0, qk1):
+            tile.row_max(qk0, reduce_tmp, local_max)
+            tile.row_max(qk1, reduce_tmp, local_sum)
+            local_max_r = tile.reshape(red_row_ty, local_max)
+            local_sum_r = tile.reshape(red_row_ty, local_sum)
             global_max_r = tile.reshape(red_row_ty, global_max)
             exp_max_r = tile.reshape(red_row_ty, exp_max)
             global_sum_r = tile.reshape(red_row_ty, global_sum)
-            local_sum_r = tile.reshape(red_row_ty, local_sum)
 
+            tile.max(local_max_r, local_sum_r, local_max_r)
             tile.max(local_max_r, global_max_r, local_max_r)
             tile.sub(global_max_r, local_max_r, exp_max_r)
             tile.muls(exp_max_r, scale, exp_max_r)
             tile.exp(exp_max_r, exp_max_r)
             tile.muls(local_max_r, f32_one, global_max_r)
-
-            tile.row_expand_sub(qk_tile, local_max, p_fp32)
-            tile.muls(p_fp32, scale, p_fp32)
-            tile.exp(p_fp32, p_fp32)
             tile.mul(global_sum_r, exp_max_r, global_sum_r)
-            tile.row_sum(p_fp32, qk_tile, local_sum)
+
+            tile.row_expand_sub(qk0, local_max, qk0)
+            tile.muls(qk0, scale, qk0)
+            tile.exp(qk0, qk0)
+            tile.row_sum(qk0, reduce_tmp, local_sum)
+            tile.add(global_sum_r, local_sum_r, global_sum_r)
+
+            tile.row_expand_sub(qk1, local_max, qk1)
+            tile.muls(qk1, scale, qk1)
+            tile.exp(qk1, qk1)
+            tile.row_sum(qk1, reduce_tmp, local_sum)
             tile.add(global_sum_r, local_sum_r, global_sum_r)
 
         for tile_id in pto.range(c0, tiles_this_block, c1):
             pto.tpop_into(recv_tile, qk_pipe, SPLIT_UP_DOWN)
+            tile.mov(recv_tile, qk_first)
+            pto.tfree(qk_pipe, SPLIT_UP_DOWN)
+            pto.tpop_into(recv_tile, qk_pipe, SPLIT_UP_DOWN)
 
             with pto.if_context(tile_id == c0, has_else=True) as branch:
-                init_softmax(recv_tile)
+                init_softmax(qk_first, recv_tile)
             with branch.else_context():
-                update_softmax(recv_tile)
+                update_softmax(qk_first, recv_tile)
 
-            tile.cvt(p_fp32, p_fp16, rmode="cast_rint")
+            tile.cvt(qk_first, p_fp16, rmode="cast_rint")
+            pto.tpush(p_fp16, p_pipe, SPLIT_UP_DOWN)
+            tile.cvt(recv_tile, p_fp16, rmode="cast_rint")
             pto.tpush(p_fp16, p_pipe, SPLIT_UP_DOWN)
             pto.tfree(qk_pipe, SPLIT_UP_DOWN)
 
