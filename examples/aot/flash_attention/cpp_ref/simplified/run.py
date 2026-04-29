@@ -95,7 +95,7 @@ def fused_attention(q, k, v, is_causal=False):
     return out.squeeze(0)
 
 
-def test_flash(tile_s1: int = 256, head: int = 128):
+def test_flash(tile_s1: int = 512, head: int = 128):
     s0 = 128 * 24
     s1_values = [1024, 2048, 4096, 8192, 16384, 32768, 64 * 1024, 128 * 1024]
     bad_s1 = [s1 for s1 in s1_values if s1 % tile_s1 != 0]

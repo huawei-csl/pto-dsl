@@ -94,7 +94,7 @@ def fused_attention(q, k, v, is_causal=False):
     return out.squeeze(0)
 
 
-def test_flash(tile_s1: int = 256, head: int = 128):
+def test_flash(tile_s1: int = 512, head: int = 128):
     if head != 128:
         raise ValueError(
             "split_pipe generated_cases.h currently instantiates HEAD_SIZE=128 only; "
@@ -201,7 +201,7 @@ def test_flash(tile_s1: int = 256, head: int = 128):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--tile-s1", type=int, choices=(256, 512, 1024), default=256)
+    parser.add_argument("--tile-s1", type=int, choices=(256, 512, 1024), default=512)
     parser.add_argument("--head", type=int, choices=(128,), default=128)
     args = parser.parse_args()
     test_flash(tile_s1=args.tile_s1, head=args.head)

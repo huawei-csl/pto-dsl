@@ -22,7 +22,7 @@ _CV_FIFO_SIZE = 8
 _CUBE_S0 = 128
 _CUBE_S1 = 128
 _SUPPORTED_TILE_S1 = (256, 512, 1024)
-_DEFAULT_TILE_S1 = 256
+_DEFAULT_TILE_S1 = 512
 
 
 def torch_to_ctypes(t: torch.Tensor) -> ctypes.c_void_p:
