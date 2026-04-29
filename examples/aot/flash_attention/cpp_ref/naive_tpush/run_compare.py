@@ -3,7 +3,9 @@
 import warnings
 
 warnings.filterwarnings("ignore")
+import argparse
 import ctypes
+import importlib
 import math
 import os
 import subprocess
@@ -42,16 +44,35 @@ def check(name, got, ref):
         raise SystemExit(f"{name}: {mismatches} elements mismatch")
 
 
-def load_ptodsl():
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--manual-sync",
+        action="store_true",
+        help="Compile and run kernels/fa_dsl_mansync.py instead of fa_dsl_builder.py.",
+    )
+    return parser.parse_args()
+
+
+def load_ptodsl(*, manual_sync=False):
+    builder_file = "fa_dsl_mansync.py" if manual_sync else "fa_dsl_builder.py"
+    builder_module = Path(builder_file).stem
+    env = os.environ.copy()
+    env["FA_DSL_BUILDER"] = builder_file
+    compile_cmd = ["bash", str(THIS_DIR / "compile.sh")]
+    if manual_sync:
+        compile_cmd.append("--manual-sync")
+
     subprocess.run(
-        ["bash", str(THIS_DIR / "compile.sh")],
+        compile_cmd,
         cwd=THIS_DIR,
         check=True,
+        env=env,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
     sys.path.insert(0, str(THIS_DIR / "kernels"))
-    import fa_dsl_builder as b  # noqa: E402
+    b = importlib.import_module(builder_module)
 
     lib = ctypes.CDLL(str(THIS_DIR / "build_artifacts" / "fa_dsl.so"))
     lib.call_kernel.argtypes = [
@@ -90,6 +111,7 @@ def load_ptodsl():
 
 
 def main():
+    args = parse_args()
     torch.npu.set_device(get_test_device())
     torch.manual_seed(1)
     torch.npu.manual_seed(1)
@@ -98,7 +120,7 @@ def main():
     k = torch.randn((S1, HEAD), dtype=torch.float16, device="npu")
     v = torch.randn((S1, HEAD), dtype=torch.float16, device="npu")
 
-    ptodsl = load_ptodsl()
+    ptodsl = load_ptodsl(manual_sync=args.manual_sync)
     cpp = jit_compile_flash(kernel_cpp=str(THIS_DIR / "fa_kernel.cpp"), verbose=False)
     ref = torch_ref(q, k, v)
     check("PTODSL", ptodsl(q, k, v), ref)

@@ -9,12 +9,37 @@ NPU_ARCH="${NPU_ARCH:-dav-2201}"
 MLIR_PATH="${ARTIFACT_DIR}/fa_dsl.mlir"
 GENERATED_CPP="${ARTIFACT_DIR}/fa_dsl.cpp"
 LIB_PATH="${ARTIFACT_DIR}/fa_dsl.so"
+FA_DSL_BUILDER="${FA_DSL_BUILDER:-fa_dsl_builder.py}"
+BUILDER_PATH="${SCRIPT_DIR}/kernels/${FA_DSL_BUILDER}"
+PTOAS_SYNC_ARGS=(--enable-insert-sync)
+
+if [[ $# -gt 1 ]]; then
+    echo "Usage: $0 [--manual-sync]" >&2
+    exit 2
+fi
+
+if [[ $# -eq 1 ]]; then
+    case "$1" in
+        --manual-sync)
+            PTOAS_SYNC_ARGS=()
+            ;;
+        *)
+            echo "Usage: $0 [--manual-sync]" >&2
+            exit 2
+            ;;
+    esac
+fi
 
 mkdir -p "${ARTIFACT_DIR}"
 rm -f "${MLIR_PATH}" "${GENERATED_CPP}" "${LIB_PATH}"
 
-python "${SCRIPT_DIR}/kernels/fa_dsl_builder.py" > "${MLIR_PATH}"
-ptoas --pto-arch=a3 --enable-insert-sync "${MLIR_PATH}" > "${GENERATED_CPP}"
+if [[ ! -f "${BUILDER_PATH}" ]]; then
+    echo "Builder not found: ${BUILDER_PATH}" >&2
+    exit 2
+fi
+
+python "${BUILDER_PATH}" > "${MLIR_PATH}"
+ptoas --pto-arch=a3 "${PTOAS_SYNC_ARGS[@]}" "${MLIR_PATH}" > "${GENERATED_CPP}"
 
 bisheng \
     -I"${PTO_LIB_PATH}/include" \

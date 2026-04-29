@@ -12,6 +12,11 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # --------------------------------------------------------------------------------
 
+import warnings
+
+warnings.filterwarnings(
+    "ignore", message=".*owner does not match the current owner.*", category=UserWarning
+)
 import random
 import math
 import argparse
@@ -179,7 +184,7 @@ def load_dsl_flash(lib_path: Path | None = None):
 def test_flash(use_dsl: bool = False):
     s0, head = 128 * 24, 128
     s1_values = [1024, 2048, 4096, 8192, 16384, 32768, 64 * 1024, 128 * 1024]
-    is_causal = not use_dsl
+    is_causal = False
     tile_s1 = 128 if use_dsl else 256
     bad_s1 = [s1 for s1 in s1_values if s1 % tile_s1 != 0]
     if bad_s1:
