@@ -12,8 +12,8 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # --------------------------------------------------------------------------------
 
-# Split-pipe FA: JIT compiles pto-isa-splitpipe fa_performance_kernel.cpp (TileSplitAxis etc.)
-# plus call_kernel_dispatch.cpp. Case list is generated_cases.h (see jit_util_flash / generate_cases.py).
+# Split-pipe FA: JIT-compiles bundled kernels/flash_atten/fa_performance_kernel.cpp (TileSplitAxis, etc.)
+# plus call_kernel_dispatch.cpp. Template instantiations are listed in generated_cases.h (regenerate via scripts/generate_cases.py).
 
 import random
 import math

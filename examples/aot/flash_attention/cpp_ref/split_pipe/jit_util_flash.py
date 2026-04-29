@@ -4,7 +4,14 @@
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # --------------------------------------------------------------------------------
 
-"""JIT compile split-pipe fa_performance_kernel.cpp + host dispatch (LaunchTFA)."""
+"""JIT compile bundled fa_performance_kernel.cpp + call_kernel_dispatch.cpp into flash_jit.so.
+
+Requires environment variables (CANN / PTO headers — not vendored here):
+  ASCEND_TOOLKIT_HOME — compiler and acl/runtime includes
+  PTO_LIB_PATH        — PTO headers (<pto/pto-inst.hpp>, prefetch, sync, …)
+
+Kernel sources live under this directory: kernels/flash_atten/
+"""
 
 import ctypes
 import os
@@ -15,8 +22,19 @@ from typing import List, Optional
 import torch
 
 ASCEND_TOOLKIT_HOME = os.environ["ASCEND_TOOLKIT_HOME"]
-_SPLITPIPE_ROOT = Path(os.environ.get("PTO_ISA_SPLITPIPE", "/workdir/pto-isa-splitpipe")).resolve()
+PTO_LIB_PATH = os.environ["PTO_LIB_PATH"]
+
 _SPLIT_PIPE_DIR = Path(__file__).resolve().parent
+_KERNEL_DIR = _SPLIT_PIPE_DIR / "kernels" / "flash_atten"
+
+
+def _pto_include_dir() -> Path:
+    """PTO_LIB_PATH may be the repo root (contains include/) or the include dir itself."""
+    root = Path(PTO_LIB_PATH).resolve()
+    nested = root / "include"
+    if nested.is_dir():
+        return nested
+    return root
 
 _CV_FIFO_SIZE = 8
 _CUBE_S0 = 128
@@ -38,24 +56,19 @@ def compile_flash(
     verbose: bool = False,
     timeout: int = 600,
     extra_sources: Optional[List[str]] = None,
-    splitpipe_root: Optional[Path] = None,
     output_lib: Optional[str] = None,
 ) -> str:
     lib_path = output_lib or str(_SPLIT_PIPE_DIR / "flash_jit.so")
-    root = splitpipe_root or _SPLITPIPE_ROOT
 
     includes = [
-        f"-I{root}/include",
-        f"-I{root}/kernels/manual/common/flash_atten",
+        f"-I{_pto_include_dir()}",
+        f"-I{_KERNEL_DIR}",
         f"-I{_SPLIT_PIPE_DIR}",
         f"-I{ASCEND_TOOLKIT_HOME}/include",
         f"-I{ASCEND_TOOLKIT_HOME}/pkg_inc/runtime",
         f"-I{ASCEND_TOOLKIT_HOME}/pkg_inc",
         f"-I{ASCEND_TOOLKIT_HOME}/pkg_inc/profiling",
     ]
-    pto_extra = os.environ.get("PTO_LIB_PATH")
-    if pto_extra:
-        includes.insert(0, f"-I{pto_extra}/include")
 
     flags = [
         "-fPIC",
@@ -112,7 +125,6 @@ def load_flash_lib(lib_path: str, check_type: bool = True):
     _ws: dict = {}
 
     def _alloc_workspace(s0: int, head: int, tile_s1: int, device):
-        # Intermediate GM layouts depend on S0/HEAD/tile_s1 only (see demos jit_util_flash).
         shape = (s0, head, tile_s1, str(device))
         if _ws.get("_shape") == shape:
             return
@@ -142,7 +154,6 @@ def load_flash_lib(lib_path: str, check_type: bool = True):
             (slots, _CUBE_S0, head), device=device, dtype=torch.float32
         )
 
-        # Match demos/torch_jit/flash_atten/jit_util_flash.py layout for LaunchTFA intermediates.
         _ws["global_sum_out"] = torch.empty(
             (num_s0_blocks, s0), device=device, dtype=torch.float32
         )
@@ -197,18 +208,13 @@ def jit_compile_flash(
     verbose: bool = False,
     clean_up: bool = True,
     kernel_cpp: Optional[str] = None,
-    splitpipe_root: Optional[Path] = None,
 ):
-    root = splitpipe_root or _SPLITPIPE_ROOT
-    kcpp = kernel_cpp or str(
-        root / "kernels/manual/common/flash_atten/fa_performance_kernel.cpp"
-    )
+    kcpp = kernel_cpp or str(_KERNEL_DIR / "fa_performance_kernel.cpp")
     dispatch = str(_SPLIT_PIPE_DIR / "call_kernel_dispatch.cpp")
     lib_path = compile_flash(
         kcpp,
         verbose=verbose,
         extra_sources=[dispatch],
-        splitpipe_root=root,
         output_lib=str(_SPLIT_PIPE_DIR / "flash_jit.so"),
     )
     func = load_flash_lib(lib_path)
