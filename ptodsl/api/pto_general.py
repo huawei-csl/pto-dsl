@@ -217,9 +217,9 @@ def initialize_l2g2l_pipe(
         slot_size,
         slot_num,
         _unwrap(gm_addr),
-        _unwrap(local_addr),
         local_slot_num=local_slot_num,
         flag_base=flag_base,
+        local_addr=_unwrap(local_addr),
         peer_local_addr=(
             _unwrap(peer_local_addr) if peer_local_addr is not None else None
         ),
