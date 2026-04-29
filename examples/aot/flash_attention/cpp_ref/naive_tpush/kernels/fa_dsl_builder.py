@@ -7,7 +7,7 @@ const = s.const
 
 # C++ reference shape, with CUBE_S0/TILE_S1 simplified so the vector side fits
 # in UB while preserving the same QK -> softmax/P -> PV -> update dataflow.
-CUBE_S0 = 64
+CUBE_S0 = 128
 S0_HALF = CUBE_S0 // 2
 HEAD = 128
 TILE_S1 = 128
@@ -20,14 +20,12 @@ SLOT_SIZE_QK = CUBE_S0 * TILE_S1 * 4
 SLOT_SIZE_PV = CUBE_S0 * HEAD * 4
 SLOT_SIZE_P = CUBE_S0 * TILE_S1 * 2
 
-GM_BYTES_PER_BLOCK = (SLOT_SIZE_QK + SLOT_SIZE_PV + SLOT_SIZE_P) * SLOT_NUM
+GM_BYTES_PER_BLOCK = (SLOT_SIZE_QK + SLOT_SIZE_P) * SLOT_NUM
 GM_ELEMS_PER_BLOCK = GM_BYTES_PER_BLOCK // 4
 GM_QK_OFF_F32 = 0
-GM_PV_OFF_F32 = (SLOT_SIZE_QK * SLOT_NUM) // 4
-GM_P_OFF_F32 = GM_PV_OFF_F32 + (SLOT_SIZE_PV * SLOT_NUM) // 4
+GM_P_OFF_F32 = (SLOT_SIZE_QK * SLOT_NUM) // 4
 
 FIFO_BYTES_QK = SLOT_SIZE_QK * LOCAL_SLOT_NUM
-FIFO_BYTES_PV = SLOT_SIZE_PV * LOCAL_SLOT_NUM
 FIFO_BYTES_P = SLOT_SIZE_P * LOCAL_SLOT_NUM
 
 
@@ -124,11 +122,10 @@ def module():
 
         gm_blk = pto.add_ptr(gm_slot_buffer, bid * cGM_BLOCK)
         gm_qk = pto.add_ptr(gm_blk, const(GM_QK_OFF_F32))
-        gm_pv = pto.add_ptr(gm_blk, const(GM_PV_OFF_F32))
         gm_p = pto.add_ptr(gm_blk, const(GM_P_OFF_F32))
 
         qk_c2v_import = pto.import_reserved_buffer(
-            name="fa_dsl_qk_c2v_fifo", peer_func="@vector_kernel"
+            name="fa_dsl_c2v_fifo", peer_func="@vector_kernel"
         )
         qk_pipe = pto.initialize_l2g2l_pipe(
             dir_mask=1,
@@ -137,18 +134,6 @@ def module():
             local_slot_num=LOCAL_SLOT_NUM,
             gm_addr=gm_qk,
             local_addr=qk_c2v_import,
-        )
-
-        pv_c2v_import = pto.import_reserved_buffer(
-            name="fa_dsl_pv_c2v_fifo", peer_func="@vector_kernel"
-        )
-        pv_pipe = pto.initialize_l2g2l_pipe(
-            dir_mask=1,
-            slot_size=SLOT_SIZE_PV,
-            slot_num=SLOT_NUM,
-            local_slot_num=LOCAL_SLOT_NUM,
-            gm_addr=gm_pv,
-            local_addr=pv_c2v_import,
         )
 
         p_v2c_local = pto.reserve_buffer(
@@ -213,7 +198,7 @@ def module():
             pto.load(v_view, v_mat)
             tile.mov(v_mat, v_right)
             tile.matmul(p_left, v_right, pv_acc)
-            pto.tpush(pv_acc, pv_pipe, SPLIT_UP_DOWN)
+            pto.tpush(pv_acc, qk_pipe, SPLIT_UP_DOWN)
 
     @pto.func(kernel="vector")
     def vector_kernel(
@@ -242,11 +227,12 @@ def module():
 
         gm_blk = pto.add_ptr(gm_slot_buffer, bid * cGM_BLOCK)
         gm_qk = pto.add_ptr(gm_blk, const(GM_QK_OFF_F32))
-        gm_pv = pto.add_ptr(gm_blk, const(GM_PV_OFF_F32))
         gm_p = pto.add_ptr(gm_blk, const(GM_P_OFF_F32))
 
         qk_c2v_local = pto.reserve_buffer(
-            name="fa_dsl_qk_c2v_fifo", size=FIFO_BYTES_QK, location="VEC"
+            name="fa_dsl_c2v_fifo",
+            size=FIFO_BYTES_QK,
+            location="VEC",
         )
         qk_pipe = pto.initialize_l2g2l_pipe(
             dir_mask=1,
@@ -255,18 +241,6 @@ def module():
             local_slot_num=LOCAL_SLOT_NUM,
             gm_addr=gm_qk,
             local_addr=qk_c2v_local,
-        )
-
-        pv_c2v_local = pto.reserve_buffer(
-            name="fa_dsl_pv_c2v_fifo", size=FIFO_BYTES_PV, location="VEC"
-        )
-        pv_pipe = pto.initialize_l2g2l_pipe(
-            dir_mask=1,
-            slot_size=SLOT_SIZE_PV,
-            slot_num=SLOT_NUM,
-            local_slot_num=LOCAL_SLOT_NUM,
-            gm_addr=gm_pv,
-            local_addr=pv_c2v_local,
         )
 
         p_v2c_import = pto.import_reserved_buffer(
@@ -288,6 +262,7 @@ def module():
         p_fp32 = pto.alloc_tile(p_fp32_ty)
         p_fp16 = pto.alloc_tile(p_fp16_ty)
         o_tile = pto.alloc_tile(o_vec_ty)
+        recv_tile = pto.alloc_tile(qk_vec_ty)
         global_max = pto.alloc_tile(red_ty)
         local_max = pto.alloc_tile(red_ty)
         global_sum = pto.alloc_tile(red_ty)
@@ -326,24 +301,24 @@ def module():
             tile.add(global_sum_r, local_sum_r, global_sum_r)
 
         for tile_id in pto.range(c0, tiles_this_block, c1):
-            qk_recv = pto.tpop(qk_vec_ty, qk_pipe, SPLIT_UP_DOWN)
+            pto.tpop_into(recv_tile, qk_pipe, SPLIT_UP_DOWN)
 
             with pto.if_context(tile_id == c0, has_else=True) as branch:
-                init_softmax(qk_recv)
+                init_softmax(recv_tile)
             with branch.else_context():
-                update_softmax(qk_recv)
+                update_softmax(recv_tile)
 
             tile.cvt(p_fp32, p_fp16, rmode="cast_rint")
             pto.tpush(p_fp16, p_pipe, SPLIT_UP_DOWN)
             pto.tfree(qk_pipe, SPLIT_UP_DOWN)
 
-            pv_recv = pto.tpop(pv_vec_ty, pv_pipe, SPLIT_UP_DOWN)
+            pto.tpop_into(recv_tile, qk_pipe, SPLIT_UP_DOWN)
             with pto.if_context(tile_id == c0, has_else=True) as branch:
-                tile.mov(pv_recv, o_tile)
+                tile.mov(recv_tile, o_tile)
             with branch.else_context():
                 tile.row_expand_mul(o_tile, exp_max, o_tile)
-                tile.add(o_tile, pv_recv, o_tile)
-            pto.tfree(pv_pipe, SPLIT_UP_DOWN)
+                tile.add(o_tile, recv_tile, o_tile)
+            pto.tfree(qk_pipe, SPLIT_UP_DOWN)
 
         tile.row_expand_div(o_tile, global_sum, o_tile)
         o_view = pto.slice_view(
