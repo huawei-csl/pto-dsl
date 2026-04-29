@@ -16,6 +16,7 @@ import random
 import math
 import argparse
 import ctypes
+import subprocess
 import sys
 from pathlib import Path
 
@@ -106,8 +107,10 @@ def torch_to_ctypes(t: torch.Tensor) -> ctypes.c_void_p:
 def load_dsl_flash(lib_path: Path | None = None):
     if lib_path is None:
         lib_path = THIS_DIR / "build_artifacts" / "fa_dsl.so"
+    print("Compiling PTODSL flash kernel...")
+    subprocess.run(["bash", str(THIS_DIR / "compile.sh")], cwd=THIS_DIR, check=True)
     if not lib_path.exists():
-        raise FileNotFoundError(f"Missing {lib_path}. Run `bash compile.sh` first.")
+        raise FileNotFoundError(f"compile.sh did not create {lib_path}")
 
     sys.path.insert(0, str(THIS_DIR / "kernels"))
     import fa_dsl_builder  # noqa: E402
@@ -176,7 +179,7 @@ def load_dsl_flash(lib_path: Path | None = None):
 def test_flash(use_dsl: bool = False):
     s0, head = 128 * 24, 128
     s1_values = [1024, 2048, 4096, 8192, 16384, 32768, 64 * 1024, 128 * 1024]
-    is_causal = True
+    is_causal = not use_dsl
     tile_s1 = 128 if use_dsl else 256
     bad_s1 = [s1 for s1 in s1_values if s1 % tile_s1 != 0]
     if bad_s1:
@@ -278,7 +281,7 @@ def test_flash(use_dsl: bool = False):
     plt.xlabel("S1")
     plt.ylabel("TFLOP/s")
     plt.title(
-        f"Flash Attention (naive TPUSH/TPOP{' PTODSL causal' if use_dsl else ''}) "
+        f"Flash Attention (naive TPUSH/TPOP{' PTODSL non-causal' if use_dsl else ''}) "
         f"TFLOP/s vs S1 (S0={s0}, head={head}, s1_tile={tile_s1})"
     )
     plt.grid(True, which="both", axis="both", linestyle="--", linewidth=0.5)
@@ -294,7 +297,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--dsl",
         action="store_true",
-        help="run the prebuilt causal PTODSL AOT variant from build_artifacts/fa_dsl.so",
+        help="run the prebuilt non-causal PTODSL AOT variant from build_artifacts/fa_dsl.so",
     )
     args = parser.parse_args()
     test_flash(use_dsl=args.dsl)

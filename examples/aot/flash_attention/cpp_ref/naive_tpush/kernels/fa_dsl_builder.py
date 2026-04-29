@@ -1,8 +1,5 @@
-from mlir.dialects import pto as _pto
-
 from ptodsl import pto, tile, to_ir_module
 from ptodsl import scalar as s
-from ptodsl.api.scalar import _unwrap
 
 import math
 
@@ -100,10 +97,6 @@ def meta_data():
     return locals()
 
 
-def ttri_upper(diagonal, out):
-    _pto.TTriOp(_unwrap(diagonal), out, upperOrLower=1)
-
-
 @to_ir_module(meta_data=meta_data, module=True)
 def module():
     @pto.func(kernel="cube")
@@ -127,7 +120,7 @@ def module():
         s1 = s.index_cast(s1_i64)
         num_tiles_s1 = s1 // cTILE
         q_row_off = bid * cS0
-        tiles_this_block = s.min_u((q_row_off // cTILE) + c1, num_tiles_s1)
+        tiles_this_block = num_tiles_s1
 
         gm_blk = pto.add_ptr(gm_slot_buffer, bid * cGM_BLOCK)
         gm_qk = pto.add_ptr(gm_blk, const(GM_QK_OFF_F32))
@@ -245,7 +238,7 @@ def module():
         q_row_off = bid * cS0
         row_off_sb = sbid * cS0_HALF
         q_row_off_sb = q_row_off + row_off_sb
-        tiles_this_block = s.min_u((q_row_off // cTILE) + c1, num_tiles_s1)
+        tiles_this_block = num_tiles_s1
 
         gm_blk = pto.add_ptr(gm_slot_buffer, bid * cGM_BLOCK)
         gm_qk = pto.add_ptr(gm_blk, const(GM_QK_OFF_F32))
@@ -294,7 +287,6 @@ def module():
 
         p_fp32 = pto.alloc_tile(p_fp32_ty)
         p_fp16 = pto.alloc_tile(p_fp16_ty)
-        triu = pto.alloc_tile(tri_ty)
         o_tile = pto.alloc_tile(o_vec_ty)
         global_max = pto.alloc_tile(red_ty)
         local_max = pto.alloc_tile(red_ty)
@@ -304,15 +296,6 @@ def module():
 
         scale = const(1.0 / math.sqrt(HEAD), s.float32)
         f32_one = const(1.0, s.float32)
-        neg_inf = const(-3.4028234663852886e38, s.float32)
-
-        def apply_causal_mask(tile_id, qk_tile):
-            diag_tile = q_row_off_sb // cTILE
-            with pto.if_context(tile_id == diag_tile):
-                diag = s.index_cast((q_row_off_sb % cTILE) + c1, pto.int32)
-                ttri_upper(diag, triu)
-                tile.muls(triu, neg_inf, triu)
-                tile.add(qk_tile, triu, qk_tile)
 
         def init_softmax(qk_tile):
             tile.row_max(qk_tile, p_fp32, global_max)
@@ -344,7 +327,6 @@ def module():
 
         for tile_id in pto.range(c0, tiles_this_block, c1):
             qk_recv = pto.tpop(qk_vec_ty, qk_pipe, SPLIT_UP_DOWN)
-            apply_causal_mask(tile_id, qk_recv)
 
             with pto.if_context(tile_id == c0, has_else=True) as branch:
                 init_softmax(qk_recv)
