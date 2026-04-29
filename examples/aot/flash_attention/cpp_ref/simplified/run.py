@@ -156,7 +156,7 @@ def test_flash(tile_s1: int = 256, head: int = 128):
         print(f"Tile S1                    : {tile_s1}")
         print(f"FLOPs total                : {flops_total}")
         print(
-            f"JIT flash kernel           : {flash_ms:.3f} ms/iter  "
+            f"PTO custom FlashAttention  : {flash_ms:.3f} ms/iter  "
             f"({tflops(flops_total, flash_ms):.3f} TFLOP/s)"
         )
         print(
@@ -164,20 +164,20 @@ def test_flash(tile_s1: int = 256, head: int = 128):
             f"({tflops(flops_total, npu_ms):.3f} TFLOP/s)"
         )
         print(
-            f"torch reference            : {ref_ms:.3f} ms/iter  "
+            f"PyTorch Eager Reference     : {ref_ms:.3f} ms/iter  "
             f"({tflops(flops_total, ref_ms):.3f} TFLOP/s)"
         )
         torch.testing.assert_close(o_out, o_ref, rtol=1e-3, atol=1e-3)
         print("vs torch reference: PASSED")
         torch.testing.assert_close(o_out, o_npu, rtol=1e-3, atol=1e-3)
-        print("vs npu_fused_attention: PASSED")
+        print("vs npu_fused_infer_attention_score: PASSED")
         print("")
 
     plot_path = Path(__file__).with_name("fa_compile_and_run_s1_plot.png")
     plt.figure(figsize=(8, 5))
-    plt.plot(s1_values, flash_tflops_values, marker="o", label="flash")
-    plt.plot(s1_values, ref_tflops_values, marker="o", label="ref")
-    plt.plot(s1_values, npu_tflops_values, marker="o", label="torch_npu")
+    plt.plot(s1_values, flash_tflops_values, marker="o", label="PTO custom FlashAttention")
+    plt.plot(s1_values, ref_tflops_values, marker="o", label="PyTorch Eager Reference")
+    plt.plot(s1_values, npu_tflops_values, marker="o", label="torch_npu.npu_fused_infer_attention_score")
     plt.xscale("log", base=2)
     plt.xticks(s1_values, [str(v) for v in s1_values])
     plt.xlabel("S1")
@@ -195,7 +195,7 @@ def test_flash(tile_s1: int = 256, head: int = 128):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--tile-s1", type=int, choices=(256, 512, 1024), default=256)
+    parser.add_argument("--tile-s1", type=int, choices=(256, 512, 1024), default=512)
     parser.add_argument("--head", type=int, choices=(32, 64, 128), default=128)
     args = parser.parse_args()
     test_flash(tile_s1=args.tile_s1, head=args.head)
