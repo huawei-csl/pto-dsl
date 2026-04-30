@@ -74,14 +74,16 @@ PyTorch does **stabilized softmax**: subtract row max, exponentiate, divide by r
 
 ### Loop: `for _ in range(repeat - 1):` row then column
 
-`pto.range(c1, repeat_idx, c1)` is the **runtime** loop over the iteration count (like Python `for _ in range(repeat - 1)` when tracing the IR). Each iteration does:
+In **`sinkhorn_k4_builder.py`**, `pto.range(c1, repeat_idx, c1)` is the **runtime** loop over the iteration count (like Python `for _ in range(repeat - 1)` when tracing the IR). In **`sinkhorn_batch8_builder.py`**, the same body is emitted with a **static** Python `for _ in range(1, repeat):` (`repeat = 10`) so the tail unrolls at IR build time; the host must still pass that same `repeat` value.
+
+Each iteration does:
 
 | PyTorch (one loop iteration) | PTO-DSL |
 |--------------------------------|---------|
 | `x / (x.sum(-1, ...) + eps)` | `row_sum` → `adds` on `row_stat` → `row_expand_div` |
 | `x / (x.sum(-2, ...) + eps)` | `col_sum` → `adds` on `col_stat` → `col_expand_div` |
 
-So the **body** of `pto.range(c1, repeat_idx, c1)` matches the **body** of the PyTorch `for` loop exactly: **row normalize, then column normalize**.
+So the **body** of that loop (whether `pto.range` or static `range`) matches the **body** of the PyTorch `for` loop exactly: **row normalize, then column normalize**.
 
 ### Writeback
 
