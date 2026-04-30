@@ -12,6 +12,9 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # --------------------------------------------------------------------------------
 
+# Split-pipe FA: JIT-compiles bundled kernels/flash_atten/fa_performance_kernel.cpp (TileSplitAxis, etc.)
+# plus call_kernel_dispatch.cpp. Template instantiations are listed in generated_cases.h (regenerate via scripts/generate_cases.py).
+
 import random
 import math
 import argparse
@@ -65,9 +68,6 @@ def tflops(flops: int, ms: float) -> float:
     return flops / (ms * 1e-3) / 1e12
 
 
-# ---------------------------
-# 2) Reference attention (pure PyTorch, fp32)
-# ---------------------------
 def fa_reference(q, k, v, is_causal=False):
     scale = 1.0 / math.sqrt(q.shape[1])
     scores = q.float() @ k.float().T * scale
@@ -82,7 +82,6 @@ def fa_reference(q, k, v, is_causal=False):
 
 def fused_attention(q, k, v, is_causal=False):
     scale = 1.0 / math.sqrt(q.shape[1])
-    # npu_fused_infer_attention_score expects BSH: (1, S, H)
     out, _ = torch_npu.npu_fused_infer_attention_score(
         q.unsqueeze(0),
         k.unsqueeze(0),
@@ -96,6 +95,12 @@ def fused_attention(q, k, v, is_causal=False):
 
 
 def test_flash(tile_s1: int = 512, head: int = 128):
+    if head != 128:
+        raise ValueError(
+            "split_pipe generated_cases.h currently instantiates HEAD_SIZE=128 only; "
+            "regenerate generated_cases.h with more heads if needed."
+        )
+
     s0 = 128 * 24
     s1_values = [1024, 2048, 4096, 8192, 16384, 32768, 64 * 1024, 128 * 1024]
     bad_s1 = [s1 for s1 in s1_values if s1 % tile_s1 != 0]
@@ -119,23 +124,27 @@ def test_flash(tile_s1: int = 512, head: int = 128):
         k2d = torch.randn((s1, head), dtype=dtype).npu()
         v2d = torch.randn((s1, head), dtype=dtype).npu()
 
+        # Custom bisheng FA kernels do not tolerate do_bench's default 256MB L2 flush between iterations.
         ref_ms = do_bench(
             lambda: fa_reference(q2d, k2d, v2d),
             warmup_iters=WARMUP,
             benchmark_iters=NUM_ITERATIONS,
             unit="ms",
+            flush_cache=False,
         )
         npu_ms = do_bench(
             lambda: fused_attention(q2d, k2d, v2d),
             warmup_iters=WARMUP,
             benchmark_iters=NUM_ITERATIONS,
             unit="ms",
+            flush_cache=False,
         )
         flash_ms = do_bench(
             lambda: flash(q2d, k2d, v2d, tile_s1=tile_s1),
             warmup_iters=WARMUP,
             benchmark_iters=NUM_ITERATIONS,
             unit="ms",
+            flush_cache=False,
         )
 
         flash_ms_values.append(flash_ms)
@@ -145,9 +154,6 @@ def test_flash(tile_s1: int = 512, head: int = 128):
         npu_tflops_values.append(tflops(flops_total, npu_ms))
         ref_tflops_values.append(tflops(flops_total, ref_ms))
 
-        # ==========================
-        # Correctness check
-        # ==========================
         o_out = flash(q2d, k2d, v2d, tile_s1=tile_s1)
         o_ref = fa_reference(q2d, k2d, v2d).to(torch.float32)
         o_npu = fused_attention(q2d, k2d, v2d).to(torch.float32)
@@ -156,7 +162,7 @@ def test_flash(tile_s1: int = 512, head: int = 128):
         print(f"Tile S1                    : {tile_s1}")
         print(f"FLOPs total                : {flops_total}")
         print(
-            f"PTO custom FlashAttention  : {flash_ms:.3f} ms/iter  "
+            f"JIT flash kernel           : {flash_ms:.3f} ms/iter  "
             f"({tflops(flops_total, flash_ms):.3f} TFLOP/s)"
         )
         print(
@@ -164,26 +170,26 @@ def test_flash(tile_s1: int = 512, head: int = 128):
             f"({tflops(flops_total, npu_ms):.3f} TFLOP/s)"
         )
         print(
-            f"PyTorch Eager Reference     : {ref_ms:.3f} ms/iter  "
+            f"torch reference            : {ref_ms:.3f} ms/iter  "
             f"({tflops(flops_total, ref_ms):.3f} TFLOP/s)"
         )
         torch.testing.assert_close(o_out, o_ref, rtol=1e-3, atol=1e-3)
         print("vs torch reference: PASSED")
         torch.testing.assert_close(o_out, o_npu, rtol=1e-3, atol=1e-3)
-        print("vs npu_fused_infer_attention_score: PASSED")
+        print("vs npu_fused_attention: PASSED")
         print("")
 
-    plot_path = Path(__file__).with_name("fa_compile_and_run_s1_plot.png")
+    plot_path = Path(__file__).with_name("fa_split_pipe_s1_plot.png")
     plt.figure(figsize=(8, 5))
-    plt.plot(s1_values, flash_tflops_values, marker="o", label="PTO custom FlashAttention")
-    plt.plot(s1_values, ref_tflops_values, marker="o", label="PyTorch Eager Reference")
-    plt.plot(s1_values, npu_tflops_values, marker="o", label="torch_npu.npu_fused_infer_attention_score")
+    plt.plot(s1_values, flash_tflops_values, marker="o", label="flash split_pipe")
+    plt.plot(s1_values, ref_tflops_values, marker="o", label="ref")
+    plt.plot(s1_values, npu_tflops_values, marker="o", label="torch_npu")
     plt.xscale("log", base=2)
     plt.xticks(s1_values, [str(v) for v in s1_values])
     plt.xlabel("S1")
     plt.ylabel("TFLOP/s")
     plt.title(
-        f"Flash Attention TFLOP/s vs S1 (S0={s0}, head={head}, tile_s1={tile_s1})"
+        f"Split-pipe FA TFLOP/s vs S1 (S0={s0}, head={head}, tile_s1={tile_s1})"
     )
     plt.grid(True, which="both", axis="both", linestyle="--", linewidth=0.5)
     plt.legend()
@@ -196,6 +202,6 @@ def test_flash(tile_s1: int = 512, head: int = 128):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--tile-s1", type=int, choices=(256, 512, 1024), default=512)
-    parser.add_argument("--head", type=int, choices=(32, 64, 128), default=128)
+    parser.add_argument("--head", type=int, choices=(128,), default=128)
     args = parser.parse_args()
     test_flash(tile_s1=args.tile_s1, head=args.head)
