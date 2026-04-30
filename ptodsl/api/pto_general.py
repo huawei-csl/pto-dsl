@@ -115,6 +115,10 @@ def declare_tile(tile_type):
     return Operation.create("pto.declare_tile", results=[tile_type]).result
 
 
+def declare_global(tensor_type):
+    return _pto.DeclareGlobalOp(tensor_type).result
+
+
 # %c2v_local = pto.reserve_buffer {
 #     name = "c2v_fifo",
 #     size = 4096,
@@ -199,10 +203,11 @@ def initialize_l2g2l_pipe(
     slot_size,
     slot_num,
     gm_addr,
-    local_addr,
+    local_addr=None,
     peer_local_addr=None,
     local_slot_num=None,
     flag_base=None,
+    nosplit=None,
 ):
     """Initialize a local-to-global-to-local pipe handle.
 
@@ -219,7 +224,8 @@ def initialize_l2g2l_pipe(
         _unwrap(gm_addr),
         local_slot_num=local_slot_num,
         flag_base=flag_base,
-        local_addr=_unwrap(local_addr),
+        nosplit=nosplit,
+        local_addr=_unwrap(local_addr) if local_addr is not None else None,
         peer_local_addr=(
             _unwrap(peer_local_addr) if peer_local_addr is not None else None
         ),
@@ -235,9 +241,9 @@ def tpush(tile, pipe_handle, split):
     return _pto.TPushOp(_unwrap(tile), _unwrap(pipe_handle), split)
 
 
-def tpop_into(entry, pipe_handle, split):
-    """Pop the next pipe entry into an existing tile handle."""
-    return _pto.TPopOp(_unwrap(entry), _unwrap(pipe_handle), split)
+def talloc(entry, pipe_handle, split):
+    """Allocate the next global tensor slot on a pipe handle."""
+    return _pto.TAllocOp(_unwrap(entry), _unwrap(pipe_handle), split)
 
 
 def tpop_into(entry, pipe_handle, split):
@@ -260,9 +266,12 @@ def tpop(tile_type, pipe_handle, split, *, addr=None):
     return dest
 
 
-def tfree(pipe_handle, split):
+def tfree(pipe_handle, split, *, entry=None):
     """Release the slot most recently popped from a pipe handle."""
-    return _pto.TFreeOp(_unwrap(pipe_handle), split)
+    kwargs = {}
+    if entry is not None:
+        kwargs["entry"] = _unwrap(entry)
+    return _pto.TFreeOp(_unwrap(pipe_handle), split, **kwargs)
 
 
 # pto.tpush_to_aiv(%acc_tile : !pto.tile_buf<loc=acc, dtype=f32, ..., pad=0>) {split = 0}
@@ -334,6 +343,7 @@ __all__ = [
     "vector_section",
     "cube_section",
     "alloc_tile",
+    "declare_global",
     "declare_tile",
     "reserve_buffer",
     "import_reserved_buffer",
@@ -350,6 +360,7 @@ __all__ = [
     "tfree_from_aic",
     "tfree_from_aiv",
     "tpush",
+    "talloc",
     "tpop_into",
     "tpop",
     "tfree",
