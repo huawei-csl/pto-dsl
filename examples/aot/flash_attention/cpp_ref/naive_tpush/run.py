@@ -22,15 +22,18 @@ import math
 import argparse
 import ctypes
 import subprocess
-import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import torch
 import torch_npu
-from jit_util_flash import jit_compile_flash
 from ptodsl.utils import get_test_device
 from ptodsl.bench import do_bench
+
+if __package__:
+    from .jit_util_flash import jit_compile_flash
+else:
+    from jit_util_flash import jit_compile_flash
 
 THIS_DIR = Path(__file__).resolve().parent
 
@@ -117,8 +120,10 @@ def load_dsl_flash(lib_path: Path | None = None):
     if not lib_path.exists():
         raise FileNotFoundError(f"compile.sh did not create {lib_path}")
 
-    sys.path.insert(0, str(THIS_DIR / "kernels"))
-    import fa_dsl_builder  # noqa: E402
+    if __package__:
+        from .kernels import fa_dsl_builder
+    else:
+        from kernels import fa_dsl_builder
 
     lib = ctypes.CDLL(str(lib_path))
     lib.call_kernel.argtypes = [
@@ -185,16 +190,12 @@ def test_flash(use_dsl: bool = False):
     s0, head = 128 * 24, 128
     s1_values = [1024, 2048, 4096, 8192, 16384, 32768, 64 * 1024, 128 * 1024]
     is_causal = False
-    tile_s1 = 128 if use_dsl else 256
-    bad_s1 = [s1 for s1 in s1_values if s1 % tile_s1 != 0]
-    if bad_s1:
-        raise ValueError(f"tile_s1={tile_s1} does not divide S1 values: {bad_s1}")
 
     dtype = torch.float16
     q2d = torch.randn((s0, head), dtype=dtype).npu()
 
     if use_dsl:
-        flash, tile_s1 = load_dsl_flash()
+        flash, _ = load_dsl_flash()
         run_flash = lambda q, k, v: flash(q, k, v)
     else:
         flash = jit_compile_flash(verbose=False)
@@ -254,7 +255,6 @@ def test_flash(use_dsl: bool = False):
 
         print(f"S1                         : {s1}")
         print(f"Causal                     : {is_causal}")
-        print(f"Tile S1                    : {tile_s1}")
         print(f"FLOPs total                : {flops_total}")
         print(
             f"{'PTODSL flash kernel' if use_dsl else 'JIT flash kernel':<27}: {flash_ms:.3f} ms/iter  "
@@ -264,10 +264,10 @@ def test_flash(use_dsl: bool = False):
             f"npu_fused_infer_attention  : {npu_ms:.3f} ms/iter  "
             f"({tflops(flops_total, npu_ms):.3f} TFLOP/s)"
         )
-        print(
-            f"torch reference            : {ref_ms:.3f} ms/iter  "
-            f"({tflops(flops_total, ref_ms):.3f} TFLOP/s)"
-        )
+        # print(
+        #     f"torch reference            : {ref_ms:.3f} ms/iter  "
+        #     f"({tflops(flops_total, ref_ms):.3f} TFLOP/s)"
+        # )
         torch.testing.assert_close(o_out, o_ref, rtol=1e-3, atol=1e-3)
         print("vs torch reference: PASSED")
         torch.testing.assert_close(o_out, o_npu, rtol=1e-3, atol=1e-3)
@@ -287,7 +287,7 @@ def test_flash(use_dsl: bool = False):
     plt.ylabel("TFLOP/s")
     plt.title(
         f"Flash Attention (naive TPUSH/TPOP{' PTODSL non-causal' if use_dsl else ''}) "
-        f"TFLOP/s vs S1 (S0={s0}, head={head}, s1_tile={tile_s1})"
+        f"TFLOP/s vs S1 (S0={s0}, head={head})"
     )
     plt.grid(True, which="both", axis="both", linestyle="--", linewidth=0.5)
     plt.legend()
