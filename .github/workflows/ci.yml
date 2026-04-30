@@ -47,8 +47,8 @@ jobs:
 
     env:
       RELEASE_REPO: hw-native-sys/PTOAS
-      RELEASE_VER: 0.35
-      RELEASE_TAG: v0.35
+      RELEASE_VER: 0.36
+      RELEASE_TAG: v0.36
       CLI_DIR: /installers/ptoas-cli
       PTOISA_COMMIT: 4d466a8e3cfa363281eb5e67449575eade5bf366
 

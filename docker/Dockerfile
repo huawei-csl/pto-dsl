@@ -31,10 +31,10 @@ ARG CACHE_BURST=1
 
 # ARG ARCH=x86_64
 ARG ARCH=aarch64
-# https://github.com/hw-native-sys/PTOAS/releases/tag/v0.35
+# https://github.com/hw-native-sys/PTOAS/releases/tag/v0.36
 # include the split pipes https://github.com/hw-native-sys/PTOAS/pull/606
 ARG RELEASE_REPO=hw-native-sys/PTOAS
-ARG RELEASE_VER=0.35
+ARG RELEASE_VER=0.36
 ARG RELEASE_TAG=v${RELEASE_VER}
 ARG WHEEL_NAME=ptoas-${RELEASE_VER}-cp311-none-manylinux_2_34_${ARCH}.whl
 ARG CLI_TAR_NAME=ptoas-bin-${ARCH}.tar.gz
