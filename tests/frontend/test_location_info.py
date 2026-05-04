@@ -44,6 +44,6 @@ def test_location_info_in_asm():
     )
     print(asm)
     # Kernel def
-    assert 'tests/frontend/test_location_info.py":26:0)' in asm
+    assert 'tests/frontend/test_location_info.py":28:0)' in asm
     # Const def
-    assert 'tests/frontend/test_location_info.py":32:9)' in asm
+    assert 'tests/frontend/test_location_info.py":34:9)' in asm
