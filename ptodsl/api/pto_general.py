@@ -2,32 +2,28 @@ import inspect
 from contextlib import contextmanager
 
 from mlir.dialects import pto as _pto
-from mlir.ir import FlatSymbolRefAttr, InsertionPoint, Operation, Location
+from mlir.ir import FlatSymbolRefAttr, InsertionPoint, Operation
 
 from .scalar import Value, _unwrap
-
+from ..utils.codegen import get_user_code_loc
 
 def get_block_idx():
-    frame = inspect.stack()[1]
-    with Location.file(frame.filename, frame.lineno, 0):
+    with get_user_code_loc():
         return Value(_pto.GetBlockIdxOp().result)
 
 
 def get_subblock_idx():
-    frame = inspect.stack()[1]
-    with Location.file(frame.filename, frame.lineno, 0):
+    with get_user_code_loc():
         return Value(_pto.GetSubBlockIdxOp().result)
 
 
 def get_subblock_num():
-    frame = inspect.stack()[1]
-    with Location.file(frame.filename, frame.lineno, 0):
+    with get_user_code_loc():
         return Value(_pto.GetSubBlockNumOp().result)
 
 
 def get_block_num():
-    frame = inspect.stack()[1]
-    with Location.file(frame.filename, frame.lineno, 0):
+    with get_user_code_loc():
         return Value(_pto.GetBlockNumOp().result)
 
 

@@ -261,22 +261,22 @@ def cvt(src, dst, *, rmode=None):
     _pto.TCvtOp(src=src, dst=dst, rmode=rmode_attr)
 
 
-_QUANT_TYPE = {
-    "int8_sym": _pto.QuantType.INT8_SYM,
-    "int8_asym": _pto.QuantType.INT8_ASYM,
-}
+# _QUANT_TYPE = {
+#     "int8_sym": _pto.QuantType.INT8_SYM,
+#     "int8_asym": _pto.QuantType.INT8_ASYM,
+# }
 
 
-def quant(src, fp, dst, quant_type, *, offset=None):
-    """Quantize fp32 src tile to int8/uint8 dst tile.
+# def quant(src, fp, dst, quant_type, *, offset=None):
+#     """Quantize fp32 src tile to int8/uint8 dst tile.
 
-    quant_type: "int8_sym"  → signed int8,   dst = clip(round(src * fp), -128, 127)
-                "int8_asym" → unsigned uint8, dst = clip(round(src * fp + offset), 0, 255)
-    fp:     inverse-scale tile, same shape as src.
-    offset: zero-point tile, same shape as src (int8_asym only).
-    """
-    qtype_attr = _pto.QuantTypeAttr.get(_QUANT_TYPE[quant_type])
-    _pto.TQuantOp(src=src, fp=fp, dst=dst, quant_type=qtype_attr, offset=offset)
+#     quant_type: "int8_sym"  → signed int8,   dst = clip(round(src * fp), -128, 127)
+#                 "int8_asym" → unsigned uint8, dst = clip(round(src * fp + offset), 0, 255)
+#     fp:     inverse-scale tile, same shape as src.
+#     offset: zero-point tile, same shape as src (int8_asym only).
+#     """
+#     qtype_attr = _pto.QuantTypeAttr.get(_QUANT_TYPE[quant_type])
+#     _pto.TQuantOp(src=src, fp=fp, dst=dst, quant_type=qtype_attr, offset=offset)
 
 
 def print(source):

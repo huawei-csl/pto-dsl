@@ -4,6 +4,7 @@ from mlir.dialects import func, pto as _pto
 from mlir.ir import Attribute, Context, InsertionPoint, Location, Module, UnitAttr
 
 from ..api.scalar import wrap_value
+from ..utils.codegen import get_user_code_loc
 
 
 # For the inner decorators to be clean for the user visible API `pto.func(kernel='cube')`
@@ -86,10 +87,7 @@ def _define(module, ctx, meta_map, fn, *, name=None, entry=False, kernel=None):
     fn_name = name or fn.__name__
     fn_ty = func.FunctionType.get(arg_types, ret_types)
 
-    dec_file = inspect.getsourcefile(fn)
-    dec_line = inspect.getsourcelines(fn)[1]
-
-    with InsertionPoint(module.body, Location.file(dec_file, dec_line, 0)):
+    with InsertionPoint(module.body):
         ir_func = func.FuncOp(fn_name, fn_ty)
 
     if entry:
@@ -141,8 +139,7 @@ def ir_func(fn=None, *, name=None, kernel=None):
 def to_ir_module(*, meta_data, module=False):
     def decorator(fn):
         global _CURRENT
-
-        with Context() as ctx, Location.unknown():
+        with Context() as ctx, get_user_code_loc():
             _pto.register_dialect(ctx, load=True)
             meta_map = _resolve_meta(meta_data)
             ir_module = Module.create()

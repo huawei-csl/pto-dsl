@@ -1,7 +1,7 @@
 from mlir.dialects import arith
 from mlir.ir import F16Type, F32Type, IndexType, IntegerType, Location
 
-import inspect
+from ..utils.codegen import get_user_code_loc
 
 def _unwrap(value):
     if isinstance(value, Value):
@@ -16,62 +16,81 @@ class Value:
         self.raw = raw
 
     def __mul__(self, other):
-        return Value(arith.MulIOp(_unwrap(self), _unwrap(other)).result)
+        with get_user_code_loc():  
+            return Value(arith.MulIOp(_unwrap(self), _unwrap(other)).result)
 
     def __rmul__(self, other):
-        return Value(arith.MulIOp(_unwrap(other), _unwrap(self)).result)
+        with get_user_code_loc():
+            return Value(arith.MulIOp(_unwrap(other), _unwrap(self)).result)
 
     def __add__(self, other):
-        return Value(arith.AddIOp(_unwrap(self), _unwrap(other)).result)
+        with get_user_code_loc():
+            return Value(arith.AddIOp(_unwrap(self), _unwrap(other)).result)
 
     def __radd__(self, other):
-        return Value(arith.AddIOp(_unwrap(other), _unwrap(self)).result)
+        with get_user_code_loc():
+            return Value(arith.AddIOp(_unwrap(other), _unwrap(self)).result)
 
     def __sub__(self, other):
-        return Value(arith.SubIOp(_unwrap(self), _unwrap(other)).result)
+        with get_user_code_loc():
+            return Value(arith.SubIOp(_unwrap(self), _unwrap(other)).result)
 
     def __rsub__(self, other):
-        return Value(arith.SubIOp(_unwrap(other), _unwrap(self)).result)
+        with get_user_code_loc():
+            return Value(arith.SubIOp(_unwrap(other), _unwrap(self)).result)
 
     def __floordiv__(self, other):
-        return Value(arith.DivSIOp(_unwrap(self), _unwrap(other)).result)
+        with get_user_code_loc():
+            return Value(arith.DivSIOp(_unwrap(self), _unwrap(other)).result)
 
     def __rfloordiv__(self, other):
-        return Value(arith.DivSIOp(_unwrap(other), _unwrap(self)).result)
+        with get_user_code_loc():
+            return Value(arith.DivSIOp(_unwrap(other), _unwrap(self)).result)
 
     def __truediv__(self, other):
-        return Value(arith.DivFOp(_unwrap(self), _unwrap(other)).result)
+        with get_user_code_loc():
+            return Value(arith.DivFOp(_unwrap(self), _unwrap(other)).result)
 
     def __rtruediv__(self, other):
-        return Value(arith.DivFOp(_unwrap(other), _unwrap(self)).result)
+        with get_user_code_loc():
+            return Value(arith.DivFOp(_unwrap(other), _unwrap(self)).result)
 
     def __mod__(self, other):
-        return Value(arith.RemSIOp(_unwrap(self), _unwrap(other)).result)
+        with get_user_code_loc():
+            return Value(arith.RemSIOp(_unwrap(self), _unwrap(other)).result)
 
     def __rmod__(self, other):
-        return Value(arith.RemSIOp(_unwrap(other), _unwrap(self)).result)
+        with get_user_code_loc():
+            return Value(arith.RemSIOp(_unwrap(other), _unwrap(self)).result)
 
     @staticmethod
     def _cmp(lhs, rhs, predicate):
-        return Value(arith.CmpIOp(predicate, _unwrap(lhs), _unwrap(rhs)).result)
+        with get_user_code_loc():
+            return Value(arith.CmpIOp(predicate, _unwrap(lhs), _unwrap(rhs)).result)
 
     def __lt__(self, other):
-        return Value._cmp(self, other, arith.CmpIPredicate.slt)
+        with get_user_code_loc():
+            return Value._cmp(self, other, arith.CmpIPredicate.slt)
 
     def __gt__(self, other):
-        return Value._cmp(self, other, arith.CmpIPredicate.sgt)
+        with get_user_code_loc():
+            return Value._cmp(self, other, arith.CmpIPredicate.sgt)
 
     def __le__(self, other):
-        return Value._cmp(self, other, arith.CmpIPredicate.sle)
+        with get_user_code_loc():
+            return Value._cmp(self, other, arith.CmpIPredicate.sle)
 
     def __ge__(self, other):
-        return Value._cmp(self, other, arith.CmpIPredicate.sge)
+        with get_user_code_loc():
+            return Value._cmp(self, other, arith.CmpIPredicate.sge)
 
     def __eq__(self, other):
-        return Value._cmp(self, other, arith.CmpIPredicate.eq)
+        with get_user_code_loc():
+            return Value._cmp(self, other, arith.CmpIPredicate.eq)
 
     def __ne__(self, other):
-        return Value._cmp(self, other, arith.CmpIPredicate.ne)
+        with get_user_code_loc():
+            return Value._cmp(self, other, arith.CmpIPredicate.ne)
 
     def __getattr__(self, item):
         return getattr(self.raw, item)
@@ -110,7 +129,8 @@ def __getattr__(name):
 def const(value, type=None):
     if type is None:
         type = IndexType.get()
-    return Value(arith.ConstantOp(type, value).result)
+    with get_user_code_loc():
+        return Value(arith.ConstantOp(type, value).result)
 
 
 def index_cast(value, index_type=IndexType):
@@ -118,47 +138,55 @@ def index_cast(value, index_type=IndexType):
         dst = index_type.get()
     else:
         dst = index_type
-    frame = inspect.stack()[1]
-    with Location.file(frame.filename, frame.lineno, 0):
+    with get_user_code_loc():
         return Value(arith.IndexCastOp(dst, _unwrap(value)).result)
 
 
 def ceil_div(a, b):
-    return Value(arith.CeilDivSIOp(_unwrap(a), _unwrap(b)).result)
+    with get_user_code_loc():
+        return Value(arith.CeilDivSIOp(_unwrap(a), _unwrap(b)).result)
 
 
 def div_s(a, b):
-    return Value(arith.DivSIOp(_unwrap(a), _unwrap(b)).result)
+    with get_user_code_loc():
+        return Value(arith.DivSIOp(_unwrap(a), _unwrap(b)).result)
 
 
 def rem_s(a, b):
-    return Value(arith.RemSIOp(_unwrap(a), _unwrap(b)).result)
+    with get_user_code_loc():
+        return Value(arith.RemSIOp(_unwrap(a), _unwrap(b)).result)
 
 
 def min_u(a, b):
-    return Value(arith.MinUIOp(_unwrap(a), _unwrap(b)).result)
+    with get_user_code_loc():
+        return Value(arith.MinUIOp(_unwrap(a), _unwrap(b)).result)
 
 
 def eq(a, b):
-    return Value(arith.CmpIOp(arith.CmpIPredicate.eq, _unwrap(a), _unwrap(b)).result)
+    with get_user_code_loc():
+        return Value(arith.CmpIOp(arith.CmpIPredicate.eq, _unwrap(a), _unwrap(b)).result)
 
 
 def lt(a, b):
-    return Value(arith.CmpIOp(arith.CmpIPredicate.slt, _unwrap(a), _unwrap(b)).result)
+    with get_user_code_loc():
+        return Value(arith.CmpIOp(arith.CmpIPredicate.slt, _unwrap(a), _unwrap(b)).result)
 
 
 def gt(a, b):
-    return Value(arith.CmpIOp(arith.CmpIPredicate.sgt, _unwrap(a), _unwrap(b)).result)
+    with get_user_code_loc():
+        return Value(arith.CmpIOp(arith.CmpIPredicate.sgt, _unwrap(a), _unwrap(b)).result)
 
 
 def ge(a, b):
-    return Value(arith.CmpIOp(arith.CmpIPredicate.sge, _unwrap(a), _unwrap(b)).result)
+    with get_user_code_loc():
+        return Value(arith.CmpIOp(arith.CmpIPredicate.sge, _unwrap(a), _unwrap(b)).result)
 
 
 def select(cond, true_val, false_val):
-    return Value(
-        arith.SelectOp(_unwrap(cond), _unwrap(true_val), _unwrap(false_val)).result
-    )
+    with get_user_code_loc():
+        return Value(
+            arith.SelectOp(_unwrap(cond), _unwrap(true_val), _unwrap(false_val)).result
+        )
 
 
 def truncf(value, target_type):
@@ -167,7 +195,8 @@ def truncf(value, target_type):
     Returns a raw MLIR value suitable for use as a tile scalar operand
     (e.g. with tile.muls / tile.adds).
     """
-    return arith.TruncFOp(target_type, _unwrap(value)).result
+    with get_user_code_loc():
+        return arith.TruncFOp(target_type, _unwrap(value)).result
 
 
 __all__ = [
