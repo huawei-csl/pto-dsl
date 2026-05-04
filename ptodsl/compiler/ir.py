@@ -87,7 +87,9 @@ def _define(module, ctx, meta_map, fn, *, name=None, entry=False, kernel=None):
     fn_name = name or fn.__name__
     fn_ty = func.FunctionType.get(arg_types, ret_types)
 
-    with InsertionPoint(module.body):
+    fn_file = inspect.getsourcefile(fn)
+    fn_line = inspect.getsourcelines(fn)[1]
+    with InsertionPoint(module.body), Location.file(fn_file, fn_line, 0):
         ir_func = func.FuncOp(fn_name, fn_ty)
 
     if entry:
@@ -98,7 +100,7 @@ def _define(module, ctx, meta_map, fn, *, name=None, entry=False, kernel=None):
         )
 
     block = ir_func.add_entry_block()
-    with InsertionPoint(block):
+    with InsertionPoint(block), Location.file(fn_file, fn_line, 0):
         wrapped_args = [wrap_value(arg) for arg in block.arguments]
         old = _inject_globals(fn, meta_map)
         try:

@@ -1,12 +1,10 @@
 from contextlib import contextmanager
 
 from mlir.dialects import scf
-from mlir.ir import InsertionPoint, Location
+from mlir.ir import InsertionPoint
 
 from .scalar import Value, _unwrap
 from ..utils.codegen import get_user_code_loc
-
-import inspect
 
 
 def range(start, stop, step):
