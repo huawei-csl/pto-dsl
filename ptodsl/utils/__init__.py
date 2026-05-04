@@ -1,3 +1,5 @@
+__path__ = __import__("pkgutil").extend_path(__path__, __name__)
+
 from .bench import do_bench
 from .npu_info import get_num_cube_cores, get_num_vec_cores, get_test_device
 

@@ -1,13 +1,17 @@
 from contextlib import contextmanager
 
 from mlir.dialects import scf
-from mlir.ir import InsertionPoint
+from mlir.ir import InsertionPoint, Location
 
 from .scalar import Value, _unwrap
+from ..utils.codegen import get_user_code_loc
+
+import inspect
 
 
 def range(start, stop, step):
-    loop = scf.ForOp(_unwrap(start), _unwrap(stop), _unwrap(step))
+    with get_user_code_loc():
+        loop = scf.ForOp(_unwrap(start), _unwrap(stop), _unwrap(step))
     with InsertionPoint(loop.body):
         yield Value(loop.induction_variable)
         scf.YieldOp([])
@@ -27,10 +31,12 @@ class _IfElseBranch:
 @contextmanager
 def if_context(condition, has_else=False):
     if has_else:
-        op = scf.IfOp(_unwrap(condition), [], hasElse=True)
+        with get_user_code_loc():
+            op = scf.IfOp(_unwrap(condition), [], hasElse=True)
         branch = _IfElseBranch(op)
     else:
-        op = scf.IfOp(_unwrap(condition))
+        with get_user_code_loc():
+            op = scf.IfOp(_unwrap(condition))
         branch = None
 
     with InsertionPoint(op.then_block):
@@ -39,7 +45,8 @@ def if_context(condition, has_else=False):
 
 
 def cond(condition, then_builder, else_builder):
-    op = scf.IfOp(_unwrap(condition), [], hasElse=True)
+    with get_user_code_loc():
+        op = scf.IfOp(_unwrap(condition), [], hasElse=True)
     with InsertionPoint(op.then_block):
         then_builder()
         scf.YieldOp([])
