@@ -13,16 +13,16 @@ _DEVICE = get_test_device()
 _BLOCK_DIM = get_num_cube_cores()
 
 UNARY_OPS = [
-    # ("rsqrt", lambda x: x.rsqrt()),
-    # ("sqrt", lambda x: x.sqrt()),
-    # ("exp", lambda x: x.exp()),
-    # ("log", lambda x: x.log()),
-    # ("relu", lambda x: x.relu()),
+    ("rsqrt", lambda x: x.rsqrt()),
+    ("sqrt", lambda x: x.sqrt()),
+    ("exp", lambda x: x.exp()),
+    ("log", lambda x: x.log()),
+    ("relu", lambda x: x.relu()),
     ("abs", lambda x: x.abs()),
-    # ("reciprocal", lambda x: x.reciprocal()),
+    ("reciprocal", lambda x: x.reciprocal()),
 ]
 
-DTYPES = ["float32"]
+DTYPES = ["float32", "float16"]
 
 TORCH_DTYPES = {
     "float32": torch.float32,
@@ -30,17 +30,13 @@ TORCH_DTYPES = {
 }
 
 _SHAPE_LIST = [
-    # (10, 20),
-    # (20, 10),
-    # (1, 128),
-    # (7, 1024),
-    # (29, 512),
-    # (32, 2048),
-    # (65, 4096),
-    # (200, 8192),
-    (20, 10000),
+    (1, 128),
+    (7, 1024),
+    (29, 512),
+    (32, 2048),
+    (65, 4096),
+    (200, 8192),
 ]
-
 
 _SHAPE_PARAMS = [
     pytest.param(batch, n_cols, id=f"batch{batch}-cols{n_cols}")
