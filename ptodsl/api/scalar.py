@@ -1,6 +1,7 @@
 from mlir.dialects import arith
-from mlir.ir import F16Type, F32Type, IndexType, IntegerType
+from mlir.ir import F16Type, F32Type, IndexType, IntegerType, Location
 
+import inspect
 
 def _unwrap(value):
     if isinstance(value, Value):
@@ -117,7 +118,9 @@ def index_cast(value, index_type=IndexType):
         dst = index_type.get()
     else:
         dst = index_type
-    return Value(arith.IndexCastOp(dst, _unwrap(value)).result)
+    frame = inspect.stack()[1]
+    with Location.file(frame.filename, frame.lineno, 0):
+        return Value(arith.IndexCastOp(dst, _unwrap(value)).result)
 
 
 def ceil_div(a, b):

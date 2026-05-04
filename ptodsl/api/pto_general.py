@@ -1,25 +1,34 @@
+import inspect
 from contextlib import contextmanager
 
 from mlir.dialects import pto as _pto
-from mlir.ir import FlatSymbolRefAttr, InsertionPoint, Operation
+from mlir.ir import FlatSymbolRefAttr, InsertionPoint, Operation, Location
 
 from .scalar import Value, _unwrap
 
 
 def get_block_idx():
-    return Value(_pto.GetBlockIdxOp().result)
+    frame = inspect.stack()[1]
+    with Location.file(frame.filename, frame.lineno, 0):
+        return Value(_pto.GetBlockIdxOp().result)
 
 
 def get_subblock_idx():
-    return Value(_pto.GetSubBlockIdxOp().result)
+    frame = inspect.stack()[1]
+    with Location.file(frame.filename, frame.lineno, 0):
+        return Value(_pto.GetSubBlockIdxOp().result)
 
 
 def get_subblock_num():
-    return Value(_pto.GetSubBlockNumOp().result)
+    frame = inspect.stack()[1]
+    with Location.file(frame.filename, frame.lineno, 0):
+        return Value(_pto.GetSubBlockNumOp().result)
 
 
 def get_block_num():
-    return Value(_pto.GetBlockNumOp().result)
+    frame = inspect.stack()[1]
+    with Location.file(frame.filename, frame.lineno, 0):
+        return Value(_pto.GetBlockNumOp().result)
 
 
 def _resolve_layout_attr(layout):

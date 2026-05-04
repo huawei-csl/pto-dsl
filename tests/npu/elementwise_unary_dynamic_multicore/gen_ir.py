@@ -11,6 +11,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ptodsl import tile
 from unary_builder import build_unary_kernel
 
+from mlir.ir import Operation
+
 _OPS = {
     "rsqrt": tile.rsqrt,
     "sqrt": tile.sqrt,
@@ -32,4 +34,4 @@ if __name__ == "__main__":
         print(f"Unknown op: {op_name}. Available: {list(_OPS)}", file=sys.stderr)
         sys.exit(1)
 
-    print(build_unary_kernel(op_name, _OPS[op_name], dtype=dtype))
+    print(build_unary_kernel(op_name, _OPS[op_name], dtype=dtype).operation.get_asm(enable_debug_info=True))

@@ -86,7 +86,10 @@ def _define(module, ctx, meta_map, fn, *, name=None, entry=False, kernel=None):
     fn_name = name or fn.__name__
     fn_ty = func.FunctionType.get(arg_types, ret_types)
 
-    with InsertionPoint(module.body):
+    dec_file = inspect.getsourcefile(fn)
+    dec_line = inspect.getsourcelines(fn)[1]
+
+    with InsertionPoint(module.body, Location.file(dec_file, dec_line, 0)):
         ir_func = func.FuncOp(fn_name, fn_ty)
 
     if entry:
