@@ -1,4 +1,3 @@
-import inspect
 from contextlib import contextmanager
 
 from mlir.dialects import pto as _pto
