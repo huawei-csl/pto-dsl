@@ -1,6 +1,7 @@
 from ptodsl import pto, to_ir_module
 from ptodsl import scalar as s
 
+
 def meta_data():
     dtype = pto.float32
     index_dtype = pto.int32
@@ -23,6 +24,7 @@ def meta_data():
         "tile_type": tile_type,
     }
 
+
 def kernel(
     x_ptr: "ptr_type",
     y_ptr: "ptr_type",
@@ -35,6 +37,7 @@ def kernel(
     batch = s.index_cast(batch_i32)
     n_cols = s.index_cast(n_cols_i32)
 
+
 def test_location_info_in_asm():
     asm = to_ir_module(meta_data=meta_data)(kernel).operation.get_asm(
         enable_debug_info=True
@@ -44,4 +47,3 @@ def test_location_info_in_asm():
     assert 'tests/frontend/test_location_info.py":26:0)' in asm
     # Const def
     assert 'tests/frontend/test_location_info.py":32:9)' in asm
-

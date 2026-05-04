@@ -3,6 +3,7 @@ from mlir.ir import F16Type, F32Type, IndexType, IntegerType, Location
 
 from ..utils.codegen import get_user_code_loc
 
+
 def _unwrap(value):
     if isinstance(value, Value):
         return value.raw
@@ -16,7 +17,7 @@ class Value:
         self.raw = raw
 
     def __mul__(self, other):
-        with get_user_code_loc():  
+        with get_user_code_loc():
             return Value(arith.MulIOp(_unwrap(self), _unwrap(other)).result)
 
     def __rmul__(self, other):
@@ -164,22 +165,30 @@ def min_u(a, b):
 
 def eq(a, b):
     with get_user_code_loc():
-        return Value(arith.CmpIOp(arith.CmpIPredicate.eq, _unwrap(a), _unwrap(b)).result)
+        return Value(
+            arith.CmpIOp(arith.CmpIPredicate.eq, _unwrap(a), _unwrap(b)).result
+        )
 
 
 def lt(a, b):
     with get_user_code_loc():
-        return Value(arith.CmpIOp(arith.CmpIPredicate.slt, _unwrap(a), _unwrap(b)).result)
+        return Value(
+            arith.CmpIOp(arith.CmpIPredicate.slt, _unwrap(a), _unwrap(b)).result
+        )
 
 
 def gt(a, b):
     with get_user_code_loc():
-        return Value(arith.CmpIOp(arith.CmpIPredicate.sgt, _unwrap(a), _unwrap(b)).result)
+        return Value(
+            arith.CmpIOp(arith.CmpIPredicate.sgt, _unwrap(a), _unwrap(b)).result
+        )
 
 
 def ge(a, b):
     with get_user_code_loc():
-        return Value(arith.CmpIOp(arith.CmpIPredicate.sge, _unwrap(a), _unwrap(b)).result)
+        return Value(
+            arith.CmpIOp(arith.CmpIPredicate.sge, _unwrap(a), _unwrap(b)).result
+        )
 
 
 def select(cond, true_val, false_val):

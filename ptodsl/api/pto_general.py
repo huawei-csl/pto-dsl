@@ -6,6 +6,7 @@ from mlir.ir import FlatSymbolRefAttr, InsertionPoint, Operation
 from .scalar import Value, _unwrap
 from ..utils.codegen import get_user_code_loc
 
+
 def get_block_idx():
     with get_user_code_loc():
         return Value(_pto.GetBlockIdxOp().result)
@@ -77,7 +78,7 @@ def as_tensor(tensor_type, *, ptr, shape, strides, layout=None):
     layout_attr = _resolve_layout_attr(layout)
     if layout_attr is not None:
         kwargs["layout"] = layout_attr
-    with get_user_code_loc():    
+    with get_user_code_loc():
         return _pto.MakeTensorViewOp(
             tensor_type, _unwrap(ptr), shape_vals, stride_vals, **kwargs
         ).result
@@ -160,7 +161,9 @@ def reserve_buffer(*, name, size, location, auto_alloc=True, base=None):
 def import_reserved_buffer(*, name, peer_func):
     # wrap import_reserved_buffer(name, peer_func, *, loc=None, ip=None) -> mlir._mlir_libs._mlir.ir.Value
     with get_user_code_loc():
-        return _pto.ImportReservedBufferOp(name, _resolve_peer_func_attr(peer_func)).result
+        return _pto.ImportReservedBufferOp(
+            name, _resolve_peer_func_attr(peer_func)
+        ).result
 
 
 def aic_initialize_pipe(
