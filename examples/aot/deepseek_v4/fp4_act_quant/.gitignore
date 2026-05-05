@@ -1,0 +1,10 @@
+# Generated build artifacts (compile.sh outputs)
+fp4_act_quant.pto
+fp4_act_quant.cpp
+fp4_act_quant_lib.so
+
+# Python cache
+__pycache__/
+
+# Benchmark scratch
+perf_data/

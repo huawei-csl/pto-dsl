@@ -1,0 +1,10 @@
+# Generated build artifacts (compile.sh outputs)
+hc_split_sinkhorn.pto
+hc_split_sinkhorn.cpp
+hc_split_sinkhorn_lib.so
+
+# Python cache
+__pycache__/
+
+# Benchmark scratch
+perf_data/

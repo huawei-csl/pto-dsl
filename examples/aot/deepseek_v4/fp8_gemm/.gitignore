@@ -1,0 +1,10 @@
+# Generated build artifacts (compile.sh outputs)
+fp8_gemm.pto
+fp8_gemm.cpp
+fp8_gemm_lib.so
+
+# Python cache
+__pycache__/
+
+# Benchmark scratch
+perf_data/
