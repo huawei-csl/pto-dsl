@@ -15,11 +15,10 @@ RUN pip install --no-cache-dir \
     pytest pybind11 nanobind setuptools wheel \
     ipython jupyterlab matplotlib pandas
 
-# certain operations need latest isa header, not CANN 8.5.0 default
-# header on 2026/04/24
-ARG PTOISA_COMMIT=0af942568a4f2868673da0a35b0f5b64f27a20d5
+# This specific commit might not be found as it has been forced push over
+ARG PTOISA_COMMIT=4e27a104f948e883e0bef44670252381bff794c5
 WORKDIR /sources
-RUN git clone https://gitcode.com/cann/pto-isa.git \
+RUN git clone --single-branch --branch master https://gitcode.com/cann/pto-isa.git \
     && cd pto-isa && git checkout $PTOISA_COMMIT
 
 # cache above layers unrelated to ptoas version change
@@ -30,7 +29,7 @@ ARG CACHE_BURST=1
 # ARG ARCH=x86_64
 ARG ARCH=aarch64
 ARG RELEASE_REPO=hw-native-sys/PTOAS
-ARG RELEASE_VER=0.31
+ARG RELEASE_VER=0.36
 ARG RELEASE_TAG=v${RELEASE_VER}
 ARG WHEEL_NAME=ptoas-${RELEASE_VER}-cp311-none-manylinux_2_34_${ARCH}.whl
 ARG CLI_TAR_NAME=ptoas-bin-${ARCH}.tar.gz

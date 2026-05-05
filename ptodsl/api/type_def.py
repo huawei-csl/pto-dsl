@@ -28,7 +28,13 @@ def PtrType(dtype):
     return _pto.PtrType.get(dtype)
 
 
-def TensorType(*, rank, dtype):
+def TensorType(*, rank=None, shape=None, dtype):
+    if shape is not None:
+        if rank is not None and rank != len(shape):
+            raise ValueError("TensorType rank must match len(shape).")
+        return _pto.TensorViewType.get(shape, dtype)
+    if rank is None:
+        raise ValueError("TensorType requires either rank or shape.")
     return _pto.TensorViewType.get(rank, dtype)
 
 
