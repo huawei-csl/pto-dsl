@@ -15,11 +15,11 @@ RUN pip install --no-cache-dir \
     pytest pybind11 nanobind setuptools wheel \
     ipython jupyterlab matplotlib pandas
 
-# For modified FA style 
-# https://gitcode.com/csjlchen/pto-isa/commit/4d466a8e3cfa363281eb5e67449575eade5bf366?ref=feature_subtile
-ARG PTOISA_COMMIT=4d466a8e3cfa363281eb5e67449575eade5bf366
+# For updated FA style 
+# https://gitcode.com/cann/pto-isa/commit/4e27a104f948e883e0bef44670252381bff794c5?ref=master
+ARG PTOISA_COMMIT=4e27a104f948e883e0bef44670252381bff794c5
 WORKDIR /sources
-RUN git clone -b feature_subtile https://gitcode.com/csjlchen/pto-isa \
+RUN git clone https://gitcode.com/cann/pto-isa \
     && cd pto-isa && git checkout $PTOISA_COMMIT
 
 ENV PTO_LIB_PATH=/sources/pto-isa

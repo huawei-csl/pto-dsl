@@ -50,7 +50,7 @@ jobs:
       RELEASE_VER: 0.36
       RELEASE_TAG: v0.36
       CLI_DIR: /installers/ptoas-cli
-      PTOISA_COMMIT: 4d466a8e3cfa363281eb5e67449575eade5bf366
+      PTOISA_COMMIT: 4e27a104f948e883e0bef44670252381bff794c5
 
     steps:
       - name: Install system packages
@@ -84,7 +84,7 @@ jobs:
 
       - name: Clone pto-isa headers
         run: |
-          git clone -b feature_subtile https://gitcode.com/csjlchen/pto-isa.git /sources/pto-isa
+          git clone https://gitcode.com/cann/pto-isa.git /sources/pto-isa
           cd /sources/pto-isa && git checkout ${PTOISA_COMMIT}
 
       - name: Install ptodsl (${{ matrix.install-mode }})
