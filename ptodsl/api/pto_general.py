@@ -4,20 +4,25 @@ from mlir.dialects import pto as _pto
 from mlir.ir import FlatSymbolRefAttr, InsertionPoint, Operation
 
 from .scalar import Value, _unwrap
+from ..utils.codegen import get_user_code_loc, with_loc
 
 
+@with_loc
 def get_block_idx():
     return Value(_pto.GetBlockIdxOp().result)
 
 
+@with_loc
 def get_subblock_idx():
     return Value(_pto.GetSubBlockIdxOp().result)
 
 
+@with_loc
 def get_subblock_num():
     return Value(_pto.GetSubBlockNumOp().result)
 
 
+@with_loc
 def get_block_num():
     return Value(_pto.GetBlockNumOp().result)
 
@@ -52,10 +57,12 @@ def call(callee, *args):
     )
 
 
+@with_loc
 def set_ffts(ffts):
     return _pto.SetFFTsOp(_unwrap(ffts))
 
 
+@with_loc
 def add_ptr(ptr, offset):
     """Return ptr advanced by offset elements, preserving the !pto.ptr type.
 
@@ -64,6 +71,7 @@ def add_ptr(ptr, offset):
     return _pto.AddPtrOp(_unwrap(ptr), _unwrap(offset)).result
 
 
+@with_loc
 def as_tensor(tensor_type, *, ptr, shape, strides, layout=None):
     shape_vals = [_unwrap(v) for v in shape]
     stride_vals = [_unwrap(v) for v in strides]
@@ -76,6 +84,7 @@ def as_tensor(tensor_type, *, ptr, shape, strides, layout=None):
     ).result
 
 
+@with_loc
 def slice_view(subtensor_type, *, source, offsets, sizes):
     offset_vals = [_unwrap(v) for v in offsets]
     size_vals = [_unwrap(v) for v in sizes]
@@ -86,10 +95,11 @@ def slice_view(subtensor_type, *, source, offsets, sizes):
 
 @contextmanager
 def vector_section():
-    section = _pto.SectionVectorOp()
-    block = section.body.blocks.append()
-    with InsertionPoint(block):
-        yield
+    with get_user_code_loc():
+        section = _pto.SectionVectorOp()
+        block = section.body.blocks.append()
+        with InsertionPoint(block):
+            yield
 
 
 @contextmanager
@@ -100,6 +110,7 @@ def cube_section():
         yield
 
 
+@with_loc
 def alloc_tile(tile_type, *, addr=None, valid_row=None, valid_col=None):
     kwargs = {}
     if addr is not None:
@@ -111,6 +122,7 @@ def alloc_tile(tile_type, *, addr=None, valid_row=None, valid_col=None):
     return _pto.AllocTileOp(tile_type, **kwargs).result
 
 
+@with_loc
 def declare_tile(tile_type):
     return Operation.create("pto.declare_tile", results=[tile_type]).result
 
@@ -125,6 +137,7 @@ def declare_global(tensor_type):
 #     location = #pto.address_space<vec>,
 #     auto = true
 # } -> i32
+@with_loc
 def reserve_buffer(*, name, size, location, auto_alloc=True, base=None):
     """
     - At most one `pto.reserve_buffer` is expected in one function
@@ -135,7 +148,6 @@ def reserve_buffer(*, name, size, location, auto_alloc=True, base=None):
     """
     # All params are compile time attributes
     # wrap reserve_buffer(name, size, location, auto_alloc, *, base=None, loc=None, ip=None) -> mlir._mlir_libs._mlir.ir.Value
-
     return _pto.ReserveBufferOp(
         name, size, _resolve_address_space_attr(location), auto_alloc, base=base
     ).result
@@ -145,11 +157,13 @@ def reserve_buffer(*, name, size, location, auto_alloc=True, base=None):
 #     name = "c2v_fifo",
 #     peer_func = @vector_kernel
 # } -> i32
+@with_loc
 def import_reserved_buffer(*, name, peer_func):
     # wrap import_reserved_buffer(name, peer_func, *, loc=None, ip=None) -> mlir._mlir_libs._mlir.ir.Value
     return _pto.ImportReservedBufferOp(name, _resolve_peer_func_attr(peer_func)).result
 
 
+@with_loc
 def aic_initialize_pipe(
     *,
     dir_mask,
@@ -176,6 +190,7 @@ def aic_initialize_pipe(
 #    c2v_consumer_buf = %c2v_local : i32,
 #    v2c_consumer_buf = %c0_i32 : i32
 # )
+@with_loc
 def aiv_initialize_pipe(
     *,
     dir_mask,
@@ -236,21 +251,25 @@ def initialize_l2g2l_pipe(
 # Pipe-handle generic tpush/tpop/tfree (used with `initialize_l2g2l_pipe`handles, as opposed to the legacy *_to_aic / *_to_aiv
 # / *_from_aic / *_from_aiv variants tied to the function-scoped legacy pipe).
 # -----------------------------------------------------------------------------
+@with_loc
 def tpush(tile, pipe_handle, split):
     """Push a tile onto a pipe handle (l2g2l or l2l)."""
     return _pto.TPushOp(_unwrap(tile), _unwrap(pipe_handle), split)
 
 
+@with_loc
 def talloc(entry, pipe_handle, split):
     """Allocate the next global tensor slot on a pipe handle."""
     return _pto.TAllocOp(_unwrap(entry), _unwrap(pipe_handle), split)
 
 
+@with_loc
 def tpop_into(entry, pipe_handle, split):
     """Pop the next pipe entry into an existing tile handle."""
     return _pto.TPopOp(_unwrap(entry), _unwrap(pipe_handle), split)
 
 
+@with_loc
 def tpop(tile_type, pipe_handle, split, *, addr=None):
     """Pop the next tile from a pipe handle.
 
@@ -266,6 +285,7 @@ def tpop(tile_type, pipe_handle, split, *, addr=None):
     return dest
 
 
+@with_loc
 def tfree(pipe_handle, split, *, entry=None):
     """Release the slot most recently popped from a pipe handle."""
     kwargs = {}
@@ -275,45 +295,55 @@ def tfree(pipe_handle, split, *, entry=None):
 
 
 # pto.tpush_to_aiv(%acc_tile : !pto.tile_buf<loc=acc, dtype=f32, ..., pad=0>) {split = 0}
+@with_loc
 def tpush_to_aiv(tile, split, *, id=None):
     return _pto.TPushToAivOp(_unwrap(tile), split, id=id)
 
 
+@with_loc
 def tpush_to_aic(tile, split, *, id=None):
     return _pto.TPushToAicOp(_unwrap(tile), split, id=id)
 
 
 # %recv_tile = pto.tpop_from_aic {split = 0} -> !pto.tile_buf<loc=vec, ... fractal=512, pad=0>
+@with_loc
 def tpop_from_aic(tile_type, split, *, id=None):
     return _pto.TPopFromAicOp(tile_type, split, id=id).result
 
 
+@with_loc
 def tpop_from_aiv(tile_type, split, *, id=None):
     return _pto.TPopFromAivOp(tile_type, split, id=id).result
 
 
 # pto.tfree_from_aic {split = 0}
+@with_loc
 def tfree_from_aic(split, *, id=None):
     return _pto.TFreeFromAicOp(split, id=id)
 
 
+@with_loc
 def tfree_from_aiv(split, *, id=None):
     return _pto.TFreeFromAivOp(split, id=id)
 
 
+@with_loc
 def load_scalar(result_type, ptr, offset):
     """Load a single scalar element from global memory at ptr[offset]."""
     return _pto.load_scalar(result_type, _unwrap(ptr), _unwrap(offset))
 
 
+@with_loc
 def load(source, dest):
-    _pto.TLoadOp(None, source, dest)
+    return _pto.TLoadOp(None, source, dest)
 
 
+@with_loc
 def store(source, dest):
-    _pto.TStoreOp(None, source, dest)
+    return _pto.TStoreOp(None, source, dest)
 
 
+@with_loc
 def print(format, scalar):
     """
     Example:

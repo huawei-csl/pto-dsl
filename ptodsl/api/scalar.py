@@ -1,5 +1,7 @@
 from mlir.dialects import arith
-from mlir.ir import F16Type, F32Type, IndexType, IntegerType
+from mlir.ir import F16Type, F32Type, IndexType, IntegerType, Location
+
+from ..utils.codegen import with_loc, apply_loc
 
 
 def _unwrap(value):
@@ -8,6 +10,7 @@ def _unwrap(value):
     return value
 
 
+@apply_loc
 class Value:
     # TODO: generalize to more comprehensive wrappers like
     # https://github.com/makslevental/mlir-python-extras/blob/0.0.8.2/mlir/extras/dialects/ext/arith.py
@@ -106,12 +109,14 @@ def __getattr__(name):
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 
+@with_loc
 def const(value, type=None):
     if type is None:
         type = IndexType.get()
     return Value(arith.ConstantOp(type, value).result)
 
 
+@with_loc
 def index_cast(value, index_type=IndexType):
     if hasattr(index_type, "get"):
         dst = index_type.get()
@@ -120,44 +125,54 @@ def index_cast(value, index_type=IndexType):
     return Value(arith.IndexCastOp(dst, _unwrap(value)).result)
 
 
+@with_loc
 def ceil_div(a, b):
     return Value(arith.CeilDivSIOp(_unwrap(a), _unwrap(b)).result)
 
 
+@with_loc
 def div_s(a, b):
     return Value(arith.DivSIOp(_unwrap(a), _unwrap(b)).result)
 
 
+@with_loc
 def rem_s(a, b):
     return Value(arith.RemSIOp(_unwrap(a), _unwrap(b)).result)
 
 
+@with_loc
 def min_u(a, b):
     return Value(arith.MinUIOp(_unwrap(a), _unwrap(b)).result)
 
 
+@with_loc
 def eq(a, b):
     return Value(arith.CmpIOp(arith.CmpIPredicate.eq, _unwrap(a), _unwrap(b)).result)
 
 
+@with_loc
 def lt(a, b):
     return Value(arith.CmpIOp(arith.CmpIPredicate.slt, _unwrap(a), _unwrap(b)).result)
 
 
+@with_loc
 def gt(a, b):
     return Value(arith.CmpIOp(arith.CmpIPredicate.sgt, _unwrap(a), _unwrap(b)).result)
 
 
+@with_loc
 def ge(a, b):
     return Value(arith.CmpIOp(arith.CmpIPredicate.sge, _unwrap(a), _unwrap(b)).result)
 
 
+@with_loc
 def select(cond, true_val, false_val):
     return Value(
         arith.SelectOp(_unwrap(cond), _unwrap(true_val), _unwrap(false_val)).result
     )
 
 
+@with_loc
 def truncf(value, target_type):
     """Truncate a floating-point scalar to a narrower float type (e.g. f32 → f16).
 
