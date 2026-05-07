@@ -20,6 +20,7 @@ _DST_STRIDE = {
     "float32": 2,
 }
 
+
 def build_tsort32_kernel(
     fn_name="tsort32_1d_dynamic_float16",
     dtype="float16",
@@ -109,15 +110,18 @@ def build_tsort32_kernel(
         tile_offset_this_core = vid_idx * num_tiles_per_core
 
         with pto.vector_section():
-            tv_src = pto.as_tensor(ptr=arg_src,
+            tv_src = pto.as_tensor(
+                ptr=arg_src,
                 shape=[num_tiles_global, c_tile],
                 strides=[c_tile, c1],
             )
-            tv_idx = pto.as_tensor(ptr=arg_idx,
+            tv_idx = pto.as_tensor(
+                ptr=arg_idx,
                 shape=[num_tiles_global, c_tile],
                 strides=[c_tile, c1],
             )
-            tv_dst = pto.as_tensor(ptr=arg_dst,
+            tv_dst = pto.as_tensor(
+                ptr=arg_dst,
                 shape=[num_tiles_global, c_dst_tile],
                 strides=[c_dst_tile, c1],
             )
@@ -138,15 +142,18 @@ def build_tsort32_kernel(
                     for i in pto.range(c0, tiles_to_process, c1):
                         ti = i + tile_offset_this_core
 
-                        sv_src = pto.slice_view(source=tv_src,
+                        sv_src = pto.slice_view(
+                            source=tv_src,
                             offsets=[ti, c0],
                             sizes=[c1, c_tile],
                         )
-                        sv_idx = pto.slice_view(source=tv_idx,
+                        sv_idx = pto.slice_view(
+                            source=tv_idx,
                             offsets=[ti, c0],
                             sizes=[c1, c_tile],
                         )
-                        sv_dst = pto.slice_view(source=tv_dst,
+                        sv_dst = pto.slice_view(
+                            source=tv_dst,
                             offsets=[ti, c0],
                             sizes=[c1, c_dst_tile],
                         )
@@ -158,6 +165,7 @@ def build_tsort32_kernel(
 
     _kernel.__name__ = fn_name
     return to_ir_module(_kernel)
+
 
 if __name__ == "__main__":
     import sys

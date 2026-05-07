@@ -3,6 +3,7 @@
 from ptodsl import pto, tile, to_ir_module
 from ptodsl import scalar as s
 
+
 def build(
     M=32,
     K=256,
@@ -21,25 +22,15 @@ def build(
 
     tensor_type = pto.TensorType(rank=2, dtype=dtype)
 
-    tile_buf_aMat = pto.TileBufType(
-        shape=[M, BASEK], dtype=dtype, memory_space="MAT"
-    )
-    tile_buf_bMat = pto.TileBufType(
-        shape=[BASEK, N], dtype=dtype, memory_space="MAT"
-    )
-    tile_buf_biasData = pto.TileBufType(
-        shape=[1, N], dtype=dtype, memory_space="MAT"
-    )
-    tile_buf_aTile = pto.TileBufType(
-        shape=[M, BASEK], dtype=dtype, memory_space="LEFT"
-    )
+    tile_buf_aMat = pto.TileBufType(shape=[M, BASEK], dtype=dtype, memory_space="MAT")
+    tile_buf_bMat = pto.TileBufType(shape=[BASEK, N], dtype=dtype, memory_space="MAT")
+    tile_buf_biasData = pto.TileBufType(shape=[1, N], dtype=dtype, memory_space="MAT")
+    tile_buf_aTile = pto.TileBufType(shape=[M, BASEK], dtype=dtype, memory_space="LEFT")
     tile_buf_bTile = pto.TileBufType(
         shape=[BASEK, N], dtype=dtype, memory_space="RIGHT"
     )
     tile_buf_cTile = pto.TileBufType(shape=[M, N], dtype=dtype, memory_space="ACC")
-    tile_buf_biasTile = pto.TileBufType(
-        shape=[1, N], dtype=dtype, memory_space="BIAS"
-    )
+    tile_buf_biasTile = pto.TileBufType(shape=[1, N], dtype=dtype, memory_space="BIAS")
 
     const = s.const
 
@@ -62,14 +53,10 @@ def build(
             cTileM = const(M)
             cTileN = const(N)
 
-            tvA = pto.as_tensor(ptr=a_ptr, shape=[cM, cK], strides=[cK, c1]
-            )
-            tvB = pto.as_tensor(ptr=b_ptr, shape=[cK, cN], strides=[cN, c1]
-            )
-            tvOut = pto.as_tensor(ptr=out_ptr, shape=[cM, cN], strides=[cN, c1]
-            )
-            tvBias = pto.as_tensor(ptr=bias_ptr, shape=[c1, cN], strides=[cN, c1]
-            )
+            tvA = pto.as_tensor(ptr=a_ptr, shape=[cM, cK], strides=[cK, c1])
+            tvB = pto.as_tensor(ptr=b_ptr, shape=[cK, cN], strides=[cN, c1])
+            tvOut = pto.as_tensor(ptr=out_ptr, shape=[cM, cN], strides=[cN, c1])
+            tvBias = pto.as_tensor(ptr=bias_ptr, shape=[c1, cN], strides=[cN, c1])
 
             aMatTile = pto.alloc_tile(tile_buf_aMat)
             bMatTile = pto.alloc_tile(tile_buf_bMat)
@@ -81,15 +68,18 @@ def build(
 
             for i in pto.range(c0, cIter, c1):
                 kOff = i * cBASEK
-                svA = pto.slice_view(source=tvA,
+                svA = pto.slice_view(
+                    source=tvA,
                     offsets=[c0, kOff],
                     sizes=[cTileM, cBASEK],
                 )
-                svB = pto.slice_view(source=tvB,
+                svB = pto.slice_view(
+                    source=tvB,
                     offsets=[kOff, c0],
                     sizes=[cBASEK, cTileN],
                 )
-                svBias = pto.slice_view(source=tvBias,
+                svBias = pto.slice_view(
+                    source=tvBias,
                     offsets=[c0, c0],
                     sizes=[c1, cTileN],
                 )
@@ -119,7 +109,8 @@ def build(
                     lambda: tile.matmul_acc(cTile, aTile, bTile, cTile),
                 )
 
-            svOut = pto.slice_view(source=tvOut,
+            svOut = pto.slice_view(
+                source=tvOut,
                 offsets=[c0, c0],
                 sizes=[cTileM, cTileN],
             )
@@ -127,6 +118,7 @@ def build(
 
     module = RunTMATMULSplitK
     return module
+
 
 if __name__ == "__main__":
     print(build())

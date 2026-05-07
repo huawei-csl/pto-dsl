@@ -49,7 +49,6 @@ from .type_def import (
     __getattr__,
 )
 
-
 __all__ = [
     "Value",
     "wrap_value",

@@ -26,6 +26,7 @@ tile_half = pto.TileBufType(
     config=tile_cfg,
 )
 
+
 @to_ir_module
 def fast_hadamard_autosync(
     x_ptr: "ptr_type",
@@ -63,8 +64,7 @@ def fast_hadamard_autosync(
 
             with pto.if_context(samples_to_process > c0):
                 total_elements = batch * n
-                tv_x = pto.as_tensor(ptr=x_ptr, shape=[total_elements], strides=[c1]
-                )
+                tv_x = pto.as_tensor(ptr=x_ptr, shape=[total_elements], strides=[c1])
 
                 # Two independent tile sets (ping/pong) so event_id 0/1 map to
                 # disjoint UB buffers, matching the manual C++ reference.
@@ -87,7 +87,8 @@ def fast_hadamard_autosync(
                 def process_rows(tb_row, tb_even, tb_odd, gm_offset, cur_samples):
                     for s in pto.range(c0, cur_samples, c1):
                         row_offset = gm_offset + s * n
-                        sv_row = pto.slice_view(source=tv_x, offsets=[row_offset], sizes=[n]
+                        sv_row = pto.slice_view(
+                            source=tv_x, offsets=[row_offset], sizes=[n]
                         )
                         # Alias row halves inside UB row tile (no GM round-trip
                         # per Hadamard iteration).
@@ -126,6 +127,7 @@ def fast_hadamard_autosync(
                                 tb_row_1, tb_even_1, tb_odd_1, gm_offset, cur_samples
                             )
 
+
 @to_ir_module
 def fast_hadamard_manualsync(
     x_ptr: "ptr_type",
@@ -163,8 +165,7 @@ def fast_hadamard_manualsync(
 
             with pto.if_context(samples_to_process > c0):
                 total_elements = batch * n
-                tv_x = pto.as_tensor(ptr=x_ptr, shape=[total_elements], strides=[c1]
-                )
+                tv_x = pto.as_tensor(ptr=x_ptr, shape=[total_elements], strides=[c1])
 
                 # Two independent tile sets (ping/pong) so event_id 0/1 map to
                 # disjoint UB buffers, matching the manual C++ reference.
@@ -189,7 +190,8 @@ def fast_hadamard_manualsync(
                 ):
                     for s in pto.range(c0, cur_samples, c1):
                         row_offset = gm_offset + s * n
-                        sv_row = pto.slice_view(source=tv_x, offsets=[row_offset], sizes=[n]
+                        sv_row = pto.slice_view(
+                            source=tv_x, offsets=[row_offset], sizes=[n]
                         )
                         # Alias row halves inside UB row tile (no GM round-trip
                         # per Hadamard iteration).
@@ -245,6 +247,7 @@ def fast_hadamard_manualsync(
                 for event_id in (0, 1):
                     pto.wait_event("VEC", "LOAD", event_id=event_id)
                     pto.wait_event("STORE_VEC", "VEC", event_id=event_id)
+
 
 if __name__ == "__main__":
     import argparse

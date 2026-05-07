@@ -21,6 +21,7 @@ tile_type = pto.TileBufType(
     memory_space="VEC",
 )
 
+
 @to_ir_module
 def vec_add_1d_dynamic(
     arg0: ptr_type,
@@ -71,15 +72,18 @@ def vec_add_1d_dynamic(
                     tile_offset_global = i + tile_offset_this_core
                     offset_global = tile_offset_global * c_tile
 
-                    sv0 = pto.slice_view(source=tv0,
+                    sv0 = pto.slice_view(
+                        source=tv0,
                         offsets=[offset_global],
                         sizes=[c_tile],
                     )
-                    sv1 = pto.slice_view(source=tv1,
+                    sv1 = pto.slice_view(
+                        source=tv1,
                         offsets=[offset_global],
                         sizes=[c_tile],
                     )
-                    sv2 = pto.slice_view(source=tv2,
+                    sv2 = pto.slice_view(
+                        source=tv2,
                         offsets=[offset_global],
                         sizes=[c_tile],
                     )
@@ -88,6 +92,7 @@ def vec_add_1d_dynamic(
                     pto.load(sv1, tb1)
                     tile.add(tb0, tb1, tb2)
                     pto.store(tb2, sv2)
+
 
 def build_verbose():
     with Context() as ctx, Location.unknown():
@@ -101,7 +106,9 @@ def build_verbose():
 
         tensor_view = _pto.TensorViewType.get(1, f32)
         _tile_length = 1024
-        tile_view = _pto.PartitionTensorViewType.get([ShapedType.get_dynamic_size()], f32)
+        tile_view = _pto.PartitionTensorViewType.get(
+            [ShapedType.get_dynamic_size()], f32
+        )
 
         vec = _pto.AddressSpaceAttr.get(_pto.AddressSpace.VEC)
         bl = _pto.BLayoutAttr.get(_pto.BLayout.RowMajor)
@@ -213,10 +220,11 @@ def build_verbose():
         module.operation.verify()
         return module
 
-    
+
 def test_structural_ir_equality():
     verbose_module = build_verbose()
     assert str(vec_add_1d_dynamic) == str(verbose_module)
+
 
 if __name__ == "__main__":
     print(build_verbose().operation.get_asm(enable_debug_info=True))

@@ -20,6 +20,7 @@ recv_ty = pto.TileBufType(
     ),
 )
 
+
 @to_ir_module(module=True)
 def module():
     @pto.func(kernel="cube")
@@ -48,7 +49,9 @@ def module():
             v2c_consumer_buf=v2c_local,
         )
 
-        gm_y_tile_view = pto.slice_view(source=pto.as_tensor(ptr=gm_y,
+        gm_y_tile_view = pto.slice_view(
+            source=pto.as_tensor(
+                ptr=gm_y,
                 shape=[block_num, c16, c16],
                 strides=[c256, c16, c1],
             ),
@@ -92,7 +95,9 @@ def module():
         subblock_idx = s.index_cast(pto.get_subblock_idx())
         row_offset = subblock_idx * c8
 
-        gm_x_tile_view = pto.slice_view(source=pto.as_tensor(ptr=gm_x,
+        gm_x_tile_view = pto.slice_view(
+            source=pto.as_tensor(
+                ptr=gm_x,
                 shape=[block_num, c16, c16],
                 strides=[c256, c16, c1],
             ),
@@ -113,6 +118,7 @@ def module():
         pto.set_ffts(ffts_addr)
         pto.call(cube_kernel, gm_slot_buffer, gm_y)
         pto.call(vector_kernel, gm_slot_buffer, gm_x)
+
 
 if __name__ == "__main__":
     print(module)

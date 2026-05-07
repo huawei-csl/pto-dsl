@@ -11,9 +11,11 @@ _SUPPORTED_DTYPES = frozenset(
     ["float32", "float16", "int64", "int32", "int16", "int8", "uint8"]
 )
 
+
 def _pto_type(name):
     """Resolve a dtype string to a PTO type (must be called inside an MLIR context)."""
     return getattr(pto, name)
+
 
 def build_cvt(src_dtype, dst_dtype, rmode=None):
     """Generic dynamic multicore type conversion kernel.
@@ -77,9 +79,11 @@ def build_cvt(src_dtype, dst_dtype, rmode=None):
             row_start = vid * rows_per_core
             row_end = s.min_u(row_start + rows_per_core, batch)
 
-            tv_src = pto.as_tensor(ptr=src_ptr, shape=[batch, n_cols], strides=[n_cols, c1]
+            tv_src = pto.as_tensor(
+                ptr=src_ptr, shape=[batch, n_cols], strides=[n_cols, c1]
             )
-            tv_dst = pto.as_tensor(ptr=dst_ptr, shape=[batch, n_cols], strides=[n_cols, c1]
+            tv_dst = pto.as_tensor(
+                ptr=dst_ptr, shape=[batch, n_cols], strides=[n_cols, c1]
             )
 
             for row in pto.range(row_start, row_end, c_tile_rows):
@@ -93,11 +97,13 @@ def build_cvt(src_dtype, dst_dtype, rmode=None):
                         tile_dst, valid_row=rows_this, valid_col=c_tile_cols
                     )
 
-                    sv_src = pto.slice_view(source=tv_src,
+                    sv_src = pto.slice_view(
+                        source=tv_src,
                         offsets=[row, col],
                         sizes=[rows_this, c_tile_cols],
                     )
-                    sv_dst = pto.slice_view(source=tv_dst,
+                    sv_dst = pto.slice_view(
+                        source=tv_dst,
                         offsets=[row, col],
                         sizes=[rows_this, c_tile_cols],
                     )
@@ -107,6 +113,7 @@ def build_cvt(src_dtype, dst_dtype, rmode=None):
                     pto.store(tb_dst, sv_dst)
 
     return _kernel
+
 
 if __name__ == "__main__":
     import argparse

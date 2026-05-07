@@ -46,6 +46,7 @@ row_vec_fp16 = pto.TileBufType(
     config=row_cfg,
 )
 
+
 @to_ir_module
 def sinkhorn_k4_fp16(
     input_ptr: "ptr_fp16",
@@ -76,11 +77,13 @@ def sinkhorn_k4_fp16(
 
         n_rows = nm * cK
 
-        tv_in = pto.as_tensor(ptr=input_ptr,
+        tv_in = pto.as_tensor(
+            ptr=input_ptr,
             shape=[n_rows, cK],
             strides=[cK, c1],
         )
-        tv_out = pto.as_tensor(ptr=output_ptr,
+        tv_out = pto.as_tensor(
+            ptr=output_ptr,
             shape=[n_rows, cK],
             strides=[cK, c1],
         )
@@ -97,11 +100,13 @@ def sinkhorn_k4_fp16(
 
         for mi in pto.range(wid, nm, num_workers):
             row0 = mi * cK
-            gm_in = pto.slice_view(source=tv_in,
+            gm_in = pto.slice_view(
+                source=tv_in,
                 offsets=[row0, c0],
                 sizes=[cK, cK],
             )
-            gm_out = pto.slice_view(source=tv_out,
+            gm_out = pto.slice_view(
+                source=tv_out,
                 offsets=[row0, c0],
                 sizes=[cK, cK],
             )
@@ -132,6 +137,7 @@ def sinkhorn_k4_fp16(
                 tile.col_expand_div(mat_kk, col_stat, mat_kk)
 
             pto.store(mat_kk, gm_out)
+
 
 if __name__ == "__main__":
     print(sinkhorn_k4_fp16)

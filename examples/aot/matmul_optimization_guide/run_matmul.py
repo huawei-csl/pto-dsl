@@ -9,7 +9,6 @@ import torch_npu
 
 from ptodsl.npu_info import get_num_cube_cores, get_test_device
 
-
 _DEFAULT_NUM_CORES = get_num_cube_cores()
 BLOCK_DIM_LIST = [1, 20, 24]
 M_LIST = [128 * i for i in range(1, 37, 4)]  # 128, ..., 4224

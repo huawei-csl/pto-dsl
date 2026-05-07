@@ -5,6 +5,7 @@ Usage:
   python collect_example_translate.py
   python collect_example_translate.py --aot-dir /path/to/examples/aot --out-dir /tmp/example_translation
 """
+
 import json
 import argparse
 import os

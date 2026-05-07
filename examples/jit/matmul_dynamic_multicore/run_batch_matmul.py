@@ -8,6 +8,7 @@ from ptodsl.npu_info import get_num_cube_cores, get_test_device
 
 const = s.const
 
+
 def build_kernel(
     M=128,
     K=128,
@@ -97,14 +98,10 @@ def build_kernel(
             b_end_unclamped = b_start + batches_per_core
             b_end = s.min_u(b_end_unclamped, batch)
 
-            tvA = pto.as_tensor(ptr=a_ptr, shape=[cBM, cK], strides=[cK, c1]
-            )
-            tvB = pto.as_tensor(ptr=b_ptr, shape=[cK, cN], strides=[cN, c1]
-            )
-            tvOut = pto.as_tensor(ptr=out_ptr, shape=[cBM, cN], strides=[cN, c1]
-            )
-            tvBias = pto.as_tensor(ptr=bias_ptr, shape=[c1, cN], strides=[cN, c1]
-            )
+            tvA = pto.as_tensor(ptr=a_ptr, shape=[cBM, cK], strides=[cK, c1])
+            tvB = pto.as_tensor(ptr=b_ptr, shape=[cK, cN], strides=[cN, c1])
+            tvOut = pto.as_tensor(ptr=out_ptr, shape=[cBM, cN], strides=[cN, c1])
+            tvBias = pto.as_tensor(ptr=bias_ptr, shape=[c1, cN], strides=[cN, c1])
 
             aMatTile = pto.alloc_tile(tile_buf_aMat)
             bMatTile = pto.alloc_tile(tile_buf_bMat)
@@ -119,15 +116,18 @@ def build_kernel(
 
                 for i in pto.range(c0, cIter, c1):
                     kOff = i * cBASEK
-                    svA = pto.slice_view(source=tvA,
+                    svA = pto.slice_view(
+                        source=tvA,
                         offsets=[row_off, kOff],
                         sizes=[cTileM, cBASEK],
                     )
-                    svB = pto.slice_view(source=tvB,
+                    svB = pto.slice_view(
+                        source=tvB,
                         offsets=[kOff, c0],
                         sizes=[cBASEK, cTileN],
                     )
-                    svBias = pto.slice_view(source=tvBias,
+                    svBias = pto.slice_view(
+                        source=tvBias,
                         offsets=[c0, c0],
                         sizes=[c1, cTileN],
                     )
@@ -164,7 +164,8 @@ def build_kernel(
                     pto.record_wait_pair("MATMUL", "LOAD", event_id=0)
 
                 pto.record_wait_pair("MATMUL", "STORE_ACC", event_id=0)
-                svOut = pto.slice_view(source=tvOut,
+                svOut = pto.slice_view(
+                    source=tvOut,
                     offsets=[row_off, c0],
                     sizes=[cTileM, cTileN],
                 )
@@ -172,6 +173,7 @@ def build_kernel(
                 pto.record_wait_pair("STORE_ACC", "MATMUL", event_id=0)
 
     return RunTMATMULSplitK
+
 
 def test_matmul():
     device = get_test_device()
@@ -202,6 +204,7 @@ def test_matmul():
             c_ref = torch.matmul(a, b)
             diff = (c - c_ref).abs().max()
             print(f"config: bs={bs}, block_dim={block_dim}, max diff: {diff}")
+
 
 if __name__ == "__main__":
     test_matmul()

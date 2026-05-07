@@ -17,6 +17,7 @@ tile_type = pto.TileBufType(
     memory_space="VEC",
 )
 
+
 @to_ir_module
 def vec_add_2d_static(
     arg0: ptr_type,
@@ -45,12 +46,9 @@ def vec_add_2d_static(
 
     vid_idx = s.index_cast(vid)
     offset_row = vid_idx * c32
-    sv0 = pto.slice_view(source=tv0, offsets=[offset_row, c0], sizes=[c32, c32]
-    )
-    sv1 = pto.slice_view(source=tv1, offsets=[offset_row, c0], sizes=[c32, c32]
-    )
-    sv2 = pto.slice_view(source=tv2, offsets=[offset_row, c0], sizes=[c32, c32]
-    )
+    sv0 = pto.slice_view(source=tv0, offsets=[offset_row, c0], sizes=[c32, c32])
+    sv1 = pto.slice_view(source=tv1, offsets=[offset_row, c0], sizes=[c32, c32])
+    sv2 = pto.slice_view(source=tv2, offsets=[offset_row, c0], sizes=[c32, c32])
 
     with pto.vector_section():
         tb0 = pto.alloc_tile(tile_type, valid_row=v_row_idx, valid_col=v_col_idx)
@@ -61,6 +59,7 @@ def vec_add_2d_static(
         pto.load(sv1, tb1)
         tile.add(tb0, tb1, tb2)
         pto.store(tb2, sv2)
+
 
 def build():
     from mlir.dialects import arith, func, pto as _pto
@@ -75,7 +74,9 @@ def build():
         ptr_f32 = _pto.PtrType.get(f32)
 
         tv2_f32 = _pto.TensorViewType.get(2, f32)
-        tile_view_32 = _pto.PartitionTensorViewType.get([ShapedType.get_dynamic_size()] * 2, f32)
+        tile_view_32 = _pto.PartitionTensorViewType.get(
+            [ShapedType.get_dynamic_size()] * 2, f32
+        )
         vec = _pto.AddressSpaceAttr.get(_pto.AddressSpace.VEC)
         bl = _pto.BLayoutAttr.get(_pto.BLayout.RowMajor)
         sl = _pto.SLayoutAttr.get(_pto.SLayout.NoneBox)
@@ -145,6 +146,7 @@ def build():
 
         m.operation.verify()
         return m
+
 
 def test_structural_ir_equality():
     ref_module = build()

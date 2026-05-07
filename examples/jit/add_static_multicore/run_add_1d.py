@@ -9,6 +9,7 @@ _TILE_LEN = 1024
 
 const = s.const
 
+
 def meta_data():
     # common, reusable type declarations
     dtype = pto.float32
@@ -30,6 +31,7 @@ def meta_data():
         "tile_type": tile_type,
     }
 
+
 @jit(meta_data=meta_data, block_dim=_BLOCK_DIM)
 def vec_add_kernel(arg0: "ptr_type", arg1: "ptr_type", arg2: "ptr_type") -> None:
     c0 = const(0)
@@ -49,12 +51,9 @@ def vec_add_kernel(arg0: "ptr_type", arg1: "ptr_type", arg2: "ptr_type") -> None
 
     vid_idx = s.index_cast(vid)
     offset = vid_idx * c1024  # every core loads 1024 elements of data
-    sv0 = pto.slice_view(source=tv0, offsets=[c0, offset], sizes=[c1, c1024]
-    )
-    sv1 = pto.slice_view(source=tv1, offsets=[c0, offset], sizes=[c1, c1024]
-    )
-    sv2 = pto.slice_view(source=tv2, offsets=[c0, offset], sizes=[c1, c1024]
-    )
+    sv0 = pto.slice_view(source=tv0, offsets=[c0, offset], sizes=[c1, c1024])
+    sv1 = pto.slice_view(source=tv1, offsets=[c0, offset], sizes=[c1, c1024])
+    sv2 = pto.slice_view(source=tv2, offsets=[c0, offset], sizes=[c1, c1024])
 
     with pto.vector_section():
         tb0 = pto.alloc_tile(tile_type, valid_row=c1, valid_col=c1024)
@@ -65,6 +64,7 @@ def vec_add_kernel(arg0: "ptr_type", arg1: "ptr_type", arg2: "ptr_type") -> None
         pto.load(sv1, tb1)
         tile.add(tb0, tb1, tb2)
         pto.store(tb2, sv2)
+
 
 def test_add():
     device = get_test_device()
@@ -83,6 +83,7 @@ def test_add():
     z_ref = x + y
     torch.testing.assert_close(z, z_ref)
     print("result equal!")
+
 
 if __name__ == "__main__":
     test_add()

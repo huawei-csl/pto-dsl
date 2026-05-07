@@ -33,6 +33,7 @@ tile_u8 = pto.TileBufType(
     config=pto.TileBufConfig(),
 )
 
+
 def build_sym_dynamic():
     """Dynamic multicore symmetric quantization kernel.
 
@@ -71,11 +72,14 @@ def build_sym_dynamic():
             row_start = bid * rows_per_core
             row_end = s.min_u(row_start + rows_per_core, batch)
 
-            tv_src = pto.as_tensor(ptr=src_ptr, shape=[batch, n_cols], strides=[n_cols, c1]
+            tv_src = pto.as_tensor(
+                ptr=src_ptr, shape=[batch, n_cols], strides=[n_cols, c1]
             )
-            tv_fp = pto.as_tensor(ptr=fp_ptr, shape=[batch, n_cols], strides=[n_cols, c1]
+            tv_fp = pto.as_tensor(
+                ptr=fp_ptr, shape=[batch, n_cols], strides=[n_cols, c1]
             )
-            tv_dst = pto.as_tensor(ptr=dst_ptr, shape=[batch, n_cols], strides=[n_cols, c1]
+            tv_dst = pto.as_tensor(
+                ptr=dst_ptr, shape=[batch, n_cols], strides=[n_cols, c1]
             )
 
             for row in pto.range(row_start, row_end, c_tile_rows):
@@ -92,15 +96,18 @@ def build_sym_dynamic():
                         tile_i8, valid_row=rows_this, valid_col=c_tile_cols
                     )
 
-                    sv_src = pto.slice_view(source=tv_src,
+                    sv_src = pto.slice_view(
+                        source=tv_src,
                         offsets=[row, col],
                         sizes=[rows_this, c_tile_cols],
                     )
-                    sv_fp = pto.slice_view(source=tv_fp,
+                    sv_fp = pto.slice_view(
+                        source=tv_fp,
                         offsets=[row, col],
                         sizes=[rows_this, c_tile_cols],
                     )
-                    sv_dst = pto.slice_view(source=tv_dst,
+                    sv_dst = pto.slice_view(
+                        source=tv_dst,
                         offsets=[row, col],
                         sizes=[rows_this, c_tile_cols],
                     )
@@ -111,6 +118,7 @@ def build_sym_dynamic():
                     pto.store(tb_dst, sv_dst)
 
     return quant_sym_dynamic
+
 
 def build_asym_dynamic():
     """Dynamic multicore asymmetric quantization kernel.
@@ -152,13 +160,17 @@ def build_asym_dynamic():
             row_start = bid * rows_per_core
             row_end = s.min_u(row_start + rows_per_core, batch)
 
-            tv_src = pto.as_tensor(ptr=src_ptr, shape=[batch, n_cols], strides=[n_cols, c1]
+            tv_src = pto.as_tensor(
+                ptr=src_ptr, shape=[batch, n_cols], strides=[n_cols, c1]
             )
-            tv_fp = pto.as_tensor(ptr=fp_ptr, shape=[batch, n_cols], strides=[n_cols, c1]
+            tv_fp = pto.as_tensor(
+                ptr=fp_ptr, shape=[batch, n_cols], strides=[n_cols, c1]
             )
-            tv_offset = pto.as_tensor(ptr=offset_ptr, shape=[batch, n_cols], strides=[n_cols, c1]
+            tv_offset = pto.as_tensor(
+                ptr=offset_ptr, shape=[batch, n_cols], strides=[n_cols, c1]
             )
-            tv_dst = pto.as_tensor(ptr=dst_ptr, shape=[batch, n_cols], strides=[n_cols, c1]
+            tv_dst = pto.as_tensor(
+                ptr=dst_ptr, shape=[batch, n_cols], strides=[n_cols, c1]
             )
 
             for row in pto.range(row_start, row_end, c_tile_rows):
@@ -178,19 +190,23 @@ def build_asym_dynamic():
                         tile_u8, valid_row=rows_this, valid_col=c_tile_cols
                     )
 
-                    sv_src = pto.slice_view(source=tv_src,
+                    sv_src = pto.slice_view(
+                        source=tv_src,
                         offsets=[row, col],
                         sizes=[rows_this, c_tile_cols],
                     )
-                    sv_fp = pto.slice_view(source=tv_fp,
+                    sv_fp = pto.slice_view(
+                        source=tv_fp,
                         offsets=[row, col],
                         sizes=[rows_this, c_tile_cols],
                     )
-                    sv_offset = pto.slice_view(source=tv_offset,
+                    sv_offset = pto.slice_view(
+                        source=tv_offset,
                         offsets=[row, col],
                         sizes=[rows_this, c_tile_cols],
                     )
-                    sv_dst = pto.slice_view(source=tv_dst,
+                    sv_dst = pto.slice_view(
+                        source=tv_dst,
                         offsets=[row, col],
                         sizes=[rows_this, c_tile_cols],
                     )
@@ -202,6 +218,7 @@ def build_asym_dynamic():
                     pto.store(tb_dst, sv_dst)
 
     return quant_asym_dynamic
+
 
 if __name__ == "__main__":
     print(build_sym_dynamic())

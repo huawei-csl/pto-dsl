@@ -52,9 +52,11 @@ const = s.const
 _DST_STRIDE = 2
 _SORT_BLOCK_LEN = 32  # TSORT32 sorts within blocks of this many input elements
 
+
 def fn_name(n_cols: int, topk: int) -> str:
     """Unique kernel name (n_rows is dynamic and not encoded)."""
     return f"topk_c{n_cols}_k{topk}"
+
 
 def build_topk(
     n_cols: int = 512,
@@ -179,17 +181,21 @@ def build_topk(
             row_end_raw = row_start + rows_per_core
             need_clamp = row_end_raw > n_rows_dyn
             rows_this_core = s.select(need_clamp, n_rows_dyn - row_start, rows_per_core)
-            tv_src = pto.as_tensor(ptr=src_ptr,
+            tv_src = pto.as_tensor(
+                ptr=src_ptr,
                 shape=[n_rows_dyn, c_ncols],
                 strides=[c_ncols, c1],
             )
-            tv_inidx = pto.as_tensor(ptr=inidx_ptr, shape=[c1, c_ncols], strides=[c_ncols, c1]
+            tv_inidx = pto.as_tensor(
+                ptr=inidx_ptr, shape=[c1, c_ncols], strides=[c_ncols, c1]
             )
-            tv_scores = pto.as_tensor(ptr=scores_ptr,
+            tv_scores = pto.as_tensor(
+                ptr=scores_ptr,
                 shape=[n_rows_dyn, c_topk],
                 strides=[c_topk, c1],
             )
-            tv_indices = pto.as_tensor(ptr=indices_ptr,
+            tv_indices = pto.as_tensor(
+                ptr=indices_ptr,
                 shape=[n_rows_dyn, c_topk],
                 strides=[c_topk, c1],
             )
@@ -204,7 +210,8 @@ def build_topk(
             tb_indices = pto.alloc_tile(tile_topk_u32)
 
             # Load shared column-index vector once per core.
-            sv_inidx = pto.slice_view(source=tv_inidx, offsets=[c0, c0], sizes=[c1, c_ncols]
+            sv_inidx = pto.slice_view(
+                source=tv_inidx, offsets=[c0, c0], sizes=[c1, c_ncols]
             )
             pto.load(sv_inidx, tb_inidx)
 
@@ -215,7 +222,8 @@ def build_topk(
                         row = i + row_start
 
                         # 1. Load input row.
-                        sv_src = pto.slice_view(source=tv_src,
+                        sv_src = pto.slice_view(
+                            source=tv_src,
                             offsets=[row, c0],
                             sizes=[c1, c_ncols],
                         )
@@ -242,13 +250,15 @@ def build_topk(
                         tile.gather(tb_gather_win_u, tb_indices, mask_pattern="P1010")
 
                         # 7. Store outputs.
-                        sv_scores = pto.slice_view(source=tv_scores,
+                        sv_scores = pto.slice_view(
+                            source=tv_scores,
                             offsets=[row, c0],
                             sizes=[c1, c_topk],
                         )
                         pto.store(tb_scores, sv_scores)
 
-                        sv_indices = pto.slice_view(source=tv_indices,
+                        sv_indices = pto.slice_view(
+                            source=tv_indices,
                             offsets=[row, c0],
                             sizes=[c1, c_topk],
                         )
@@ -256,6 +266,7 @@ def build_topk(
 
     _kernel.__name__ = fn_name(n_cols, topk)
     return to_ir_module(_kernel)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Print MLIR IR for a TopK kernel")

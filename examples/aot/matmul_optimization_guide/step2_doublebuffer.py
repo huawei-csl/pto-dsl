@@ -53,14 +53,17 @@ def build():
             core_loop = n_loop * m_loop
             k_dtile_num = k_total // c512
 
-            tv_a = pto.as_tensor(ptr=a_ptr, shape=[m_total, k_total], strides=[k_total, c1]
+            tv_a = pto.as_tensor(
+                ptr=a_ptr, shape=[m_total, k_total], strides=[k_total, c1]
             )
-            tv_b = pto.as_tensor(ptr=b_ptr,
+            tv_b = pto.as_tensor(
+                ptr=b_ptr,
                 shape=[k_total, n_total],
                 strides=[c1, k_total],
                 layout="DN",
             )
-            tv_c = pto.as_tensor(ptr=c_ptr, shape=[m_total, n_total], strides=[n_total, c1]
+            tv_c = pto.as_tensor(
+                ptr=c_ptr, shape=[m_total, n_total], strides=[n_total, c1]
             )
 
             a_l1 = [pto.alloc_tile(tile_buf_a_l1), pto.alloc_tile(tile_buf_a_l1)]

@@ -28,6 +28,7 @@ _COL_COMBINE_OPS = {
     "prod": tile.mul,
 }
 
+
 def build_row_reduce(kind="sum", dtype="fp32"):
     """
     Generic row-wise reduction across columns.
@@ -82,8 +83,7 @@ def build_row_reduce(kind="sum", dtype="fp32"):
             num_rows = row_end - row_start
 
             total_elems = batch * n_cols
-            tv_x = pto.as_tensor(ptr=x_ptr, shape=[total_elems], strides=[c1]
-            )
+            tv_x = pto.as_tensor(ptr=x_ptr, shape=[total_elems], strides=[c1])
             tv_y = pto.as_tensor(ptr=y_ptr, shape=[batch], strides=[c1])
 
             with pto.if_context(num_rows > c0):
@@ -94,12 +94,14 @@ def build_row_reduce(kind="sum", dtype="fp32"):
                 for r in pto.range(c0, num_rows, c1):
                     gm_offset = (row_start + r) * n_cols
 
-                    sv_x = pto.slice_view(source=tv_x,
+                    sv_x = pto.slice_view(
+                        source=tv_x,
                         offsets=[gm_offset],
                         sizes=[n_cols],
                     )
 
-                    sv_y = pto.slice_view(source=tv_y,
+                    sv_y = pto.slice_view(
+                        source=tv_y,
                         offsets=[row_start + r],
                         sizes=[c1],
                     )
@@ -109,6 +111,7 @@ def build_row_reduce(kind="sum", dtype="fp32"):
                     pto.store(tb_out, sv_y)
 
     return _kernel
+
 
 def build_col_reduce(kind="sum", dtype="fp32"):
     """
@@ -177,11 +180,13 @@ def build_col_reduce(kind="sum", dtype="fp32"):
             col_end = s.min_u(col_start + cols_per_core, n_cols)
             num_cols = col_end - col_start
 
-            tv_x = pto.as_tensor(ptr=x_ptr,
+            tv_x = pto.as_tensor(
+                ptr=x_ptr,
                 shape=[batch, n_cols],
                 strides=[n_cols, c1],
             )
-            tv_y = pto.as_tensor(ptr=y_ptr,
+            tv_y = pto.as_tensor(
+                ptr=y_ptr,
                 shape=[c1, n_cols],
                 strides=[n_cols, c1],
             )
@@ -206,7 +211,8 @@ def build_col_reduce(kind="sum", dtype="fp32"):
                 else:
                     tb_acc = pto.alloc_tile(tile_out_type, valid_col=cols_this)
 
-                sv_x0 = pto.slice_view(source=tv_x,
+                sv_x0 = pto.slice_view(
+                    source=tv_x,
                     offsets=[c0, col],
                     sizes=[rows_this0, cols_this],
                 )
@@ -233,7 +239,8 @@ def build_col_reduce(kind="sum", dtype="fp32"):
                     else:
                         tb_part = pto.alloc_tile(tile_out_type, valid_col=cols_this)
 
-                    sv_x = pto.slice_view(source=tv_x,
+                    sv_x = pto.slice_view(
+                        source=tv_x,
                         offsets=[row, col],
                         sizes=[rows_this, cols_this],
                     )
@@ -241,7 +248,8 @@ def build_col_reduce(kind="sum", dtype="fp32"):
                     col_reduce(tb_x, tb_tmp, tb_part)
                     combine(tb_acc, tb_part, tb_acc)
 
-                sv_y = pto.slice_view(source=tv_y,
+                sv_y = pto.slice_view(
+                    source=tv_y,
                     offsets=[c0, col],
                     sizes=[c1, cols_this],
                 )
@@ -249,29 +257,38 @@ def build_col_reduce(kind="sum", dtype="fp32"):
 
     return _kernel
 
+
 def build_rowsum(dtype="fp32"):
     return build_row_reduce("sum", dtype=dtype)
+
 
 def build_rowmin(dtype="fp32"):
     return build_row_reduce("min", dtype=dtype)
 
+
 def build_rowmax(dtype="fp32"):
     return build_row_reduce("max", dtype=dtype)
+
 
 def build_rowprod(dtype="fp32"):
     return build_row_reduce("prod", dtype=dtype)
 
+
 def build_colsum(dtype="fp32"):
     return build_col_reduce("sum", dtype=dtype)
+
 
 def build_colmin(dtype="fp32"):
     return build_col_reduce("min", dtype=dtype)
 
+
 def build_colmax(dtype="fp32"):
     return build_col_reduce("max", dtype=dtype)
 
+
 def build_colprod(dtype="fp32"):
     return build_col_reduce("prod", dtype=dtype)
+
 
 if __name__ == "__main__":
     import argparse

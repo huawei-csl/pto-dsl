@@ -15,6 +15,7 @@ tile_type = pto.TileBufType(
     memory_space="VEC",
 )
 
+
 @to_ir_module
 def vec_sub_2d_static(
     arg0: ptr_type,
@@ -43,12 +44,9 @@ def vec_sub_2d_static(
 
     vid_idx = s.index_cast(vid)
     offset_row = vid_idx * c32
-    sv0 = pto.slice_view(source=tv0, offsets=[offset_row, c0], sizes=[c32, c32]
-    )
-    sv1 = pto.slice_view(source=tv1, offsets=[offset_row, c0], sizes=[c32, c32]
-    )
-    sv2 = pto.slice_view(source=tv2, offsets=[offset_row, c0], sizes=[c32, c32]
-    )
+    sv0 = pto.slice_view(source=tv0, offsets=[offset_row, c0], sizes=[c32, c32])
+    sv1 = pto.slice_view(source=tv1, offsets=[offset_row, c0], sizes=[c32, c32])
+    sv2 = pto.slice_view(source=tv2, offsets=[offset_row, c0], sizes=[c32, c32])
 
     with pto.vector_section():
         tb0 = pto.alloc_tile(tile_type, valid_row=v_row_idx, valid_col=v_col_idx)
@@ -59,6 +57,7 @@ def vec_sub_2d_static(
         pto.load(sv1, tb1)
         tile.sub(tb0, tb1, tb2)
         pto.store(tb2, sv2)
+
 
 def test_ir_generation():
     ir_text = str(vec_sub_2d_static)

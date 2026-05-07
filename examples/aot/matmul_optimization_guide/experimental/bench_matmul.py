@@ -10,7 +10,6 @@ import torch_npu  # noqa: F401
 
 from ptodsl.npu_info import get_num_cube_cores, get_test_device
 
-
 BLOCK_DIM = get_num_cube_cores()
 SWIZZLE_DIRECTION_LIST = [0, 1]
 SWIZZLE_COUNT_LIST = [1, 3, 5]

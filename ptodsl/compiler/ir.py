@@ -7,7 +7,6 @@ from ..api.scalar import wrap_value
 from ..api.type_def import _LazyType, _materialize
 from ..utils.codegen import get_user_code_loc
 
-
 # For the inner decorators to be clean for the user visible API `pto.func(kernel='cube')`
 # with no reference to module, we need this:
 _CURRENT = None
@@ -276,7 +275,12 @@ def to_ir_module(fn=None, *, module=False):
                     )
                 old = _inject_globals(fn, meta_map)
                 prev = _CURRENT
-                _CURRENT = {"ctx": ctx, "module": ir_module, "meta_map": meta_map, "entry_fn": None}
+                _CURRENT = {
+                    "ctx": ctx,
+                    "module": ir_module,
+                    "meta_map": meta_map,
+                    "entry_fn": None,
+                }
                 try:
                     fn()
                     # Capture entry metadata before _CURRENT is restored.

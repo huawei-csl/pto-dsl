@@ -8,7 +8,6 @@ import torch_npu
 
 from ptodsl.npu_info import get_num_cube_cores, get_test_device
 
-
 _DEFAULT_NUM_CORES = get_num_cube_cores()
 BLOCK_DIM_LIST = [1, 20, _DEFAULT_NUM_CORES]
 SWIZZLE_DIRECTION_LIST = [0, 1]

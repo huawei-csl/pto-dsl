@@ -12,6 +12,7 @@ DTYPES = {
 #   hw_block_len = block_len * (sizeof(float) / sizeof(T))
 _TYPE_COEF = {"float32": 1, "float16": 2}
 
+
 def build_mrgsort_kernel(
     fn_name="vec_mrgsort_1d_dynamic_float32",
     dtype="float32",
@@ -83,11 +84,13 @@ def build_mrgsort_kernel(
         with pto.vector_section():
             # 2D tensor views: shape=[num_tiles, tile_length], strides=[tile_length, 1].
             # Mirrors the expand_builder layout where rows are tiles and columns are elements.
-            tv0 = pto.as_tensor(ptr=arg0,
+            tv0 = pto.as_tensor(
+                ptr=arg0,
                 shape=[num_tiles_global, c_tile],
                 strides=[c_tile, c1],
             )
-            tv1 = pto.as_tensor(ptr=arg1,
+            tv1 = pto.as_tensor(
+                ptr=arg1,
                 shape=[num_tiles_global, c_tile],
                 strides=[c_tile, c1],
             )
@@ -108,7 +111,8 @@ def build_mrgsort_kernel(
                     for i in pto.range(c0, tiles_to_process, c1):
                         tile_idx = i + tile_offset_this_core
 
-                        sv0 = pto.slice_view(source=tv0,
+                        sv0 = pto.slice_view(
+                            source=tv0,
                             offsets=[tile_idx, c0],
                             sizes=[c1, c_tile],
                         )
@@ -124,7 +128,8 @@ def build_mrgsort_kernel(
                             cur_block_len *= 4
                         tile.mov(tb_src, tb_dst)
 
-                        sv1 = pto.slice_view(source=tv1,
+                        sv1 = pto.slice_view(
+                            source=tv1,
                             offsets=[tile_idx, c0],
                             sizes=[c1, c_tile],
                         )
@@ -132,6 +137,7 @@ def build_mrgsort_kernel(
 
     _kernel.__name__ = fn_name
     return to_ir_module(_kernel)
+
 
 if __name__ == "__main__":
     print(build_mrgsort_kernel(dtype="float32", tile_length=1024, block_len=64))

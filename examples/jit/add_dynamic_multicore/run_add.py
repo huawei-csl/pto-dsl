@@ -6,6 +6,7 @@ from ptodsl.npu_info import get_num_cube_cores, get_test_device
 
 const = s.const
 
+
 def meta_data():
     dtype = pto.float32
     index_dtype = pto.int32
@@ -29,6 +30,7 @@ def meta_data():
         "tile_type": tile_type,
         "tile_length": tile_length,
     }
+
 
 @jit(meta_data=meta_data, block_dim=get_num_cube_cores())
 def vec_add_1d_dynamic(
@@ -82,15 +84,18 @@ def vec_add_1d_dynamic(
                     tile_offset_global = i + tile_offset_this_core
                     offset_global = tile_offset_global * c_tile
 
-                    sv0 = pto.slice_view(source=tv0,
+                    sv0 = pto.slice_view(
+                        source=tv0,
                         offsets=[offset_global],
                         sizes=[c_tile],
                     )
-                    sv1 = pto.slice_view(source=tv1,
+                    sv1 = pto.slice_view(
+                        source=tv1,
                         offsets=[offset_global],
                         sizes=[c_tile],
                     )
-                    sv2 = pto.slice_view(source=tv2,
+                    sv2 = pto.slice_view(
+                        source=tv2,
                         offsets=[offset_global],
                         sizes=[c_tile],
                     )
@@ -99,6 +104,7 @@ def vec_add_1d_dynamic(
                     pto.load(sv1, tb1)
                     tile.add(tb0, tb1, tb2)
                     pto.store(tb2, sv2)
+
 
 def test_add():
     device = get_test_device()
@@ -132,6 +138,7 @@ def test_add():
         z_ref = x + y
         torch.testing.assert_close(z, z_ref)
         print(f"result equal for shape {shape}")
+
 
 if __name__ == "__main__":
     test_add()

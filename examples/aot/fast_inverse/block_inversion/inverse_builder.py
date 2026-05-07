@@ -7,6 +7,7 @@ from ptodsl import scalar as s
 const = s.const
 SUPPORTED_MATRIX_SIZES = (16, 32, 64, 128)
 
+
 def build_kernel(matrix_size: int):
     assert matrix_size % 2 == 0 and matrix_size >= 16
     n = matrix_size
@@ -55,35 +56,43 @@ def build_kernel(matrix_size: int):
             row_offset = block_idx * n_c
             row_offset_h = row_offset + h_c
 
-            tv_in = pto.as_tensor(ptr=in_ptr, shape=[total_rows, n_c], strides=[n_c, c1]
+            tv_in = pto.as_tensor(
+                ptr=in_ptr, shape=[total_rows, n_c], strides=[n_c, c1]
             )
-            tv_out = pto.as_tensor(ptr=out_ptr, shape=[total_rows, n_c], strides=[n_c, c1]
+            tv_out = pto.as_tensor(
+                ptr=out_ptr, shape=[total_rows, n_c], strides=[n_c, c1]
             )
-            tv_i_neg = pto.as_tensor(ptr=i_neg_ptr, shape=[h_c, h_c], strides=[h_c, c1]
-            )
-            sv_i_neg = pto.slice_view(source=tv_i_neg, offsets=[c0, c0], sizes=[h_c, h_c]
+            tv_i_neg = pto.as_tensor(ptr=i_neg_ptr, shape=[h_c, h_c], strides=[h_c, c1])
+            sv_i_neg = pto.slice_view(
+                source=tv_i_neg, offsets=[c0, c0], sizes=[h_c, h_c]
             )
 
-            sv_a11 = pto.slice_view(source=tv_in, offsets=[row_offset, c0], sizes=[h_c, h_c]
+            sv_a11 = pto.slice_view(
+                source=tv_in, offsets=[row_offset, c0], sizes=[h_c, h_c]
             )
-            sv_a21 = pto.slice_view(source=tv_in,
+            sv_a21 = pto.slice_view(
+                source=tv_in,
                 offsets=[row_offset_h, c0],
                 sizes=[h_c, h_c],
             )
-            sv_a22 = pto.slice_view(source=tv_in,
+            sv_a22 = pto.slice_view(
+                source=tv_in,
                 offsets=[row_offset_h, h_c],
                 sizes=[h_c, h_c],
             )
 
-            sv_out11 = pto.slice_view(source=tv_out,
+            sv_out11 = pto.slice_view(
+                source=tv_out,
                 offsets=[row_offset, c0],
                 sizes=[h_c, h_c],
             )
-            sv_out21 = pto.slice_view(source=tv_out,
+            sv_out21 = pto.slice_view(
+                source=tv_out,
                 offsets=[row_offset_h, c0],
                 sizes=[h_c, h_c],
             )
-            sv_out22 = pto.slice_view(source=tv_out,
+            sv_out22 = pto.slice_view(
+                source=tv_out,
                 offsets=[row_offset_h, h_c],
                 sizes=[h_c, h_c],
             )
@@ -181,6 +190,7 @@ def build_kernel(matrix_size: int):
             pto.store(c_l0, sv_out21)
 
     return tri_inv_block2x2_fp16
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

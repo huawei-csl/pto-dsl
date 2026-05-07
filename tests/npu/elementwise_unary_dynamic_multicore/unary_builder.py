@@ -7,6 +7,7 @@ const = s.const
 _TILE_SIZE_BYTES = 32 * 1024
 _DTYPE_BYTES = {"float32": 4, "float16": 2}
 
+
 def build_unary_kernel(op_name, op_fn, dtype="float32"):
     """
     Dynamic multicore unary elementwise kernel.
@@ -65,10 +66,8 @@ def build_unary_kernel(op_name, op_fn, dtype="float32"):
             num_rows = row_end - row_start
 
             total_elems = batch * n_cols
-            tv_x = pto.as_tensor(ptr=x_ptr, shape=[total_elems], strides=[c1]
-            )
-            tv_y = pto.as_tensor(ptr=y_ptr, shape=[total_elems], strides=[c1]
-            )
+            tv_x = pto.as_tensor(ptr=x_ptr, shape=[total_elems], strides=[c1])
+            tv_y = pto.as_tensor(ptr=y_ptr, shape=[total_elems], strides=[c1])
 
             with pto.if_context(num_rows > c0):
                 tb_x = pto.alloc_tile(tile_type, valid_col=n_cols)
@@ -77,11 +76,13 @@ def build_unary_kernel(op_name, op_fn, dtype="float32"):
                 for row_i in pto.range(c0, num_rows, c1):
                     gm_offset = (row_start + row_i) * n_cols
 
-                    sv_x = pto.slice_view(source=tv_x,
+                    sv_x = pto.slice_view(
+                        source=tv_x,
                         offsets=[gm_offset],
                         sizes=[n_cols],
                     )
-                    sv_y = pto.slice_view(source=tv_y,
+                    sv_y = pto.slice_view(
+                        source=tv_y,
                         offsets=[gm_offset],
                         sizes=[n_cols],
                     )

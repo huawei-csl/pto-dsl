@@ -3,6 +3,7 @@ from mlir.ir import IntegerType
 from ptodsl import pto, tile, to_ir_module
 from ptodsl import scalar as s
 
+
 def build(M=128, K=128, N=128):
     dtype = pto.float16
     dtype_acc_tile = pto.float32
@@ -16,9 +17,7 @@ def build(M=128, K=128, N=128):
     tile_buf_aMat = pto.TileBufType(shape=[M, K], dtype=dtype, memory_space="MAT")
     tile_buf_bMat = pto.TileBufType(shape=[K, N], dtype=dtype, memory_space="MAT")
     tile_buf_aTile = pto.TileBufType(shape=[M, K], dtype=dtype, memory_space="LEFT")
-    tile_buf_bTile = pto.TileBufType(
-        shape=[K, N], dtype=dtype, memory_space="RIGHT"
-    )
+    tile_buf_bTile = pto.TileBufType(shape=[K, N], dtype=dtype, memory_space="RIGHT")
     tile_buf_cTile = pto.TileBufType(
         shape=[M, N], dtype=dtype_acc_tile, memory_space="ACC"
     )
@@ -70,16 +69,17 @@ def build(M=128, K=128, N=128):
 
             # TODO: if no batched assigned to this core, early return
 
-            tvA = pto.as_tensor(ptr=a_ptr,
+            tvA = pto.as_tensor(
+                ptr=a_ptr,
                 shape=[batch, cM, cK],
                 strides=[cK * cM, cK, c1],
             )
-            tvC = pto.as_tensor(ptr=out_ptr,
+            tvC = pto.as_tensor(
+                ptr=out_ptr,
                 shape=[batch, cM, cN],
                 strides=[cM * cN, cN, c1],
             )
-            tvB = pto.as_tensor(ptr=b_ptr, shape=[cK, cN], strides=[cN, c1]
-            )
+            tvB = pto.as_tensor(ptr=b_ptr, shape=[cK, cN], strides=[cN, c1])
 
             # TODO: pre-fetch more than two tiles into L1
             NUM_BUFFERS = 2
@@ -91,15 +91,15 @@ def build(M=128, K=128, N=128):
             bTile = pto.alloc_tile(tile_buf_bTile)
 
             # Put B in L0B
-            svB = pto.slice_view(source=tvB, offsets=[c0, c0], sizes=[cK, cN]
-            )
+            svB = pto.slice_view(source=tvB, offsets=[c0, c0], sizes=[cK, cN])
             pto.load(svB, bMatTile)
             pto.record_wait_pair("LOAD", "MOV_M2L", event_id=0)
             tile.mov(bMatTile, bTile)
             # TODO: wait here so we can use full l1 memory later for A.
 
             # load in the first tile from GM->L1
-            svA = pto.slice_view(source=tvA, offsets=[b_start, c0, c0], sizes=[c1, cM, cK]
+            svA = pto.slice_view(
+                source=tvA, offsets=[b_start, c0, c0], sizes=[c1, cM, cK]
             )
             curr = c1 - (b_start % c2)
             pto.cond(
@@ -119,11 +119,13 @@ def build(M=128, K=128, N=128):
 
             for b_idx in pto.range(b_start, b_end, c1):
                 curr = b_idx % c2
-                svA = pto.slice_view(source=tvA,
+                svA = pto.slice_view(
+                    source=tvA,
                     offsets=[b_idx + c1, c0, c0],
                     sizes=[c1, cM, cK],
                 )
-                svC = pto.slice_view(source=tvC, offsets=[b_idx, c0, c0], sizes=[c1, cM, cN]
+                svC = pto.slice_view(
+                    source=tvC, offsets=[b_idx, c0, c0], sizes=[c1, cM, cN]
                 )
 
                 ########## Load tile A for iteration i+1 from GM -> L1
@@ -173,6 +175,7 @@ def build(M=128, K=128, N=128):
                 pto.barrier("LOAD")
 
     return RunTMATMULSplitK
+
 
 if __name__ == "__main__":
     print(build())

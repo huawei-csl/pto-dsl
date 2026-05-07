@@ -15,9 +15,7 @@ acc_dtype = pto.float32
 ptr_type = pto.PtrType(dtype)
 i32 = pto.int32
 
-b_l1_cfg = pto.TileBufConfig(
-    blayout="RowMajor", slayout="ColMajor", s_fractal_size=512
-)
+b_l1_cfg = pto.TileBufConfig(blayout="RowMajor", slayout="ColMajor", s_fractal_size=512)
 
 tile_buf_a_l1 = pto.TileBufType(
     shape=[M_TILE, K_DTILE], dtype=dtype, memory_space="MAT"
@@ -39,6 +37,7 @@ tile_view_a = [M_TILE, K_DTILE]
 tile_view_b = [K_TILE, N_FULL]
 tile_view_c = [M_TILE, N_FULL]
 tv_2d = None  # was TensorType placeholder; no longer needed but kept for import compat
+
 
 def swizzle_nz(li, m_loop, n_loop, c_swizzle, c_swizzle_m1, c1, c2):
     tile_block_loop = (n_loop + c_swizzle_m1) // c_swizzle

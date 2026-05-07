@@ -19,6 +19,7 @@ tile_type = pto.TileBufType(
     config=tile_cfg,
 )
 
+
 def build_geglu(fn_name="geglu_fp16"):
     """
     Build a dynamic-batch GEGLU kernel in PTO DSL.
@@ -83,12 +84,9 @@ def build_geglu(fn_name="geglu_fp16"):
                     num_rows = row_end - row_start
 
                     total_elems = batch * n_cols
-                    tv_a = pto.as_tensor(ptr=a_ptr, shape=[total_elems], strides=[c1]
-                    )
-                    tv_b = pto.as_tensor(ptr=b_ptr, shape=[total_elems], strides=[c1]
-                    )
-                    tv_c = pto.as_tensor(ptr=c_ptr, shape=[total_elems], strides=[c1]
-                    )
+                    tv_a = pto.as_tensor(ptr=a_ptr, shape=[total_elems], strides=[c1])
+                    tv_b = pto.as_tensor(ptr=b_ptr, shape=[total_elems], strides=[c1])
+                    tv_c = pto.as_tensor(ptr=c_ptr, shape=[total_elems], strides=[c1])
 
                     with pto.if_context(num_rows > c0):
                         # Allocate 5 UB tiles (160 KB total, well under 192 KB UB).
@@ -101,15 +99,18 @@ def build_geglu(fn_name="geglu_fp16"):
                         for row_i in pto.range(c0, num_rows, c1):
                             gm_offset = (row_start + row_i) * n_cols
 
-                            sv_a = pto.slice_view(source=tv_a,
+                            sv_a = pto.slice_view(
+                                source=tv_a,
                                 offsets=[gm_offset],
                                 sizes=[n_cols],
                             )
-                            sv_b = pto.slice_view(source=tv_b,
+                            sv_b = pto.slice_view(
+                                source=tv_b,
                                 offsets=[gm_offset],
                                 sizes=[n_cols],
                             )
-                            sv_c = pto.slice_view(source=tv_c,
+                            sv_c = pto.slice_view(
+                                source=tv_c,
                                 offsets=[gm_offset],
                                 sizes=[n_cols],
                             )
@@ -141,6 +142,7 @@ def build_geglu(fn_name="geglu_fp16"):
 
     _ = fn_name
     return _kernel
+
 
 if __name__ == "__main__":
     import argparse

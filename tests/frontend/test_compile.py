@@ -80,7 +80,8 @@ def _find_kernel_fn_for_module(ir_mod_obj, py_mod):
     # Fallback: parse MLIR text and look for a matching callable.
     ir_text = str(ir_mod_obj)
     import re
-    m = re.search(r'func\.func\s+@(\w+)\s*\(', ir_text)
+
+    m = re.search(r"func\.func\s+@(\w+)\s*\(", ir_text)
     if not m:
         return None
     fn_name = m.group(1)

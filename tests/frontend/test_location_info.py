@@ -1,7 +1,6 @@
 from ptodsl import pto, to_ir_module
 from ptodsl import scalar as s
 
-
 dtype = pto.float32
 index_dtype = pto.int32
 ptr_type = pto.PtrType(dtype)

@@ -3,6 +3,7 @@ from ptodsl import scalar as s
 
 const = s.const
 
+
 def build():
     M_TILE = 128
     K_QTILE = 64
@@ -113,7 +114,8 @@ def build():
         with pto.if_context(not_first_tile):
             pto.wait_event("STORE_ACC", "MATMUL", event_id=0)
 
-        sv_a0 = pto.slice_view(source=tvA,
+        sv_a0 = pto.slice_view(
+            source=tvA,
             offsets=[m_offset, c0],
             sizes=[const(M_TILE), cKD],
         )
@@ -179,7 +181,8 @@ def build():
                         pto.record_event("MATMUL", "MOV_M2L", event_id=ping)
 
                 with pto.if_context(k_idx + c1 < k_dtile_num):
-                    sv_a_next = pto.slice_view(source=tvA,
+                    sv_a_next = pto.slice_view(
+                        source=tvA,
                         offsets=[m_offset, k_offset + cKD],
                         sizes=[const(M_TILE), cKD],
                     )
@@ -238,14 +241,17 @@ def build():
             core_loop = n_loop * m_loop
             k_dtile_num = k_total // c512
 
-            tvA = pto.as_tensor(ptr=a_ptr, shape=[m_total, k_total], strides=[k_total, c1]
+            tvA = pto.as_tensor(
+                ptr=a_ptr, shape=[m_total, k_total], strides=[k_total, c1]
             )
-            tvB = pto.as_tensor(ptr=b_ptr,
+            tvB = pto.as_tensor(
+                ptr=b_ptr,
                 shape=[k_total, n_total],
                 strides=[c1, k_total],
                 layout="DN",
             )
-            tvC = pto.as_tensor(ptr=c_ptr, shape=[m_total, n_total], strides=[n_total, c1]
+            tvC = pto.as_tensor(
+                ptr=c_ptr, shape=[m_total, n_total], strides=[n_total, c1]
             )
 
             pto.record_event("MATMUL", "MOV_M2L", event_id=[0, 1])
@@ -319,6 +325,7 @@ def build():
             pto.wait_event("MATMUL", "MOV_M2L", event_id=1)
 
     return matmul_kernel_ABt
+
 
 if __name__ == "__main__":
     print(build())

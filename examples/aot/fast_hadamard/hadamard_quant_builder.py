@@ -36,6 +36,7 @@ tile_full_out = pto.TileBufType(
     config=tile_cfg,
 )
 
+
 def build_fast_hadamard_quant_autosync(group_size=None):
     """Build a fused Hadamard+quantize kernel (fp16 input → int8 output).
 
@@ -109,10 +110,8 @@ def build_fast_hadamard_quant_autosync(group_size=None):
                 )
 
                 with pto.if_context(samples_to_process > c0):
-                    tv_x = pto.as_tensor(ptr=x_ptr, shape=[batch * n], strides=[c1]
-                    )
-                    tv_y = pto.as_tensor(ptr=y_ptr, shape=[batch * n], strides=[c1]
-                    )
+                    tv_x = pto.as_tensor(ptr=x_ptr, shape=[batch * n], strides=[c1])
+                    tv_y = pto.as_tensor(ptr=y_ptr, shape=[batch * n], strides=[c1])
 
                     tb_x_0 = pto.alloc_tile(tile_full_in, valid_col=n)
                     tb_x_1 = pto.alloc_tile(tile_full_in, valid_col=n)
@@ -134,11 +133,13 @@ def build_fast_hadamard_quant_autosync(group_size=None):
                     num_chunks = s.ceil_div(samples_to_process, samples_per_load)
 
                     def process_chunk(tb_x, tb_y, event_id, gm_offset):
-                        sv_x = pto.slice_view(source=tv_x,
+                        sv_x = pto.slice_view(
+                            source=tv_x,
                             offsets=[gm_offset],
                             sizes=[n],
                         )
-                        sv_y = pto.slice_view(source=tv_y,
+                        sv_y = pto.slice_view(
+                            source=tv_y,
                             offsets=[gm_offset],
                             sizes=[n],
                         )
@@ -225,6 +226,7 @@ def build_fast_hadamard_quant_autosync(group_size=None):
 
     return fast_hadamard_quant_autosync
 
+
 def build_fast_hadamard_quant_manualsync(group_size=None):
     """Build a fused Hadamard+quantize kernel (fp16 input → int8 output).
 
@@ -286,10 +288,8 @@ def build_fast_hadamard_quant_manualsync(group_size=None):
                 )
 
                 with pto.if_context(samples_to_process > c0):
-                    tv_x = pto.as_tensor(ptr=x_ptr, shape=[batch * n], strides=[c1]
-                    )
-                    tv_y = pto.as_tensor(ptr=y_ptr, shape=[batch * n], strides=[c1]
-                    )
+                    tv_x = pto.as_tensor(ptr=x_ptr, shape=[batch * n], strides=[c1])
+                    tv_y = pto.as_tensor(ptr=y_ptr, shape=[batch * n], strides=[c1])
 
                     tb_x_0 = pto.alloc_tile(tile_full_in, valid_col=n)
                     tb_x_1 = pto.alloc_tile(tile_full_in, valid_col=n)
@@ -311,11 +311,13 @@ def build_fast_hadamard_quant_manualsync(group_size=None):
                     num_chunks = s.ceil_div(samples_to_process, samples_per_load)
 
                     def process_chunk(tb_x, tb_y, event_id, gm_offset):
-                        sv_x = pto.slice_view(source=tv_x,
+                        sv_x = pto.slice_view(
+                            source=tv_x,
                             offsets=[gm_offset],
                             sizes=[n],
                         )
-                        sv_y = pto.slice_view(source=tv_y,
+                        sv_y = pto.slice_view(
+                            source=tv_y,
                             offsets=[gm_offset],
                             sizes=[n],
                         )
@@ -429,6 +431,7 @@ def build_fast_hadamard_quant_manualsync(group_size=None):
                         pto.wait_event("STORE_VEC", "VEC", event_id=ev)
 
     return fast_hadamard_quant_manualsync
+
 
 if __name__ == "__main__":
     import argparse

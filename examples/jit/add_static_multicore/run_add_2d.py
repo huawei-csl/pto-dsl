@@ -54,15 +54,9 @@ def vec_add_kernel(
 
     vid_idx = s.index_cast(vid)
     offset_row = vid_idx * c32  # every core loads 32 rows of data
-    sv0 = pto.slice_view(
-        source=tv0, offsets=[offset_row, c0], sizes=[c32, c32]
-    )
-    sv1 = pto.slice_view(
-        source=tv1, offsets=[offset_row, c0], sizes=[c32, c32]
-    )
-    sv2 = pto.slice_view(
-        source=tv2, offsets=[offset_row, c0], sizes=[c32, c32]
-    )
+    sv0 = pto.slice_view(source=tv0, offsets=[offset_row, c0], sizes=[c32, c32])
+    sv1 = pto.slice_view(source=tv1, offsets=[offset_row, c0], sizes=[c32, c32])
+    sv2 = pto.slice_view(source=tv2, offsets=[offset_row, c0], sizes=[c32, c32])
 
     with pto.vector_section():
         tb0 = pto.alloc_tile(tile_type, valid_row=v_row_idx, valid_col=v_col_idx)

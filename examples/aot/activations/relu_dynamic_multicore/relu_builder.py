@@ -1,6 +1,7 @@
 from ptodsl import pto, tile, to_ir_module
 from ptodsl import scalar as s
 
+
 def build():
     tile_w = 32
 
@@ -42,10 +43,8 @@ def build():
             core_start = vid * num_el_per_core
 
             # GM tensors shape N with stride 1.
-            tv0 = pto.as_tensor(ptr=arg0, shape=[total_elements], strides=[c1]
-            )
-            tv1 = pto.as_tensor(ptr=arg1, shape=[total_elements], strides=[c1]
-            )
+            tv0 = pto.as_tensor(ptr=arg0, shape=[total_elements], strides=[c1])
+            tv1 = pto.as_tensor(ptr=arg1, shape=[total_elements], strides=[c1])
 
             with pto.if_context(core_start < total_elements):
                 core_end_unclamped = core_start + num_el_per_core
@@ -67,11 +66,13 @@ def build():
                     tb1 = pto.alloc_tile(tile_type, valid_row=c1, valid_col=valid_len)
 
                     # each core c takes a tile at offset c*num_el_per_core + i*tile_w
-                    sv0 = pto.slice_view(source=tv0,
+                    sv0 = pto.slice_view(
+                        source=tv0,
                         offsets=[offset_total],
                         sizes=[c_tile_w],
                     )
-                    sv1 = pto.slice_view(source=tv1,
+                    sv1 = pto.slice_view(
+                        source=tv1,
                         offsets=[offset_total],
                         sizes=[c_tile_w],
                     )
@@ -81,6 +82,7 @@ def build():
                     pto.store(tb1, sv1)
 
     return sync_kernel_dyn
+
 
 if __name__ == "__main__":
     print(build())

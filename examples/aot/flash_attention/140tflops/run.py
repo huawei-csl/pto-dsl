@@ -30,7 +30,6 @@ import torch_npu
 from ptodsl.utils import get_test_device
 from ptodsl.bench import do_bench
 
-
 THIS_DIR = Path(__file__).resolve().parent
 
 _DEVICE = get_test_device()

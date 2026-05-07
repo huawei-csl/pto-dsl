@@ -10,6 +10,7 @@ DTYPES = {
     "int16": lambda: pto.int16,
 }
 
+
 def build_gather_kernel(
     fn_name="vec_gather_2d_dynamic_float32_P1111",
     dtype="float32",
@@ -81,12 +82,9 @@ def build_gather_kernel(
         tile_offset_this_core = vid_idx * num_tiles_per_core
 
         with pto.vector_section():
-            tv0 = pto.as_tensor(ptr=arg0, shape=[total_elements], strides=[c1]
-            )
-            tv1 = pto.as_tensor(ptr=arg1, shape=[total_elements], strides=[c1]
-            )
-            tv2 = pto.as_tensor(ptr=arg2, shape=[total_elements], strides=[c1]
-            )
+            tv0 = pto.as_tensor(ptr=arg0, shape=[total_elements], strides=[c1])
+            tv1 = pto.as_tensor(ptr=arg1, shape=[total_elements], strides=[c1])
+            tv2 = pto.as_tensor(ptr=arg2, shape=[total_elements], strides=[c1])
 
             tb_src = pto.alloc_tile(tile_type)
             tb_idx = pto.alloc_tile(tile_i32)
@@ -111,11 +109,13 @@ def build_gather_kernel(
                         tile_offset_global = i + tile_offset_this_core
                         offset_global = tile_offset_global * c_tile
 
-                        sv0 = pto.slice_view(source=tv0,
+                        sv0 = pto.slice_view(
+                            source=tv0,
                             offsets=[offset_global],
                             sizes=[c_tile],
                         )
-                        sv1 = pto.slice_view(source=tv1,
+                        sv1 = pto.slice_view(
+                            source=tv1,
                             offsets=[offset_global],
                             sizes=[c_tile],
                         )
@@ -128,7 +128,8 @@ def build_gather_kernel(
 
                         tile.gather(tb_tmp, tb_out, mask_pattern=mask_pattern)
 
-                        sv2 = pto.slice_view(source=tv2,
+                        sv2 = pto.slice_view(
+                            source=tv2,
                             offsets=[offset_global],
                             sizes=[c_tile],
                         )
@@ -137,6 +138,7 @@ def build_gather_kernel(
 
     _kernel.__name__ = fn_name
     return to_ir_module(_kernel)
+
 
 if __name__ == "__main__":
     # example

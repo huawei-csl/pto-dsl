@@ -17,6 +17,7 @@ tile_type = pto.TileBufType(
     config=tile_cfg,
 )
 
+
 @to_ir_module
 def vec_add_1d_dynamic(
     arg0: "ptr_type",
@@ -72,15 +73,18 @@ def vec_add_1d_dynamic(
                     tile_offset_global = i + tile_offset_this_core
                     offset_global = tile_offset_global * c_tile
 
-                    sv0 = pto.slice_view(source=tv0,
+                    sv0 = pto.slice_view(
+                        source=tv0,
                         offsets=[offset_global],
                         sizes=[c_tile],
                     )
-                    sv1 = pto.slice_view(source=tv1,
+                    sv1 = pto.slice_view(
+                        source=tv1,
                         offsets=[offset_global],
                         sizes=[c_tile],
                     )
-                    sv2 = pto.slice_view(source=tv2,
+                    sv2 = pto.slice_view(
+                        source=tv2,
                         offsets=[offset_global],
                         sizes=[c_tile],
                     )
@@ -94,6 +98,7 @@ def vec_add_1d_dynamic(
                         pto.load(sv1, tb1_pong)
                         tile.add(tb0_pong, tb1_pong, tb2_pong)
                         pto.store(tb2_pong, sv2)
+
 
 if __name__ == "__main__":
     module = vec_add_1d_dynamic

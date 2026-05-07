@@ -8,7 +8,6 @@ from pathlib import Path
 
 import torch
 
-
 _HERE = Path(__file__).resolve().parent
 _KERNEL_SO = _HERE / "outputs" / "kernel_sinkhorn.so"
 
