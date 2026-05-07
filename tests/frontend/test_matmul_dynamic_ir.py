@@ -9,15 +9,14 @@ from mlir.ir import (
     IntegerType,
     Location,
     Module,
+    ShapedType,
 )
 from ptodsl import to_ir_module
 from ptodsl import pto, tile
 from ptodsl import scalar as s
 
-
 def _idx_const(v: int):
     return arith.ConstantOp(IndexType.get(), v).result
-
 
 # ---------------------------------------------------------------------------
 # Default tile dimensions (shared by DSL kernel and MLIR reference builder)
@@ -33,55 +32,27 @@ _ITERS = K // BASEK
 
 const = s.const
 
+dtype = pto.float32
+ptr_type = pto.PtrType(dtype)
+i1 = pto.bool
+i32 = pto.int32
 
-def meta_data():
-    dtype = pto.float32
-    ptr_dtype = pto.PtrType(dtype)
-    i1 = pto.bool
-    i32 = pto.int32
-    tensor_type = pto.TensorType(rank=2, dtype=dtype)
+tile_buf_aMat = pto.TileBufType(shape=[M, BASEK], dtype=dtype, memory_space="MAT")
+tile_buf_bMat = pto.TileBufType(shape=[BASEK, N], dtype=dtype, memory_space="MAT")
+tile_buf_biasData = pto.TileBufType(shape=[1, N], dtype=dtype, memory_space="MAT")
+tile_buf_aTile = pto.TileBufType(shape=[M, BASEK], dtype=dtype, memory_space="LEFT")
+tile_buf_bTile = pto.TileBufType(shape=[BASEK, N], dtype=dtype, memory_space="RIGHT")
+tile_buf_cTile = pto.TileBufType(shape=[M, N], dtype=dtype, memory_space="ACC")
+tile_buf_biasTile = pto.TileBufType(shape=[1, N], dtype=dtype, memory_space="BIAS")
 
-    tile_view_a = pto.SubTensorType(shape=[M, BASEK], dtype=dtype)
-    tile_view_b = pto.SubTensorType(shape=[BASEK, N], dtype=dtype)
-    tile_view_out = pto.SubTensorType(shape=[M, N], dtype=dtype)
-    tile_view_bias = pto.SubTensorType(shape=[1, N], dtype=dtype)
-
-    tile_buf_aMat = pto.TileBufType(shape=[M, BASEK], dtype=dtype, memory_space="MAT")
-    tile_buf_bMat = pto.TileBufType(shape=[BASEK, N], dtype=dtype, memory_space="MAT")
-    tile_buf_biasData = pto.TileBufType(shape=[1, N], dtype=dtype, memory_space="MAT")
-    tile_buf_aTile = pto.TileBufType(shape=[M, BASEK], dtype=dtype, memory_space="LEFT")
-    tile_buf_bTile = pto.TileBufType(
-        shape=[BASEK, N], dtype=dtype, memory_space="RIGHT"
-    )
-    tile_buf_cTile = pto.TileBufType(shape=[M, N], dtype=dtype, memory_space="ACC")
-    tile_buf_biasTile = pto.TileBufType(shape=[1, N], dtype=dtype, memory_space="BIAS")
-
-    return {
-        "ptr_type": ptr_dtype,
-        "i1": i1,
-        "i32": i32,
-        "tensor_type": tensor_type,
-        "tile_view_a": tile_view_a,
-        "tile_view_b": tile_view_b,
-        "tile_view_out": tile_view_out,
-        "tile_view_bias": tile_view_bias,
-        "tile_buf_aMat": tile_buf_aMat,
-        "tile_buf_bMat": tile_buf_bMat,
-        "tile_buf_biasData": tile_buf_biasData,
-        "tile_buf_aTile": tile_buf_aTile,
-        "tile_buf_bTile": tile_buf_bTile,
-        "tile_buf_cTile": tile_buf_cTile,
-        "tile_buf_biasTile": tile_buf_biasTile,
-    }
-
-
+@to_ir_module
 def RunTMATMULSplitK(
-    out_ptr: "ptr_type",
-    a_ptr: "ptr_type",
-    b_ptr: "ptr_type",
-    bias_ptr: "ptr_type",
-    isBias: "i1",
-    batch_i32: "i32",
+    out_ptr: ptr_type,
+    a_ptr: ptr_type,
+    b_ptr: ptr_type,
+    bias_ptr: ptr_type,
+    isBias: i1,
+    batch_i32: i32,
 ) -> None:
     with pto.cube_section():
         c0 = const(0)
@@ -104,13 +75,11 @@ def RunTMATMULSplitK(
         b_end_unclamped = b_start + batches_per_core
         b_end = s.min_u(b_end_unclamped, batch)
 
-        tvA = pto.as_tensor(tensor_type, ptr=a_ptr, shape=[cBM, cK], strides=[cK, c1])
-        tvB = pto.as_tensor(tensor_type, ptr=b_ptr, shape=[cK, cN], strides=[cN, c1])
-        tvOut = pto.as_tensor(
-            tensor_type, ptr=out_ptr, shape=[cBM, cN], strides=[cN, c1]
+        tvA = pto.as_tensor(ptr=a_ptr, shape=[cBM, cK], strides=[cK, c1])
+        tvB = pto.as_tensor(ptr=b_ptr, shape=[cK, cN], strides=[cN, c1])
+        tvOut = pto.as_tensor(ptr=out_ptr, shape=[cBM, cN], strides=[cN, c1]
         )
-        tvBias = pto.as_tensor(
-            tensor_type, ptr=bias_ptr, shape=[c1, cN], strides=[cN, c1]
+        tvBias = pto.as_tensor(ptr=bias_ptr, shape=[c1, cN], strides=[cN, c1]
         )
 
         aMatTile = pto.alloc_tile(tile_buf_aMat)
@@ -125,21 +94,15 @@ def RunTMATMULSplitK(
             row_off = b_idx * cM
             for i in pto.range(c0, cIter, c1):
                 kOff = i * cBASEK
-                svA = pto.slice_view(
-                    tile_view_a,
-                    source=tvA,
+                svA = pto.slice_view(source=tvA,
                     offsets=[row_off, kOff],
                     sizes=[cTileM, cBASEK],
                 )
-                svB = pto.slice_view(
-                    tile_view_b,
-                    source=tvB,
+                svB = pto.slice_view(source=tvB,
                     offsets=[kOff, c0],
                     sizes=[cBASEK, cTileN],
                 )
-                svBias = pto.slice_view(
-                    tile_view_bias,
-                    source=tvBias,
+                svBias = pto.slice_view(source=tvBias,
                     offsets=[c0, c0],
                     sizes=[c1, cTileN],
                 )
@@ -174,19 +137,12 @@ def RunTMATMULSplitK(
                 pto.record_wait_pair("MATMUL", "LOAD", event_id=0)
 
             pto.record_wait_pair("MATMUL", "STORE_ACC", event_id=0)
-            svOut = pto.slice_view(
-                tile_view_out,
-                source=tvOut,
+            svOut = pto.slice_view(source=tvOut,
                 offsets=[row_off, c0],
                 sizes=[cTileM, cTileN],
             )
             pto.store(cTile, svOut)
             pto.record_wait_pair("STORE_ACC", "MATMUL", event_id=0)
-
-
-def build_pythonic():
-    return to_ir_module(meta_data=meta_data)(RunTMATMULSplitK)
-
 
 def build_verbose(
     M=128,
@@ -212,10 +168,11 @@ def build_verbose(
 
         tensor_type = pto.TensorViewType.get(2, dtype)
 
-        tile_view_a = pto.PartitionTensorViewType.get([M, BASEK], dtype)
-        tile_view_b = pto.PartitionTensorViewType.get([BASEK, N], dtype)
-        tile_view_out = pto.PartitionTensorViewType.get([M, N], dtype)
-        tile_view_bias = pto.PartitionTensorViewType.get([1, N], dtype)
+        dyn = ShapedType.get_dynamic_size()
+        tile_view_a = pto.PartitionTensorViewType.get([dyn, dyn], dtype)
+        tile_view_b = pto.PartitionTensorViewType.get([dyn, dyn], dtype)
+        tile_view_out = pto.PartitionTensorViewType.get([dyn, dyn], dtype)
+        tile_view_bias = pto.PartitionTensorViewType.get([dyn, dyn], dtype)
 
         mat = pto.AddressSpaceAttr.get(pto.AddressSpace.MAT)
         left = pto.AddressSpaceAttr.get(pto.AddressSpace.LEFT)
@@ -412,8 +369,6 @@ def build_verbose(
         module.operation.verify()
         return module
 
-
 def test_matmul_structural_ir_equality():
-    pythonic_module = build_pythonic()
     verbose_module = build_verbose()
-    assert str(pythonic_module) == str(verbose_module)
+    assert str(RunTMATMULSplitK) == str(verbose_module)

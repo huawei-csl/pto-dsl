@@ -7,80 +7,6 @@ const = s.const
 _TILE_SIZE_BYTES = 32 * 1024
 _DTYPE_BYTES = {"fp16": 2, "fp32": 4}
 
-
-def meta_data_row(dtype="fp32"):
-    pto_dtype = {"fp16": pto.float16, "fp32": pto.float32}[dtype]
-    elements_per_tile = _TILE_SIZE_BYTES // _DTYPE_BYTES[dtype]
-    ptr_type = pto.PtrType(pto_dtype)
-    index_dtype = pto.int32
-
-    tensor_type = pto.TensorType(rank=1, dtype=pto_dtype)
-    subtensor_in = pto.SubTensorType(shape=[1, elements_per_tile], dtype=pto_dtype)
-
-    tile_cfg = pto.TileBufConfig()
-    tile_type = pto.TileBufType(
-        shape=[1, elements_per_tile],
-        valid_shape=[1, -1],
-        dtype=pto_dtype,
-        memory_space="VEC",
-        config=tile_cfg,
-    )
-
-    return {
-        "ptr_type": ptr_type,
-        "pto_dtype": pto_dtype,
-        "elements_per_tile": elements_per_tile,
-        "index_dtype": index_dtype,
-        "tensor_type": tensor_type,
-        "subtensor_in": subtensor_in,
-        "tile_type": tile_type,
-    }
-
-
-def meta_data_col(dtype="fp32"):
-    pto_dtype = {"fp16": pto.float16, "fp32": pto.float32}[dtype]
-    ptr_type = pto.PtrType(pto_dtype)
-    index_dtype = pto.int32
-
-    tile_rows = 32
-    tile_cols = 32
-
-    tensor2d_type = pto.TensorType(rank=2, dtype=pto_dtype)
-    subtensor_in = pto.SubTensorType(shape=[tile_rows, tile_cols], dtype=pto_dtype)
-    subtensor_out = pto.SubTensorType(shape=[1, tile_cols], dtype=pto_dtype)
-
-    tile_cfg = pto.TileBufConfig()
-
-    tile_type = pto.TileBufType(
-        shape=[tile_rows, tile_cols],
-        valid_shape=[-1, -1],
-        dtype=pto_dtype,
-        memory_space="VEC",
-        config=tile_cfg,
-    )
-
-    tile_out_type = pto.TileBufType(
-        shape=[1, tile_cols],
-        valid_shape=[1, -1],
-        dtype=pto_dtype,
-        memory_space="VEC",
-        config=tile_cfg,
-    )
-
-    return {
-        "ptr_type": ptr_type,
-        "pto_dtype": pto_dtype,
-        "index_dtype": index_dtype,
-        "tensor2d_type": tensor2d_type,
-        "subtensor_in": subtensor_in,
-        "subtensor_out": subtensor_out,
-        "tile_type": tile_type,
-        "tile_out_type": tile_out_type,
-        "tile_rows": tile_rows,
-        "tile_cols": tile_cols,
-    }
-
-
 _ROW_REDUCE_OPS = {
     "sum": tile.row_sum,
     "min": tile.row_min,
@@ -102,7 +28,6 @@ _COL_COMBINE_OPS = {
     "prod": tile.mul,
 }
 
-
 def build_row_reduce(kind="sum", dtype="fp32"):
     """
     Generic row-wise reduction across columns.
@@ -114,14 +39,29 @@ def build_row_reduce(kind="sum", dtype="fp32"):
         raise ValueError(f"Unsupported row reduction kind: {kind}")
 
     row_reduce = _ROW_REDUCE_OPS[kind]
-    _meta_data = lambda: meta_data_row(dtype=dtype)
 
-    @to_ir_module(meta_data=_meta_data)
+    pto_dtype = {"fp16": pto.float16, "fp32": pto.float32}[dtype]
+    elements_per_tile = _TILE_SIZE_BYTES // _DTYPE_BYTES[dtype]
+    ptr_type = pto.PtrType(pto_dtype)
+    index_dtype = pto.int32
+
+    tensor_type = pto.TensorType(rank=1, dtype=pto_dtype)
+
+    tile_cfg = pto.TileBufConfig()
+    tile_type = pto.TileBufType(
+        shape=[1, elements_per_tile],
+        valid_shape=[1, -1],
+        dtype=pto_dtype,
+        memory_space="VEC",
+        config=tile_cfg,
+    )
+
+    @to_ir_module
     def _kernel(
-        x_ptr: "ptr_type",
-        y_ptr: "ptr_type",
-        batch_i32: "index_dtype",
-        n_cols_i32: "index_dtype",
+        x_ptr: ptr_type,
+        y_ptr: ptr_type,
+        batch_i32: index_dtype,
+        n_cols_i32: index_dtype,
     ) -> None:
         c0 = const(0)
         c1 = const(1)
@@ -142,10 +82,9 @@ def build_row_reduce(kind="sum", dtype="fp32"):
             num_rows = row_end - row_start
 
             total_elems = batch * n_cols
-            tv_x = pto.as_tensor(
-                tensor_type, ptr=x_ptr, shape=[total_elems], strides=[c1]
+            tv_x = pto.as_tensor(ptr=x_ptr, shape=[total_elems], strides=[c1]
             )
-            tv_y = pto.as_tensor(tensor_type, ptr=y_ptr, shape=[batch], strides=[c1])
+            tv_y = pto.as_tensor(ptr=y_ptr, shape=[batch], strides=[c1])
 
             with pto.if_context(num_rows > c0):
                 tb_x = pto.alloc_tile(tile_type, valid_col=n_cols)
@@ -155,16 +94,12 @@ def build_row_reduce(kind="sum", dtype="fp32"):
                 for r in pto.range(c0, num_rows, c1):
                     gm_offset = (row_start + r) * n_cols
 
-                    sv_x = pto.slice_view(
-                        subtensor_in,
-                        source=tv_x,
+                    sv_x = pto.slice_view(source=tv_x,
                         offsets=[gm_offset],
                         sizes=[n_cols],
                     )
 
-                    sv_y = pto.slice_view(
-                        subtensor_in,
-                        source=tv_y,
+                    sv_y = pto.slice_view(source=tv_y,
                         offsets=[row_start + r],
                         sizes=[c1],
                     )
@@ -174,7 +109,6 @@ def build_row_reduce(kind="sum", dtype="fp32"):
                     pto.store(tb_out, sv_y)
 
     return _kernel
-
 
 def build_col_reduce(kind="sum", dtype="fp32"):
     """
@@ -188,14 +122,40 @@ def build_col_reduce(kind="sum", dtype="fp32"):
 
     col_reduce = _COL_REDUCE_OPS[kind]
     combine = _COL_COMBINE_OPS[kind]
-    _meta_data = lambda: meta_data_col(dtype=dtype)
 
-    @to_ir_module(meta_data=_meta_data)
+    pto_dtype = {"fp16": pto.float16, "fp32": pto.float32}[dtype]
+    ptr_type = pto.PtrType(pto_dtype)
+    index_dtype = pto.int32
+
+    tile_rows = 32
+    tile_cols = 32
+
+    tensor2d_type = pto.TensorType(rank=2, dtype=pto_dtype)
+
+    tile_cfg = pto.TileBufConfig()
+
+    tile_type = pto.TileBufType(
+        shape=[tile_rows, tile_cols],
+        valid_shape=[-1, -1],
+        dtype=pto_dtype,
+        memory_space="VEC",
+        config=tile_cfg,
+    )
+
+    tile_out_type = pto.TileBufType(
+        shape=[1, tile_cols],
+        valid_shape=[1, -1],
+        dtype=pto_dtype,
+        memory_space="VEC",
+        config=tile_cfg,
+    )
+
+    @to_ir_module
     def _kernel(
-        x_ptr: "ptr_type",
-        y_ptr: "ptr_type",
-        batch_i32: "index_dtype",
-        n_cols_i32: "index_dtype",
+        x_ptr: ptr_type,
+        y_ptr: ptr_type,
+        batch_i32: index_dtype,
+        n_cols_i32: index_dtype,
     ) -> None:
         c0 = const(0)
         c1 = const(1)
@@ -217,15 +177,11 @@ def build_col_reduce(kind="sum", dtype="fp32"):
             col_end = s.min_u(col_start + cols_per_core, n_cols)
             num_cols = col_end - col_start
 
-            tv_x = pto.as_tensor(
-                tensor2d_type,
-                ptr=x_ptr,
+            tv_x = pto.as_tensor(ptr=x_ptr,
                 shape=[batch, n_cols],
                 strides=[n_cols, c1],
             )
-            tv_y = pto.as_tensor(
-                tensor2d_type,
-                ptr=y_ptr,
+            tv_y = pto.as_tensor(ptr=y_ptr,
                 shape=[c1, n_cols],
                 strides=[n_cols, c1],
             )
@@ -250,9 +206,7 @@ def build_col_reduce(kind="sum", dtype="fp32"):
                 else:
                     tb_acc = pto.alloc_tile(tile_out_type, valid_col=cols_this)
 
-                sv_x0 = pto.slice_view(
-                    subtensor_in,
-                    source=tv_x,
+                sv_x0 = pto.slice_view(source=tv_x,
                     offsets=[c0, col],
                     sizes=[rows_this0, cols_this],
                 )
@@ -279,9 +233,7 @@ def build_col_reduce(kind="sum", dtype="fp32"):
                     else:
                         tb_part = pto.alloc_tile(tile_out_type, valid_col=cols_this)
 
-                    sv_x = pto.slice_view(
-                        subtensor_in,
-                        source=tv_x,
+                    sv_x = pto.slice_view(source=tv_x,
                         offsets=[row, col],
                         sizes=[rows_this, cols_this],
                     )
@@ -289,9 +241,7 @@ def build_col_reduce(kind="sum", dtype="fp32"):
                     col_reduce(tb_x, tb_tmp, tb_part)
                     combine(tb_acc, tb_part, tb_acc)
 
-                sv_y = pto.slice_view(
-                    subtensor_out,
-                    source=tv_y,
+                sv_y = pto.slice_view(source=tv_y,
                     offsets=[c0, col],
                     sizes=[c1, cols_this],
                 )
@@ -299,38 +249,29 @@ def build_col_reduce(kind="sum", dtype="fp32"):
 
     return _kernel
 
-
 def build_rowsum(dtype="fp32"):
     return build_row_reduce("sum", dtype=dtype)
-
 
 def build_rowmin(dtype="fp32"):
     return build_row_reduce("min", dtype=dtype)
 
-
 def build_rowmax(dtype="fp32"):
     return build_row_reduce("max", dtype=dtype)
-
 
 def build_rowprod(dtype="fp32"):
     return build_row_reduce("prod", dtype=dtype)
 
-
 def build_colsum(dtype="fp32"):
     return build_col_reduce("sum", dtype=dtype)
-
 
 def build_colmin(dtype="fp32"):
     return build_col_reduce("min", dtype=dtype)
 
-
 def build_colmax(dtype="fp32"):
     return build_col_reduce("max", dtype=dtype)
 
-
 def build_colprod(dtype="fp32"):
     return build_col_reduce("prod", dtype=dtype)
-
 
 if __name__ == "__main__":
     import argparse

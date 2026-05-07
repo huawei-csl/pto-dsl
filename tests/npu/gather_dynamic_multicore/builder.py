@@ -10,53 +10,6 @@ DTYPES = {
     "int16": lambda: pto.int16,
 }
 
-
-def meta_data(dtype=None, tile_length=32):
-    if dtype is None:
-        dtype = "float32"
-    if isinstance(dtype, str):
-        dtype = DTYPES[dtype]()
-
-    i32 = pto.int32
-    ptr_type = pto.PtrType(dtype)
-    ptr_i32 = pto.PtrType(i32)
-
-    tensor_type = pto.TensorType(rank=1, dtype=dtype)
-    tensor_i32 = pto.TensorType(rank=1, dtype=i32)
-
-    subtensor_type = pto.SubTensorType(shape=[1, tile_length], dtype=dtype)
-    subtensor_i32 = pto.SubTensorType(shape=[1, tile_length], dtype=i32)
-
-    tile_cfg = pto.TileBufConfig()
-    tile_type = pto.TileBufType(
-        shape=[1, tile_length],
-        valid_shape=[1, tile_length],
-        dtype=dtype,
-        memory_space="VEC",
-        config=tile_cfg,
-    )
-    tile_i32 = pto.TileBufType(
-        shape=[1, tile_length],
-        valid_shape=[1, tile_length],
-        dtype=i32,
-        memory_space="VEC",
-        config=tile_cfg,
-    )
-
-    return {
-        "ptr_type": ptr_type,
-        "ptr_i32": ptr_i32,
-        "index_dtype": i32,
-        "tensor_type": tensor_type,
-        "tensor_i32": tensor_i32,
-        "subtensor_type": subtensor_type,
-        "subtensor_i32": subtensor_i32,
-        "tile_type": tile_type,
-        "tile_i32": tile_i32,
-        "tile_length": tile_length,
-    }
-
-
 def build_gather_kernel(
     fn_name="vec_gather_2d_dynamic_float32_P1111",
     dtype="float32",
@@ -75,14 +28,39 @@ def build_gather_kernel(
       - argN is total elements
       - works best when N is multiple of tile_length (no tail handling other than dropping extra tiles)
     """
-    _meta_data = lambda: meta_data(dtype=dtype, tile_length=tile_length)
+    if isinstance(dtype, str):
+        dtype = DTYPES[dtype]()
+
+    i32 = pto.int32
+    ptr_type = pto.PtrType(dtype)
+    ptr_i32 = pto.PtrType(i32)
+
+    tensor_type = pto.TensorType(rank=1, dtype=dtype)
+    tensor_i32 = pto.TensorType(rank=1, dtype=i32)
+
+    tile_cfg = pto.TileBufConfig()
+    tile_type = pto.TileBufType(
+        shape=[1, tile_length],
+        valid_shape=[1, tile_length],
+        dtype=dtype,
+        memory_space="VEC",
+        config=tile_cfg,
+    )
+    tile_i32 = pto.TileBufType(
+        shape=[1, tile_length],
+        valid_shape=[1, tile_length],
+        dtype=i32,
+        memory_space="VEC",
+        config=tile_cfg,
+    )
+    index_dtype = i32
 
     def _kernel(
-        arg0: "ptr_type",  # src (T*)
-        arg1: "ptr_i32",  # indices (i32*) values in [0..tile_length-1] per tile
-        arg2: "ptr_type",  # out (T*)
-        argB: "index_dtype",
-        argN: "index_dtype",
+        arg0: ptr_type,  # src (T*)
+        arg1: ptr_i32,  # indices (i32*) values in [0..tile_length-1] per tile
+        arg2: ptr_type,  # out (T*)
+        argB: index_dtype,
+        argN: index_dtype,
     ) -> None:
         c0 = const(0)
         c1 = const(1)
@@ -103,14 +81,11 @@ def build_gather_kernel(
         tile_offset_this_core = vid_idx * num_tiles_per_core
 
         with pto.vector_section():
-            tv0 = pto.as_tensor(
-                tensor_type, ptr=arg0, shape=[total_elements], strides=[c1]
+            tv0 = pto.as_tensor(ptr=arg0, shape=[total_elements], strides=[c1]
             )
-            tv1 = pto.as_tensor(
-                tensor_i32, ptr=arg1, shape=[total_elements], strides=[c1]
+            tv1 = pto.as_tensor(ptr=arg1, shape=[total_elements], strides=[c1]
             )
-            tv2 = pto.as_tensor(
-                tensor_type, ptr=arg2, shape=[total_elements], strides=[c1]
+            tv2 = pto.as_tensor(ptr=arg2, shape=[total_elements], strides=[c1]
             )
 
             tb_src = pto.alloc_tile(tile_type)
@@ -136,15 +111,11 @@ def build_gather_kernel(
                         tile_offset_global = i + tile_offset_this_core
                         offset_global = tile_offset_global * c_tile
 
-                        sv0 = pto.slice_view(
-                            subtensor_type,
-                            source=tv0,
+                        sv0 = pto.slice_view(source=tv0,
                             offsets=[offset_global],
                             sizes=[c_tile],
                         )
-                        sv1 = pto.slice_view(
-                            subtensor_i32,
-                            source=tv1,
+                        sv1 = pto.slice_view(source=tv1,
                             offsets=[offset_global],
                             sizes=[c_tile],
                         )
@@ -157,9 +128,7 @@ def build_gather_kernel(
 
                         tile.gather(tb_tmp, tb_out, mask_pattern=mask_pattern)
 
-                        sv2 = pto.slice_view(
-                            subtensor_type,
-                            source=tv2,
+                        sv2 = pto.slice_view(source=tv2,
                             offsets=[offset_global],
                             sizes=[c_tile],
                         )
@@ -167,8 +136,7 @@ def build_gather_kernel(
                         pto.store(tb_out, sv2)
 
     _kernel.__name__ = fn_name
-    return to_ir_module(meta_data=_meta_data)(_kernel)
-
+    return to_ir_module(_kernel)
 
 if __name__ == "__main__":
     # example

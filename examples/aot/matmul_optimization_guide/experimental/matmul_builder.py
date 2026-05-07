@@ -3,7 +3,6 @@ from ptodsl import scalar as s
 
 const = s.const
 
-
 def build():
     M_TILE = 128
     K_QTILE = 64
@@ -12,70 +11,42 @@ def build():
     N_FULL = 256
     N_HALF = 128
 
-    def meta_data():
-        dtype = pto.float16
-        acc_dtype = pto.float32
-        ptr_type = pto.PtrType(dtype)
-        i32 = pto.int32
-        tv_a = pto.TensorType(rank=2, dtype=dtype)
-        tv_b = pto.TensorType(rank=2, dtype=dtype)
-        tv_c = pto.TensorType(rank=2, dtype=dtype)
+    dtype = pto.float16
+    acc_dtype = pto.float32
+    ptr_type = pto.PtrType(dtype)
+    i32 = pto.int32
+    tv_a = pto.TensorType(rank=2, dtype=dtype)
+    tv_b = pto.TensorType(rank=2, dtype=dtype)
+    tv_c = pto.TensorType(rank=2, dtype=dtype)
 
-        tile_view_a = pto.SubTensorType(shape=[M_TILE, K_DTILE], dtype=dtype)
-        tile_view_b_256 = pto.SubTensorType(shape=[K_TILE, N_FULL], dtype=dtype)
-        tile_view_b_128 = pto.SubTensorType(shape=[K_TILE, N_HALF], dtype=dtype)
-        tile_view_c_256 = pto.SubTensorType(shape=[M_TILE, N_FULL], dtype=dtype)
-        tile_view_c_128 = pto.SubTensorType(shape=[M_TILE, N_HALF], dtype=dtype)
+    b_l1_cfg = pto.TileBufConfig(
+        blayout="RowMajor", slayout="ColMajor", s_fractal_size=512
+    )
 
-        b_l1_cfg = pto.TileBufConfig(
-            blayout="RowMajor", slayout="ColMajor", s_fractal_size=512
-        )
-
-        tile_buf_a_l1 = pto.TileBufType(
-            shape=[M_TILE, K_DTILE], dtype=dtype, memory_space="MAT"
-        )
-        tile_buf_b_l1_256 = pto.TileBufType(
-            shape=[K_TILE, N_FULL], dtype=dtype, memory_space="MAT", config=b_l1_cfg
-        )
-        tile_buf_b_l1_128 = pto.TileBufType(
-            shape=[K_TILE, N_HALF], dtype=dtype, memory_space="MAT", config=b_l1_cfg
-        )
-        tile_buf_a_l0 = pto.TileBufType(
-            shape=[M_TILE, K_QTILE], dtype=dtype, memory_space="LEFT"
-        )
-        tile_buf_b_l0_256 = pto.TileBufType(
-            shape=[K_QTILE, N_FULL], dtype=dtype, memory_space="RIGHT"
-        )
-        tile_buf_b_l0_128 = pto.TileBufType(
-            shape=[K_QTILE, N_HALF], dtype=dtype, memory_space="RIGHT"
-        )
-        tile_buf_c_256 = pto.TileBufType(
-            shape=[M_TILE, N_FULL], dtype=acc_dtype, memory_space="ACC"
-        )
-        tile_buf_c_128 = pto.TileBufType(
-            shape=[M_TILE, N_HALF], dtype=acc_dtype, memory_space="ACC"
-        )
-
-        return {
-            "ptr_type": ptr_type,
-            "i32": i32,
-            "tv_a": tv_a,
-            "tv_b": tv_b,
-            "tv_c": tv_c,
-            "tile_view_a": tile_view_a,
-            "tile_view_b_256": tile_view_b_256,
-            "tile_view_b_128": tile_view_b_128,
-            "tile_view_c_256": tile_view_c_256,
-            "tile_view_c_128": tile_view_c_128,
-            "tile_buf_a_l1": tile_buf_a_l1,
-            "tile_buf_b_l1_256": tile_buf_b_l1_256,
-            "tile_buf_b_l1_128": tile_buf_b_l1_128,
-            "tile_buf_a_l0": tile_buf_a_l0,
-            "tile_buf_b_l0_256": tile_buf_b_l0_256,
-            "tile_buf_b_l0_128": tile_buf_b_l0_128,
-            "tile_buf_c_256": tile_buf_c_256,
-            "tile_buf_c_128": tile_buf_c_128,
-        }
+    tile_buf_a_l1 = pto.TileBufType(
+        shape=[M_TILE, K_DTILE], dtype=dtype, memory_space="MAT"
+    )
+    tile_buf_b_l1_256 = pto.TileBufType(
+        shape=[K_TILE, N_FULL], dtype=dtype, memory_space="MAT", config=b_l1_cfg
+    )
+    tile_buf_b_l1_128 = pto.TileBufType(
+        shape=[K_TILE, N_HALF], dtype=dtype, memory_space="MAT", config=b_l1_cfg
+    )
+    tile_buf_a_l0 = pto.TileBufType(
+        shape=[M_TILE, K_QTILE], dtype=dtype, memory_space="LEFT"
+    )
+    tile_buf_b_l0_256 = pto.TileBufType(
+        shape=[K_QTILE, N_FULL], dtype=dtype, memory_space="RIGHT"
+    )
+    tile_buf_b_l0_128 = pto.TileBufType(
+        shape=[K_QTILE, N_HALF], dtype=dtype, memory_space="RIGHT"
+    )
+    tile_buf_c_256 = pto.TileBufType(
+        shape=[M_TILE, N_FULL], dtype=acc_dtype, memory_space="ACC"
+    )
+    tile_buf_c_128 = pto.TileBufType(
+        shape=[M_TILE, N_HALF], dtype=acc_dtype, memory_space="ACC"
+    )
 
     def swizzle_zn(li, m_loop, n_loop, cSwizzle, cSwizzleM1, c1, c2):
         tile_block_loop = (m_loop + cSwizzleM1) // cSwizzle
@@ -142,9 +113,7 @@ def build():
         with pto.if_context(not_first_tile):
             pto.wait_event("STORE_ACC", "MATMUL", event_id=0)
 
-        sv_a0 = pto.slice_view(
-            tile_view_a,
-            source=tvA,
+        sv_a0 = pto.slice_view(source=tvA,
             offsets=[m_offset, c0],
             sizes=[const(M_TILE), cKD],
         )
@@ -163,7 +132,6 @@ def build():
                     b_evt = 2 + h
                     h_off = const(h * K_TILE)
                     sv_b = pto.slice_view(
-                        b_view_type,
                         source=tvB,
                         offsets=[k_offset + h_off, n_offset],
                         sizes=[cKT, cNT],
@@ -211,9 +179,7 @@ def build():
                         pto.record_event("MATMUL", "MOV_M2L", event_id=ping)
 
                 with pto.if_context(k_idx + c1 < k_dtile_num):
-                    sv_a_next = pto.slice_view(
-                        tile_view_a,
-                        source=tvA,
+                    sv_a_next = pto.slice_view(source=tvA,
                         offsets=[m_offset, k_offset + cKD],
                         sizes=[const(M_TILE), cKD],
                     )
@@ -227,7 +193,6 @@ def build():
                 level2_loop_k(1, 0, a_l1[1], a_l1[0])
 
         sv_c = pto.slice_view(
-            c_view_type,
             source=tvC,
             offsets=[m_offset, n_offset],
             sizes=[const(M_TILE), cNT],
@@ -238,7 +203,7 @@ def build():
         with pto.if_context(li + num_blocks < core_loop):
             pto.record_event("STORE_ACC", "MATMUL", event_id=0)
 
-    @to_ir_module(meta_data=meta_data)
+    @to_ir_module
     def matmul_kernel_ABt(
         a_ptr: "ptr_type",
         b_ptr: "ptr_type",
@@ -273,18 +238,14 @@ def build():
             core_loop = n_loop * m_loop
             k_dtile_num = k_total // c512
 
-            tvA = pto.as_tensor(
-                tv_a, ptr=a_ptr, shape=[m_total, k_total], strides=[k_total, c1]
+            tvA = pto.as_tensor(ptr=a_ptr, shape=[m_total, k_total], strides=[k_total, c1]
             )
-            tvB = pto.as_tensor(
-                tv_b,
-                ptr=b_ptr,
+            tvB = pto.as_tensor(ptr=b_ptr,
                 shape=[k_total, n_total],
                 strides=[c1, k_total],
                 layout="DN",
             )
-            tvC = pto.as_tensor(
-                tv_c, ptr=c_ptr, shape=[m_total, n_total], strides=[n_total, c1]
+            tvC = pto.as_tensor(ptr=c_ptr, shape=[m_total, n_total], strides=[n_total, c1]
             )
 
             pto.record_event("MATMUL", "MOV_M2L", event_id=[0, 1])
@@ -358,7 +319,6 @@ def build():
             pto.wait_event("MATMUL", "MOV_M2L", event_id=1)
 
     return matmul_kernel_ABt
-
 
 if __name__ == "__main__":
     print(build())

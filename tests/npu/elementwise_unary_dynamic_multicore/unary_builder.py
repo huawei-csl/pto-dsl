@@ -7,36 +7,6 @@ const = s.const
 _TILE_SIZE_BYTES = 32 * 1024
 _DTYPE_BYTES = {"float32": 4, "float16": 2}
 
-
-def meta_data(dtype="float32"):
-    pto_dtype = {"float32": pto.float32, "float16": pto.float16}[dtype]
-    elements_per_tile = _TILE_SIZE_BYTES // _DTYPE_BYTES[dtype]
-    ptr_type = pto.PtrType(pto_dtype)
-    index_dtype = pto.int32
-
-    tensor_type = pto.TensorType(rank=1, dtype=pto_dtype)
-    subtensor_type = pto.SubTensorType(shape=[1, elements_per_tile], dtype=pto_dtype)
-
-    tile_cfg = pto.TileBufConfig()
-    tile_type = pto.TileBufType(
-        shape=[1, elements_per_tile],
-        valid_shape=[1, -1],
-        dtype=pto_dtype,
-        memory_space="VEC",
-        config=tile_cfg,
-    )
-
-    return {
-        "ptr_type": ptr_type,
-        "pto_dtype": pto_dtype,
-        "elements_per_tile": elements_per_tile,
-        "index_dtype": index_dtype,
-        "tensor_type": tensor_type,
-        "subtensor_type": subtensor_type,
-        "tile_type": tile_type,
-    }
-
-
 def build_unary_kernel(op_name, op_fn, dtype="float32"):
     """
     Dynamic multicore unary elementwise kernel.
@@ -50,14 +20,28 @@ def build_unary_kernel(op_name, op_fn, dtype="float32"):
     Semantics:
         y[r, c] = op(x[r, c])
     """
-    _meta_data = lambda: meta_data(dtype=dtype)
+    pto_dtype = {"float32": pto.float32, "float16": pto.float16}[dtype]
+    elements_per_tile = _TILE_SIZE_BYTES // _DTYPE_BYTES[dtype]
+    ptr_type = pto.PtrType(pto_dtype)
+    index_dtype = pto.int32
 
-    @to_ir_module(meta_data=_meta_data)
+    tensor_type = pto.TensorType(rank=1, dtype=pto_dtype)
+
+    tile_cfg = pto.TileBufConfig()
+    tile_type = pto.TileBufType(
+        shape=[1, elements_per_tile],
+        valid_shape=[1, -1],
+        dtype=pto_dtype,
+        memory_space="VEC",
+        config=tile_cfg,
+    )
+
+    @to_ir_module
     def _kernel(
-        x_ptr: "ptr_type",
-        y_ptr: "ptr_type",
-        batch_i32: "index_dtype",
-        n_cols_i32: "index_dtype",
+        x_ptr: ptr_type,
+        y_ptr: ptr_type,
+        batch_i32: index_dtype,
+        n_cols_i32: index_dtype,
     ) -> None:
         c0 = const(0)
         c1 = const(1)
@@ -81,11 +65,9 @@ def build_unary_kernel(op_name, op_fn, dtype="float32"):
             num_rows = row_end - row_start
 
             total_elems = batch * n_cols
-            tv_x = pto.as_tensor(
-                tensor_type, ptr=x_ptr, shape=[total_elems], strides=[c1]
+            tv_x = pto.as_tensor(ptr=x_ptr, shape=[total_elems], strides=[c1]
             )
-            tv_y = pto.as_tensor(
-                tensor_type, ptr=y_ptr, shape=[total_elems], strides=[c1]
+            tv_y = pto.as_tensor(ptr=y_ptr, shape=[total_elems], strides=[c1]
             )
 
             with pto.if_context(num_rows > c0):
@@ -95,15 +77,11 @@ def build_unary_kernel(op_name, op_fn, dtype="float32"):
                 for row_i in pto.range(c0, num_rows, c1):
                     gm_offset = (row_start + row_i) * n_cols
 
-                    sv_x = pto.slice_view(
-                        subtensor_type,
-                        source=tv_x,
+                    sv_x = pto.slice_view(source=tv_x,
                         offsets=[gm_offset],
                         sizes=[n_cols],
                     )
-                    sv_y = pto.slice_view(
-                        subtensor_type,
-                        source=tv_y,
+                    sv_y = pto.slice_view(source=tv_y,
                         offsets=[gm_offset],
                         sizes=[n_cols],
                     )

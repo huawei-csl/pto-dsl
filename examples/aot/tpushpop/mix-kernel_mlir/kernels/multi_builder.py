@@ -11,29 +11,23 @@ GM_ELEMS_PER_PIPE = 2048  # 8 slots * 1024 bytes / sizeof(f32)
 GM_ELEMS_PER_BLOCK = 2 * GM_ELEMS_PER_PIPE
 FIFO_BYTES_PER_PIPE = 8 * 1024
 
+ffts_ty = pto.ffts_type
+dtype = pto.float32
+ptr_ty = pto.PtrType(dtype)
+i32 = pto.int32
 
-def meta_data():
-    ffts_ty = pto.ffts_type
-    dtype = pto.float32
-    ptr_ty = pto.PtrType(dtype)
-    i32 = pto.int32
-    tensor_ty = pto.TensorType(rank=3, dtype=dtype)
-    tile_view_ty = pto.SubTensorType(shape=[16, 16], dtype=dtype)
-    y_half_view_ty = pto.SubTensorType(shape=[8, 16], dtype=dtype)
-    x_mat_ty = pto.TileBufType(shape=[16, 16], dtype=dtype, memory_space="MAT")
-    x_left_ty = pto.TileBufType(
-        shape=[16, 16],
-        dtype=dtype,
-        memory_space="LEFT",
-        config=pto.TileBufConfig(blayout="ColMajor", slayout="RowMajor"),
-    )
-    x_right_ty = pto.TileBufType(shape=[16, 16], dtype=dtype, memory_space="RIGHT")
-    acc_ty = pto.TileBufType(shape=[16, 16], dtype=dtype, memory_space="ACC")
-    vec_ty = pto.TileBufType(shape=[8, 16], dtype=dtype, memory_space="VEC")
-    return locals()
+x_mat_ty = pto.TileBufType(shape=[16, 16], dtype=dtype, memory_space="MAT")
+x_left_ty = pto.TileBufType(
+    shape=[16, 16],
+    dtype=dtype,
+    memory_space="LEFT",
+    config=pto.TileBufConfig(blayout="ColMajor", slayout="RowMajor"),
+)
+x_right_ty = pto.TileBufType(shape=[16, 16], dtype=dtype, memory_space="RIGHT")
+acc_ty = pto.TileBufType(shape=[16, 16], dtype=dtype, memory_space="ACC")
+vec_ty = pto.TileBufType(shape=[8, 16], dtype=dtype, memory_space="VEC")
 
-
-@to_ir_module(meta_data=meta_data, module=True)
+@to_ir_module(module=True)
 def module():
     @pto.func(kernel="cube")
     def cube_kernel(gm_slot_buffer: "ptr_ty", gm_x: "ptr_ty") -> None:
@@ -84,11 +78,7 @@ def module():
         x_right_tile = pto.alloc_tile(x_right_ty)
         acc_tile = pto.alloc_tile(acc_ty)
 
-        gm_x_tile_view = pto.slice_view(
-            tile_view_ty,
-            source=pto.as_tensor(
-                tensor_ty,
-                ptr=gm_x,
+        gm_x_tile_view = pto.slice_view(source=pto.as_tensor(ptr=gm_x,
                 shape=[block_num, c16, c16],
                 strides=[c256, c16, c1],
             ),
@@ -149,11 +139,7 @@ def module():
         subblock_idx = s.index_cast(pto.get_subblock_idx())
         row_offset = subblock_idx * c8
 
-        gm_y_tile_view = pto.slice_view(
-            y_half_view_ty,
-            source=pto.as_tensor(
-                tensor_ty,
-                ptr=gm_y,
+        gm_y_tile_view = pto.slice_view(source=pto.as_tensor(ptr=gm_y,
                 shape=[block_num, c16, c16],
                 strides=[c256, c16, c1],
             ),
@@ -176,7 +162,6 @@ def module():
         pto.set_ffts(ffts_addr)
         pto.call(cube_kernel, gm_slot_buffer, gm_x)
         pto.call(vector_kernel, gm_slot_buffer, gm_y)
-
 
 if __name__ == "__main__":
     print(module)

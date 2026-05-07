@@ -6,14 +6,13 @@ from ptodsl.npu_info import get_num_cube_cores, get_test_device
 
 const = s.const
 
-
 def meta_data():
     dtype = pto.float32
     index_dtype = pto.int32
     ptr_type = pto.PtrType(dtype)
     tensor_type = pto.TensorType(rank=1, dtype=dtype)
     tile_length = 1024  # TODO: increase to 8192 for better DMA util
-    subtensor_type = pto.SubTensorType(shape=[1, tile_length], dtype=dtype)
+
     tile_cfg = pto.TileBufConfig()
     tile_type = pto.TileBufType(
         shape=[1, tile_length],
@@ -30,7 +29,6 @@ def meta_data():
         "tile_type": tile_type,
         "tile_length": tile_length,
     }
-
 
 @jit(meta_data=meta_data, block_dim=get_num_cube_cores())
 def vec_add_1d_dynamic(
@@ -60,9 +58,9 @@ def vec_add_1d_dynamic(
     tile_offset_this_core = vid_idx * num_tiles_per_core
 
     with pto.vector_section():
-        tv0 = pto.as_tensor(tensor_type, ptr=arg0, shape=[total_elements], strides=[c1])
-        tv1 = pto.as_tensor(tensor_type, ptr=arg1, shape=[total_elements], strides=[c1])
-        tv2 = pto.as_tensor(tensor_type, ptr=arg2, shape=[total_elements], strides=[c1])
+        tv0 = pto.as_tensor(ptr=arg0, shape=[total_elements], strides=[c1])
+        tv1 = pto.as_tensor(ptr=arg1, shape=[total_elements], strides=[c1])
+        tv2 = pto.as_tensor(ptr=arg2, shape=[total_elements], strides=[c1])
 
         tb0 = pto.alloc_tile(tile_type)
         tb1 = pto.alloc_tile(tile_type)
@@ -84,21 +82,15 @@ def vec_add_1d_dynamic(
                     tile_offset_global = i + tile_offset_this_core
                     offset_global = tile_offset_global * c_tile
 
-                    sv0 = pto.slice_view(
-                        subtensor_type,
-                        source=tv0,
+                    sv0 = pto.slice_view(source=tv0,
                         offsets=[offset_global],
                         sizes=[c_tile],
                     )
-                    sv1 = pto.slice_view(
-                        subtensor_type,
-                        source=tv1,
+                    sv1 = pto.slice_view(source=tv1,
                         offsets=[offset_global],
                         sizes=[c_tile],
                     )
-                    sv2 = pto.slice_view(
-                        subtensor_type,
-                        source=tv2,
+                    sv2 = pto.slice_view(source=tv2,
                         offsets=[offset_global],
                         sizes=[c_tile],
                     )
@@ -107,7 +99,6 @@ def vec_add_1d_dynamic(
                     pto.load(sv1, tb1)
                     tile.add(tb0, tb1, tb2)
                     pto.store(tb2, sv2)
-
 
 def test_add():
     device = get_test_device()
@@ -141,7 +132,6 @@ def test_add():
         z_ref = x + y
         torch.testing.assert_close(z, z_ref)
         print(f"result equal for shape {shape}")
-
 
 if __name__ == "__main__":
     test_add()

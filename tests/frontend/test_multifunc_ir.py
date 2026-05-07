@@ -14,26 +14,23 @@ from mlir.ir import (
 
 from ptodsl import pto, to_ir_module
 
-
-def meta_data():
-    dtype = pto.float32
-    ptr_ty = pto.PtrType(dtype)
-    return {"ptr_ty": ptr_ty}
+dtype = pto.float32
+ptr_ty = pto.PtrType(dtype)
 
 
-@to_ir_module(meta_data=meta_data)
-def single_kernel(arg0: "ptr_ty") -> None:
+@to_ir_module
+def single_kernel(arg0: ptr_ty) -> None:
     pass
 
 
-@to_ir_module(meta_data=meta_data, module=True)
+@to_ir_module(module=True)
 def multi_kernel_module():
     @pto.func(kernel="vector")
-    def worker(arg0: "ptr_ty") -> None:
+    def worker(arg0: ptr_ty) -> None:
         pass
 
     @pto.func
-    def entry(arg0: "ptr_ty") -> None:
+    def entry(arg0: ptr_ty) -> None:
         pto.call(worker, arg0)
 
 
@@ -41,8 +38,8 @@ def build_single_verbose():
     with Context() as ctx, Location.unknown():
         _pto.register_dialect(ctx, load=True)
         module = Module.create()
-        ptr_ty = _pto.PtrType.get(pto.float32)
-        fn_ty = func.FunctionType.get([ptr_ty], [])
+        _ptr_ty = _pto.PtrType.get(pto.float32)
+        fn_ty = func.FunctionType.get([_ptr_ty], [])
 
         with InsertionPoint(module.body):
             fn = func.FuncOp("single_kernel", fn_ty)
@@ -59,8 +56,8 @@ def build_multi_verbose():
     with Context() as ctx, Location.unknown():
         _pto.register_dialect(ctx, load=True)
         module = Module.create()
-        ptr_ty = _pto.PtrType.get(pto.float32)
-        fn_ty = func.FunctionType.get([ptr_ty], [])
+        _ptr_ty = _pto.PtrType.get(pto.float32)
+        fn_ty = func.FunctionType.get([_ptr_ty], [])
 
         with InsertionPoint(module.body):
             worker = func.FuncOp("worker", fn_ty)

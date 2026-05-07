@@ -10,16 +10,24 @@ from common_utils import (
     M_TILE,
     N_FULL,
     SWIZZLE_COUNT,
-    build_meta_data,
     const,
+    i32,
+    ptr_type,
     swizzle_nz,
+    tile_buf_a_l0,
+    tile_buf_a_l1,
+    tile_buf_b_l0,
+    tile_buf_b_l1,
+    tile_buf_c,
+    tile_view_a,
+    tile_view_b,
+    tile_view_c,
+    tv_2d,
 )
 
 
 def build():
-    meta_data = build_meta_data()
-
-    @to_ir_module(meta_data=meta_data)
+    @to_ir_module
     def matmul_kernel_ABt_autosync(
         a_ptr: "ptr_type",
         b_ptr: "ptr_type",
@@ -49,18 +57,14 @@ def build():
             c_swizzle = const(SWIZZLE_COUNT)
             c_swizzle_m1 = c_swizzle - c1
 
-            tv_a = pto.as_tensor(
-                tv_2d, ptr=a_ptr, shape=[m_total, k_total], strides=[k_total, c1]
+            tv_a = pto.as_tensor(ptr=a_ptr, shape=[m_total, k_total], strides=[k_total, c1]
             )
-            tv_b = pto.as_tensor(
-                tv_2d,
-                ptr=b_ptr,
+            tv_b = pto.as_tensor(ptr=b_ptr,
                 shape=[k_total, n_total],
                 strides=[c1, k_total],
                 layout="DN",
             )
-            tv_c = pto.as_tensor(
-                tv_2d, ptr=c_ptr, shape=[m_total, n_total], strides=[n_total, c1]
+            tv_c = pto.as_tensor(ptr=c_ptr, shape=[m_total, n_total], strides=[n_total, c1]
             )
 
             a_l1 = [pto.alloc_tile(tile_buf_a_l1), pto.alloc_tile(tile_buf_a_l1)]
@@ -80,7 +84,6 @@ def build():
                 c_nt = const(N_FULL)
 
                 sv_a0 = pto.slice_view(
-                    tile_view_a,
                     source=tv_a,
                     offsets=[m_offset, c0],
                     sizes=[const(M_TILE), c_kd],
@@ -96,7 +99,6 @@ def build():
                         for h in range(2):
                             h_off = const(h * K_TILE)
                             sv_b = pto.slice_view(
-                                tile_view_b,
                                 source=tv_b,
                                 offsets=[k_offset + h_off, n_offset],
                                 sizes=[c_kt, c_nt],
@@ -127,7 +129,6 @@ def build():
 
                         with pto.if_context(k_idx + c1 < k_dtile_num):
                             sv_a_next = pto.slice_view(
-                                tile_view_a,
                                 source=tv_a,
                                 offsets=[m_offset, k_offset + c_kd],
                                 sizes=[const(M_TILE), c_kd],
@@ -141,7 +142,6 @@ def build():
                         run_loop_k(a_l1[1], a_l1[0])
 
                 sv_c = pto.slice_view(
-                    tile_view_c,
                     source=tv_c,
                     offsets=[m_offset, n_offset],
                     sizes=[const(M_TILE), c_nt],

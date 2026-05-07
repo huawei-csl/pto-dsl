@@ -5,7 +5,6 @@ from ptodsl import scalar as s
 
 const = s.const
 
-
 def _call_op(op_fn, src0, src1, tmp, dst):
     """Call op_fn with (src0, src1, dst) or (src0, src1, tmp, dst) depending on arity."""
     if len(inspect.signature(op_fn).parameters) == 4:
@@ -13,41 +12,12 @@ def _call_op(op_fn, src0, src1, tmp, dst):
     else:
         op_fn(src0, src1, dst)
 
-
 DTYPES = {
     "float32": lambda: pto.float32,
     "float16": lambda: pto.float16,
     "int32": lambda: pto.int32,
     "int16": lambda: pto.int16,
 }
-
-
-def meta_data(dtype=None, tile_length=1024):
-    if dtype is None:
-        dtype = "float32"
-    if isinstance(dtype, str):
-        dtype = DTYPES[dtype]()
-    index_dtype = pto.int32
-    ptr_type = pto.PtrType(dtype)
-    tensor_type = pto.TensorType(rank=1, dtype=dtype)
-    subtensor_type = pto.SubTensorType(shape=[1, tile_length], dtype=dtype)
-    tile_cfg = pto.TileBufConfig()
-    tile_type = pto.TileBufType(
-        shape=[1, tile_length],
-        valid_shape=[1, tile_length],
-        dtype=dtype,
-        memory_space="VEC",
-        config=tile_cfg,
-    )
-    return {
-        "ptr_type": ptr_type,
-        "index_dtype": index_dtype,
-        "tensor_type": tensor_type,
-        "subtensor_type": subtensor_type,
-        "tile_type": tile_type,
-        "tile_length": tile_length,
-    }
-
 
 def build_binary_kernels(op_name, op_fn, dtype=None, tile_length=1024):
     """Build 1D and 2D dynamic multicore kernels for a binary elementwise op.
@@ -57,10 +27,25 @@ def build_binary_kernels(op_name, op_fn, dtype=None, tile_length=1024):
     tile_length: tile width (default 1024).
     Returns (kernel_1d_module, kernel_2d_module).
     """
-    _meta_data = lambda: meta_data(dtype, tile_length)
+    if dtype is None:
+        dtype = "float32"
+    if isinstance(dtype, str):
+        dtype = DTYPES[dtype]()
+    index_dtype = pto.int32
+    ptr_type = pto.PtrType(dtype)
+    tensor_type = pto.TensorType(rank=1, dtype=dtype)
+
+    tile_cfg = pto.TileBufConfig()
+    tile_type = pto.TileBufType(
+        shape=[1, tile_length],
+        valid_shape=[1, tile_length],
+        dtype=dtype,
+        memory_space="VEC",
+        config=tile_cfg,
+    )
 
     def _1d(
-        arg0: "ptr_type", arg1: "ptr_type", arg2: "ptr_type", argN: "index_dtype"
+        arg0: ptr_type, arg1: ptr_type, arg2: ptr_type, argN: index_dtype
     ) -> None:
         c0 = const(0)
         c1 = const(1)
@@ -82,14 +67,11 @@ def build_binary_kernels(op_name, op_fn, dtype=None, tile_length=1024):
         tile_offset_this_core = vid_idx * num_tiles_per_core
 
         with pto.vector_section():
-            tv0 = pto.as_tensor(
-                tensor_type, ptr=arg0, shape=[total_elements], strides=[c1]
+            tv0 = pto.as_tensor(ptr=arg0, shape=[total_elements], strides=[c1]
             )
-            tv1 = pto.as_tensor(
-                tensor_type, ptr=arg1, shape=[total_elements], strides=[c1]
+            tv1 = pto.as_tensor(ptr=arg1, shape=[total_elements], strides=[c1]
             )
-            tv2 = pto.as_tensor(
-                tensor_type, ptr=arg2, shape=[total_elements], strides=[c1]
+            tv2 = pto.as_tensor(ptr=arg2, shape=[total_elements], strides=[c1]
             )
 
             tb0 = pto.alloc_tile(tile_type)
@@ -111,21 +93,15 @@ def build_binary_kernels(op_name, op_fn, dtype=None, tile_length=1024):
                         tile_offset_global = i + tile_offset_this_core
                         offset_global = tile_offset_global * c_tile
 
-                        sv0 = pto.slice_view(
-                            subtensor_type,
-                            source=tv0,
+                        sv0 = pto.slice_view(source=tv0,
                             offsets=[offset_global],
                             sizes=[c_tile],
                         )
-                        sv1 = pto.slice_view(
-                            subtensor_type,
-                            source=tv1,
+                        sv1 = pto.slice_view(source=tv1,
                             offsets=[offset_global],
                             sizes=[c_tile],
                         )
-                        sv2 = pto.slice_view(
-                            subtensor_type,
-                            source=tv2,
+                        sv2 = pto.slice_view(source=tv2,
                             offsets=[offset_global],
                             sizes=[c_tile],
                         )
@@ -136,14 +112,14 @@ def build_binary_kernels(op_name, op_fn, dtype=None, tile_length=1024):
                         pto.store(tb2, sv2)
 
     _1d.__name__ = f"vec_{op_name}_1d_dynamic"
-    kernel_1d = to_ir_module(meta_data=_meta_data)(_1d)
+    kernel_1d = to_ir_module(_1d)
 
     def _2d(
-        arg0: "ptr_type",
-        arg1: "ptr_type",
-        arg2: "ptr_type",
-        argM: "index_dtype",
-        argN: "index_dtype",
+        arg0: ptr_type,
+        arg1: ptr_type,
+        arg2: ptr_type,
+        argM: index_dtype,
+        argN: index_dtype,
     ) -> None:
         c0 = const(0)
         c1 = const(1)
@@ -167,14 +143,11 @@ def build_binary_kernels(op_name, op_fn, dtype=None, tile_length=1024):
         tiles_per_row = s.ceil_div(cols, c_tile)
 
         with pto.vector_section():
-            tv0 = pto.as_tensor(
-                tensor_type, ptr=arg0, shape=[total_elements], strides=[c1]
+            tv0 = pto.as_tensor(ptr=arg0, shape=[total_elements], strides=[c1]
             )
-            tv1 = pto.as_tensor(
-                tensor_type, ptr=arg1, shape=[total_elements], strides=[c1]
+            tv1 = pto.as_tensor(ptr=arg1, shape=[total_elements], strides=[c1]
             )
-            tv2 = pto.as_tensor(
-                tensor_type, ptr=arg2, shape=[total_elements], strides=[c1]
+            tv2 = pto.as_tensor(ptr=arg2, shape=[total_elements], strides=[c1]
             )
 
             tb0 = pto.alloc_tile(tile_type)
@@ -195,21 +168,15 @@ def build_binary_kernels(op_name, op_fn, dtype=None, tile_length=1024):
                         col_offset = c * c_tile
                         flat_offset = row_flat_offset + col_offset
 
-                        sv0 = pto.slice_view(
-                            subtensor_type,
-                            source=tv0,
+                        sv0 = pto.slice_view(source=tv0,
                             offsets=[flat_offset],
                             sizes=[c_tile],
                         )
-                        sv1 = pto.slice_view(
-                            subtensor_type,
-                            source=tv1,
+                        sv1 = pto.slice_view(source=tv1,
                             offsets=[flat_offset],
                             sizes=[c_tile],
                         )
-                        sv2 = pto.slice_view(
-                            subtensor_type,
-                            source=tv2,
+                        sv2 = pto.slice_view(source=tv2,
                             offsets=[flat_offset],
                             sizes=[c_tile],
                         )
@@ -220,6 +187,6 @@ def build_binary_kernels(op_name, op_fn, dtype=None, tile_length=1024):
                         pto.store(tb2, sv2)
 
     _2d.__name__ = f"vec_{op_name}_2d_dynamic"
-    kernel_2d = to_ir_module(meta_data=_meta_data)(_2d)
+    kernel_2d = to_ir_module(_2d)
 
     return kernel_1d, kernel_2d

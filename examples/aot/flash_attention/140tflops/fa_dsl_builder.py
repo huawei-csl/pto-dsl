@@ -31,87 +31,68 @@ GM_QK_OFF_F32 = 0
 GM_P_OFF_F16 = (SLOT_SIZE_QK * SLOT_NUM) // 2
 GM_PV_OFF_F32 = ((SLOT_SIZE_QK + SLOT_SIZE_P) * SLOT_NUM) // 4
 
+fp16 = pto.float16
+fp32 = pto.float32
+ffts_ty = pto.ffts_type
+ptr_fp16 = pto.PtrType(fp16)
+ptr_fp32 = pto.PtrType(fp32)
+i64 = pto.int64
 
-def meta_data():
-    fp16 = pto.float16
-    fp32 = pto.float32
-    ffts_ty = pto.ffts_type
-    ptr_fp16 = pto.PtrType(fp16)
-    ptr_fp32 = pto.PtrType(fp32)
-    i64 = pto.int64
+qk_slot_ty = pto.TensorType(shape=[CUBE_S0, TILE_S1], dtype=fp32)
+qk_vec_slot_ty = pto.TensorType(shape=[S0_HALF, TILE_S1], dtype=fp32)
+p_slot_ty = pto.TensorType(shape=[CUBE_S0, TILE_S1], dtype=fp16)
+p_vec_slot_ty = pto.TensorType(shape=[S0_HALF, TILE_S1], dtype=fp16)
+pv_slot_ty = pto.TensorType(shape=[CUBE_S0, HEAD], dtype=fp32)
+pv_vec_slot_ty = pto.TensorType(shape=[S0_HALF, HEAD], dtype=fp32)
 
-    qkv_tensor_ty = pto.TensorType(rank=2, dtype=fp16)
-    o_tensor_ty = pto.TensorType(rank=2, dtype=fp32)
-    qk_slot_ty = pto.TensorType(shape=[CUBE_S0, TILE_S1], dtype=fp32)
-    qk_vec_slot_ty = pto.TensorType(shape=[S0_HALF, TILE_S1], dtype=fp32)
-    p_slot_ty = pto.TensorType(shape=[CUBE_S0, TILE_S1], dtype=fp16)
-    p_vec_slot_ty = pto.TensorType(shape=[S0_HALF, TILE_S1], dtype=fp16)
-    pv_slot_ty = pto.TensorType(shape=[CUBE_S0, HEAD], dtype=fp32)
-    pv_vec_slot_ty = pto.TensorType(shape=[S0_HALF, HEAD], dtype=fp32)
+q_mat_ty = pto.TileBufType(shape=[CUBE_S0, HEAD], dtype=fp16, memory_space="MAT")
+q_left_ty = pto.TileBufType(shape=[CUBE_S0, HEAD], dtype=fp16, memory_space="LEFT")
+k_mat_ty = pto.TileBufType(
+    shape=[HEAD, CUBE_S1],
+    dtype=fp16,
+    memory_space="MAT",
+    config=pto.TileBufConfig(blayout="RowMajor", slayout="ColMajor"),
+)
+k_right_ty = pto.TileBufType(
+    shape=[HEAD, CUBE_S1], dtype=fp16, memory_space="RIGHT"
+)
+qk_acc_ty = pto.TileBufType(
+    shape=[CUBE_S0, CUBE_S1], dtype=fp32, memory_space="ACC"
+)
 
-    q_sub_ty = pto.SubTensorType(shape=[CUBE_S0, HEAD], dtype=fp16)
-    kt_sub_ty = pto.SubTensorType(shape=[HEAD, CUBE_S1], dtype=fp16)
-    v_sub_ty = pto.SubTensorType(shape=[CUBE_S1, HEAD], dtype=fp16)
-    o_sub_half_ty = pto.SubTensorType(shape=[S0_HALF, HEAD], dtype=fp32)
-    o_sub_vec_ty = pto.SubTensorType(shape=[VEC_ROWS, HEAD], dtype=fp32)
-    qk_slot_part_ty = pto.SubTensorType(shape=[CUBE_S0, CUBE_S1], dtype=fp32)
-    qk_vec_slot_part_ty = pto.SubTensorType(shape=[VEC_ROWS, TILE_S1], dtype=fp32)
-    p_slot_part_ty = pto.SubTensorType(shape=[CUBE_S0, CUBE_S1], dtype=fp16)
-    p_vec_slot_part_ty = pto.SubTensorType(shape=[VEC_ROWS, TILE_S1], dtype=fp16)
-    pv_slot_part_ty = pto.SubTensorType(shape=[CUBE_S0, HEAD], dtype=fp32)
-    pv_vec_slot_part_ty = pto.SubTensorType(shape=[VEC_ROWS, HEAD], dtype=fp32)
+p_recv_ty = pto.TileBufType(
+    shape=[CUBE_S0, CUBE_S1], dtype=fp16, memory_space="MAT"
+)
+p_left_ty = pto.TileBufType(
+    shape=[CUBE_S0, CUBE_S1], dtype=fp16, memory_space="LEFT"
+)
+v_mat_ty = pto.TileBufType(shape=[CUBE_S1, HEAD], dtype=fp16, memory_space="MAT")
+v_right_ty = pto.TileBufType(
+    shape=[CUBE_S1, HEAD], dtype=fp16, memory_space="RIGHT"
+)
+pv_acc_ty = pto.TileBufType(shape=[CUBE_S0, HEAD], dtype=fp32, memory_space="ACC")
 
-    q_mat_ty = pto.TileBufType(shape=[CUBE_S0, HEAD], dtype=fp16, memory_space="MAT")
-    q_left_ty = pto.TileBufType(shape=[CUBE_S0, HEAD], dtype=fp16, memory_space="LEFT")
-    k_mat_ty = pto.TileBufType(
-        shape=[HEAD, CUBE_S1],
-        dtype=fp16,
-        memory_space="MAT",
-        config=pto.TileBufConfig(blayout="RowMajor", slayout="ColMajor"),
-    )
-    k_right_ty = pto.TileBufType(
-        shape=[HEAD, CUBE_S1], dtype=fp16, memory_space="RIGHT"
-    )
-    qk_acc_ty = pto.TileBufType(
-        shape=[CUBE_S0, CUBE_S1], dtype=fp32, memory_space="ACC"
-    )
+qk_vec_ty = pto.TileBufType(
+    shape=[VEC_ROWS, TILE_S1], dtype=fp32, memory_space="VEC"
+)
+p_fp32_ty = pto.TileBufType(
+    shape=[VEC_ROWS, TILE_S1], dtype=fp32, memory_space="VEC"
+)
+p_fp16_ty = pto.TileBufType(
+    shape=[VEC_ROWS, TILE_S1], dtype=fp16, memory_space="VEC"
+)
+pv_vec_ty = pto.TileBufType(shape=[VEC_ROWS, HEAD], dtype=fp32, memory_space="VEC")
+o_vec_ty = pto.TileBufType(shape=[VEC_ROWS, HEAD], dtype=fp32, memory_space="VEC")
+tri_ty = pto.TileBufType(shape=[VEC_ROWS, TILE_S1], dtype=fp32, memory_space="VEC")
+red_ty = pto.TileBufType(
+    shape=[VEC_ROWS, 1],
+    dtype=fp32,
+    memory_space="VEC",
+    config=pto.TileBufConfig(blayout="ColMajor", slayout="NoneBox"),
+)
+red_row_ty = pto.TileBufType(shape=[1, VEC_ROWS], dtype=fp32, memory_space="VEC")
 
-    p_recv_ty = pto.TileBufType(
-        shape=[CUBE_S0, CUBE_S1], dtype=fp16, memory_space="MAT"
-    )
-    p_left_ty = pto.TileBufType(
-        shape=[CUBE_S0, CUBE_S1], dtype=fp16, memory_space="LEFT"
-    )
-    v_mat_ty = pto.TileBufType(shape=[CUBE_S1, HEAD], dtype=fp16, memory_space="MAT")
-    v_right_ty = pto.TileBufType(
-        shape=[CUBE_S1, HEAD], dtype=fp16, memory_space="RIGHT"
-    )
-    pv_acc_ty = pto.TileBufType(shape=[CUBE_S0, HEAD], dtype=fp32, memory_space="ACC")
-
-    qk_vec_ty = pto.TileBufType(
-        shape=[VEC_ROWS, TILE_S1], dtype=fp32, memory_space="VEC"
-    )
-    p_fp32_ty = pto.TileBufType(
-        shape=[VEC_ROWS, TILE_S1], dtype=fp32, memory_space="VEC"
-    )
-    p_fp16_ty = pto.TileBufType(
-        shape=[VEC_ROWS, TILE_S1], dtype=fp16, memory_space="VEC"
-    )
-    pv_vec_ty = pto.TileBufType(shape=[VEC_ROWS, HEAD], dtype=fp32, memory_space="VEC")
-    o_vec_ty = pto.TileBufType(shape=[VEC_ROWS, HEAD], dtype=fp32, memory_space="VEC")
-    tri_ty = pto.TileBufType(shape=[VEC_ROWS, TILE_S1], dtype=fp32, memory_space="VEC")
-    red_ty = pto.TileBufType(
-        shape=[VEC_ROWS, 1],
-        dtype=fp32,
-        memory_space="VEC",
-        config=pto.TileBufConfig(blayout="ColMajor", slayout="NoneBox"),
-    )
-    red_row_ty = pto.TileBufType(shape=[1, VEC_ROWS], dtype=fp32, memory_space="VEC")
-
-    return locals()
-
-
-@to_ir_module(meta_data=meta_data, module=True)
+@to_ir_module(module=True)
 def module():
     @pto.func(kernel="cube")
     def cube_kernel(
@@ -145,9 +126,7 @@ def module():
         gm_p = pto.add_ptr(gm_blk_h, const(GM_P_OFF_F16))
         gm_pv = pto.add_ptr(gm_blk, const(GM_PV_OFF_F32))
 
-        qk_slot_desc = pto.as_tensor(
-            qk_slot_ty,
-            ptr=gm_qk,
+        qk_slot_desc = pto.as_tensor(ptr=gm_qk,
             shape=[cS0, cTILE],
             strides=[cTILE, c1],
         )
@@ -159,9 +138,7 @@ def module():
             flag_base=0,
         )
 
-        p_slot_desc = pto.as_tensor(
-            p_slot_ty,
-            ptr=gm_p,
+        p_slot_desc = pto.as_tensor(ptr=gm_p,
             shape=[cS0, cTILE],
             strides=[cTILE, c1],
         )
@@ -173,9 +150,7 @@ def module():
             flag_base=2,
         )
 
-        pv_slot_desc = pto.as_tensor(
-            pv_slot_ty,
-            ptr=gm_pv,
+        pv_slot_desc = pto.as_tensor(ptr=gm_pv,
             shape=[cS0, cHEAD],
             strides=[cHEAD, c1],
         )
@@ -187,18 +162,14 @@ def module():
             flag_base=4,
         )
 
-        tv_q = pto.as_tensor(
-            qkv_tensor_ty, ptr=gm_q, shape=[s0, cHEAD], strides=[cHEAD, c1]
+        tv_q = pto.as_tensor(ptr=gm_q, shape=[s0, cHEAD], strides=[cHEAD, c1]
         )
-        tv_k = pto.as_tensor(
-            qkv_tensor_ty,
-            ptr=gm_k,
+        tv_k = pto.as_tensor(ptr=gm_k,
             shape=[cHEAD, s1],
             strides=[c1, cHEAD],
             layout="DN",
         )
-        tv_v = pto.as_tensor(
-            qkv_tensor_ty, ptr=gm_v, shape=[s1, cHEAD], strides=[cHEAD, c1]
+        tv_v = pto.as_tensor(ptr=gm_v, shape=[s1, cHEAD], strides=[cHEAD, c1]
         )
 
         q_mat = pto.alloc_tile(q_mat_ty)
@@ -212,8 +183,7 @@ def module():
         v_right = pto.alloc_tile(v_right_ty)
         pv_acc = pto.alloc_tile(pv_acc_ty)
 
-        q_view = pto.slice_view(
-            q_sub_ty, source=tv_q, offsets=[q_row_off, c0], sizes=[cS0, cHEAD]
+        q_view = pto.slice_view(source=tv_q, offsets=[q_row_off, c0], sizes=[cS0, cHEAD]
         )
         pto.load(q_view, q_mat)
         tile.mov(q_mat, q_left)
@@ -226,18 +196,14 @@ def module():
             tile_col_off = tile_id * cTILE
 
             k_col_off = tile_col_off + const(sub * CUBE_S1)
-            kt_view = pto.slice_view(
-                kt_sub_ty,
-                source=tv_k,
+            kt_view = pto.slice_view(source=tv_k,
                 offsets=[c0, k_col_off],
                 sizes=[cHEAD, cCUBE_S1],
             )
             pto.load(kt_view, k_mat)
             tile.mov(k_mat, k_right)
             tile.matmul(q_left, k_right, qk_acc)
-            qk_part = pto.slice_view(
-                qk_slot_part_ty,
-                source=qk_entry,
+            qk_part = pto.slice_view(source=qk_entry,
                 offsets=[c0, const(sub * CUBE_S1)],
                 sizes=[cS0, cCUBE_S1],
             )
@@ -253,16 +219,12 @@ def module():
             tile_col_off = tile_id * cTILE
 
             v_col_off = tile_col_off + const(sub * CUBE_S1)
-            v_view = pto.slice_view(
-                v_sub_ty,
-                source=tv_v,
+            v_view = pto.slice_view(source=tv_v,
                 offsets=[v_col_off, c0],
                 sizes=[cCUBE_S1, cHEAD],
             )
             pto.load(v_view, v_mat)
-            p_part = pto.slice_view(
-                p_slot_part_ty,
-                source=p_entry,
+            p_part = pto.slice_view(source=p_entry,
                 offsets=[c0, const(sub * CUBE_S1)],
                 sizes=[cS0, cCUBE_S1],
             )
@@ -278,9 +240,7 @@ def module():
             pto.tfree(p_pipe, SPLIT_UP_DOWN, entry=p_entry)
 
             pto.talloc(pv_entry, pv_pipe, SPLIT_UP_DOWN)
-            pv_part = pto.slice_view(
-                pv_slot_part_ty,
-                source=pv_entry,
+            pv_part = pto.slice_view(source=pv_entry,
                 offsets=[c0, c0],
                 sizes=[cS0, cHEAD],
             )
@@ -353,9 +313,7 @@ def module():
         gm_p = pto.add_ptr(gm_blk_h, const(GM_P_OFF_F16))
         gm_pv = pto.add_ptr(gm_blk, const(GM_PV_OFF_F32))
 
-        qk_slot_desc = pto.as_tensor(
-            qk_vec_slot_ty,
-            ptr=gm_qk,
+        qk_slot_desc = pto.as_tensor(ptr=gm_qk,
             shape=[cS0_HALF, cTILE],
             strides=[cTILE, c1],
         )
@@ -367,9 +325,7 @@ def module():
             flag_base=0,
         )
 
-        p_slot_desc = pto.as_tensor(
-            p_vec_slot_ty,
-            ptr=gm_p,
+        p_slot_desc = pto.as_tensor(ptr=gm_p,
             shape=[cS0_HALF, cTILE],
             strides=[cTILE, c1],
         )
@@ -381,9 +337,7 @@ def module():
             flag_base=2,
         )
 
-        pv_slot_desc = pto.as_tensor(
-            pv_vec_slot_ty,
-            ptr=gm_pv,
+        pv_slot_desc = pto.as_tensor(ptr=gm_pv,
             shape=[cS0_HALF, cHEAD],
             strides=[cHEAD, c1],
         )
@@ -395,8 +349,7 @@ def module():
             flag_base=4,
         )
 
-        tv_o = pto.as_tensor(
-            o_tensor_ty, ptr=gm_o, shape=[s0, cHEAD], strides=[cHEAD, c1]
+        tv_o = pto.as_tensor(ptr=gm_o, shape=[s0, cHEAD], strides=[cHEAD, c1]
         )
 
         qk_first = pto.alloc_tile(qk_vec_ty)
@@ -474,15 +427,11 @@ def module():
 
         def pop_qk_slot():
             pto.tpop_into(qk_entry, qk_pipe, SPLIT_UP_DOWN)
-            qk_part0 = pto.slice_view(
-                qk_vec_slot_part_ty,
-                source=qk_entry,
+            qk_part0 = pto.slice_view(source=qk_entry,
                 offsets=[c0, c0],
                 sizes=[cVEC_ROWS, cTILE],
             )
-            qk_part1 = pto.slice_view(
-                qk_vec_slot_part_ty,
-                source=qk_entry,
+            qk_part1 = pto.slice_view(source=qk_entry,
                 offsets=[cVEC_ROWS, c0],
                 sizes=[cVEC_ROWS, cTILE],
             )
@@ -493,17 +442,13 @@ def module():
         def push_p_slot():
             pto.talloc(p_entry, p_pipe, SPLIT_UP_DOWN)
             tile.cvt(qk_first, p_fp16, rmode="cast_rint")
-            p_part0 = pto.slice_view(
-                p_vec_slot_part_ty,
-                source=p_entry,
+            p_part0 = pto.slice_view(source=p_entry,
                 offsets=[c0, c0],
                 sizes=[cVEC_ROWS, cTILE],
             )
             pto.store(p_fp16, p_part0)
             tile.cvt(qk_second, p_fp16, rmode="cast_rint")
-            p_part1 = pto.slice_view(
-                p_vec_slot_part_ty,
-                source=p_entry,
+            p_part1 = pto.slice_view(source=p_entry,
                 offsets=[cVEC_ROWS, c0],
                 sizes=[cVEC_ROWS, cTILE],
             )
@@ -535,15 +480,11 @@ def module():
 
         def pop_pv_slot():
             pto.tpop_into(pv_entry, pv_pipe, SPLIT_UP_DOWN)
-            pv_part0 = pto.slice_view(
-                pv_vec_slot_part_ty,
-                source=pv_entry,
+            pv_part0 = pto.slice_view(source=pv_entry,
                 offsets=[c0, c0],
                 sizes=[cVEC_ROWS, cHEAD],
             )
-            pv_part1 = pto.slice_view(
-                pv_vec_slot_part_ty,
-                source=pv_entry,
+            pv_part1 = pto.slice_view(source=pv_entry,
                 offsets=[cVEC_ROWS, c0],
                 sizes=[cVEC_ROWS, cHEAD],
             )
@@ -624,16 +565,12 @@ def module():
 
         tile.row_expand_div(o_first, global_sum_first, o_first)
         tile.row_expand_div(o_second, global_sum_second, o_second)
-        o_view0 = pto.slice_view(
-            o_sub_vec_ty,
-            source=tv_o,
+        o_view0 = pto.slice_view(source=tv_o,
             offsets=[q_row_off_sb, c0],
             sizes=[cVEC_ROWS, cHEAD],
         )
         pto.store(o_first, o_view0)
-        o_view1 = pto.slice_view(
-            o_sub_vec_ty,
-            source=tv_o,
+        o_view1 = pto.slice_view(source=tv_o,
             offsets=[q_row_off_sb + cVEC_ROWS, c0],
             sizes=[cVEC_ROWS, cHEAD],
         )
@@ -670,7 +607,6 @@ def module():
             s0_i64,
             s1_i64,
         )
-
 
 if __name__ == "__main__":
     print(module.operation.get_asm(print_generic_op_form=True))

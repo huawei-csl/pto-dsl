@@ -1,5 +1,7 @@
+import __main__
+
 from mlir.ir import Context, F32Type, InsertionPoint, IntegerType, Location, Module
-from mlir.ir import IndexType
+from mlir.ir import IndexType, ShapedType
 from mlir.dialects import arith, func, pto as _pto, scf
 
 from ptodsl import pto, tile, to_ir_module
@@ -7,37 +9,24 @@ from ptodsl import scalar as s
 
 const = s.const
 
+dtype = pto.float32
+index_dtype = pto.int32
+ptr_type = pto.PtrType(dtype)
+tile_length = 1024
 
-def meta_data():
-    dtype = pto.float32
-    index_dtype = pto.int32
-    ptr_type = pto.PtrType(dtype)
-    tensor_type = pto.TensorType(rank=1, dtype=dtype)
-    tile_length = 1024
-    subtensor_type = pto.SubTensorType(shape=[1, tile_length], dtype=dtype)
-    tile_cfg = pto.TileBufConfig()
-    tile_type = pto.TileBufType(
-        shape=[1, tile_length],
-        valid_shape=[1, tile_length],
-        dtype=dtype,
-        memory_space="VEC",
-        config=tile_cfg,
-    )
-    return {
-        "ptr_type": ptr_type,
-        "index_dtype": index_dtype,
-        "tensor_type": tensor_type,
-        "subtensor_type": subtensor_type,
-        "tile_type": tile_type,
-        "tile_length": tile_length,
-    }
+tile_type = pto.TileBufType(
+    shape=[1, tile_length],
+    valid_shape=[1, tile_length],
+    dtype=dtype,
+    memory_space="VEC",
+)
 
-
+@to_ir_module
 def vec_add_1d_dynamic(
-    arg0: "ptr_type",
-    arg1: "ptr_type",
-    arg2: "ptr_type",
-    argN: "index_dtype",
+    arg0: ptr_type,
+    arg1: ptr_type,
+    arg2: ptr_type,
+    argN: index_dtype,
 ) -> None:
     c0 = const(0)
     c1 = const(1)
@@ -59,9 +48,9 @@ def vec_add_1d_dynamic(
     tile_offset_this_core = vid_idx * num_tiles_per_core
 
     with pto.vector_section():
-        tv0 = pto.as_tensor(tensor_type, ptr=arg0, shape=[total_elements], strides=[c1])
-        tv1 = pto.as_tensor(tensor_type, ptr=arg1, shape=[total_elements], strides=[c1])
-        tv2 = pto.as_tensor(tensor_type, ptr=arg2, shape=[total_elements], strides=[c1])
+        tv0 = pto.as_tensor(ptr=arg0, shape=[total_elements], strides=[c1])
+        tv1 = pto.as_tensor(ptr=arg1, shape=[total_elements], strides=[c1])
+        tv2 = pto.as_tensor(ptr=arg2, shape=[total_elements], strides=[c1])
 
         tb0 = pto.alloc_tile(tile_type)
         tb1 = pto.alloc_tile(tile_type)
@@ -82,21 +71,15 @@ def vec_add_1d_dynamic(
                     tile_offset_global = i + tile_offset_this_core
                     offset_global = tile_offset_global * c_tile
 
-                    sv0 = pto.slice_view(
-                        subtensor_type,
-                        source=tv0,
+                    sv0 = pto.slice_view(source=tv0,
                         offsets=[offset_global],
                         sizes=[c_tile],
                     )
-                    sv1 = pto.slice_view(
-                        subtensor_type,
-                        source=tv1,
+                    sv1 = pto.slice_view(source=tv1,
                         offsets=[offset_global],
                         sizes=[c_tile],
                     )
-                    sv2 = pto.slice_view(
-                        subtensor_type,
-                        source=tv2,
+                    sv2 = pto.slice_view(source=tv2,
                         offsets=[offset_global],
                         sizes=[c_tile],
                     )
@@ -105,7 +88,6 @@ def vec_add_1d_dynamic(
                     pto.load(sv1, tb1)
                     tile.add(tb0, tb1, tb2)
                     pto.store(tb2, sv2)
-
 
 def build_verbose():
     with Context() as ctx, Location.unknown():
@@ -118,8 +100,8 @@ def build_verbose():
         ptr_f32 = _pto.PtrType.get(f32)
 
         tensor_view = _pto.TensorViewType.get(1, f32)
-        tile_length = 1024
-        tile_view = _pto.PartitionTensorViewType.get([1, tile_length], f32)
+        _tile_length = 1024
+        tile_view = _pto.PartitionTensorViewType.get([ShapedType.get_dynamic_size()], f32)
 
         vec = _pto.AddressSpaceAttr.get(_pto.AddressSpace.VEC)
         bl = _pto.BLayoutAttr.get(_pto.BLayout.RowMajor)
@@ -127,7 +109,7 @@ def build_verbose():
         pd = _pto.PadValueAttr.get(_pto.PadValue.Null)
         cfg = _pto.TileBufConfigAttr.get(bl, sl, 512, pd)
         tile_buf = _pto.TileBufType.get(
-            [1, tile_length], f32, vec, [1, tile_length], cfg
+            [1, _tile_length], f32, vec, [1, _tile_length], cfg
         )
         fn_ty = func.FunctionType.get([ptr_f32, ptr_f32, ptr_f32, i32], [])
 
@@ -138,7 +120,7 @@ def build_verbose():
         with InsertionPoint(entry):
             c0 = arith.ConstantOp(IndexType.get(), 0).result
             c1 = arith.ConstantOp(IndexType.get(), 1).result
-            c_tile = arith.ConstantOp(IndexType.get(), tile_length).result
+            c_tile = arith.ConstantOp(IndexType.get(), _tile_length).result
 
             arg0, arg1, arg2, argN = entry.arguments
 
@@ -231,8 +213,10 @@ def build_verbose():
         module.operation.verify()
         return module
 
-
+    
 def test_structural_ir_equality():
-    dsl_module = to_ir_module(meta_data=meta_data)(vec_add_1d_dynamic)
     verbose_module = build_verbose()
-    assert str(dsl_module) == str(verbose_module)
+    assert str(vec_add_1d_dynamic) == str(verbose_module)
+
+if __name__ == "__main__":
+    print(build_verbose().operation.get_asm(enable_debug_info=True))

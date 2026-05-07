@@ -12,40 +12,27 @@ _TOTAL_ROWS = _BLOCK_DIM * _SUBBLOCK_NUM * _ROWS_PER_CORE
 const = s.const
 
 
-def meta_data():
-    # common, reusable type declarations
-    dtype = pto.float32
-    index_dtype = pto.int32
-    ptr_type = pto.PtrType(dtype)
-    tensor_type = pto.TensorType(rank=2, dtype=dtype)
-    subtensor_type = pto.SubTensorType(
-        shape=[32, 32], dtype=dtype
-    )  # TODO: omit shape https://github.com/zhangstevenunity/PTOAS/issues/31
-    tile_cfg = pto.TileBufConfig()
-    # defaults to pto.TileBufConfig(blayout="RowMajor", slayout="NoneBox", s_fractal_size=512, pad="Null")
-    tile_type = pto.TileBufType(
-        shape=[32, 32],
-        valid_shape=[-1, -1],
-        dtype=dtype,
-        memory_space="VEC",
-        config=tile_cfg,
-    )
-    return {
-        "ptr_type": ptr_type,
-        "index_dtype": index_dtype,
-        "tensor_type": tensor_type,
-        "subtensor_type": subtensor_type,
-        "tile_type": tile_type,
-    }
+dtype = pto.float32
+index_dtype = pto.int32
+ptr_type = pto.PtrType(dtype)
+subtensor_shape = [32, 32]
+tile_cfg = pto.TileBufConfig()
+tile_type = pto.TileBufType(
+    shape=[32, 32],
+    valid_shape=[-1, -1],
+    dtype=dtype,
+    memory_space="VEC",
+    config=tile_cfg,
+)
 
 
-@jit(meta_data=meta_data, block_dim=_BLOCK_DIM)
+@jit(block_dim=_BLOCK_DIM)
 def vec_add_kernel(
-    arg0: "ptr_type",
-    arg1: "ptr_type",
-    arg2: "ptr_type",
-    vrow: "index_dtype",
-    vcol: "index_dtype",
+    arg0: ptr_type,
+    arg1: ptr_type,
+    arg2: ptr_type,
+    vrow: index_dtype,
+    vcol: index_dtype,
 ) -> None:
     c0 = const(0)
     c1 = const(1)
@@ -61,20 +48,20 @@ def vec_add_kernel(
     v_row_idx = s.index_cast(vrow)
     v_col_idx = s.index_cast(vcol)
 
-    tv0 = pto.as_tensor(tensor_type, ptr=arg0, shape=[c1280, c32], strides=[c32, c1])
-    tv1 = pto.as_tensor(tensor_type, ptr=arg1, shape=[c1280, c32], strides=[c32, c1])
-    tv2 = pto.as_tensor(tensor_type, ptr=arg2, shape=[c1280, c32], strides=[c32, c1])
+    tv0 = pto.as_tensor(ptr=arg0, shape=[c1280, c32], strides=[c32, c1])
+    tv1 = pto.as_tensor(ptr=arg1, shape=[c1280, c32], strides=[c32, c1])
+    tv2 = pto.as_tensor(ptr=arg2, shape=[c1280, c32], strides=[c32, c1])
 
     vid_idx = s.index_cast(vid)
     offset_row = vid_idx * c32  # every core loads 32 rows of data
     sv0 = pto.slice_view(
-        subtensor_type, source=tv0, offsets=[offset_row, c0], sizes=[c32, c32]
+        source=tv0, offsets=[offset_row, c0], sizes=[c32, c32]
     )
     sv1 = pto.slice_view(
-        subtensor_type, source=tv1, offsets=[offset_row, c0], sizes=[c32, c32]
+        source=tv1, offsets=[offset_row, c0], sizes=[c32, c32]
     )
     sv2 = pto.slice_view(
-        subtensor_type, source=tv2, offsets=[offset_row, c0], sizes=[c32, c32]
+        source=tv2, offsets=[offset_row, c0], sizes=[c32, c32]
     )
 
     with pto.vector_section():

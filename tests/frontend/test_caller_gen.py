@@ -19,7 +19,7 @@ def test_generate_caller_cpp_for_multicore_add_signature():
     ) -> None:
         return None
 
-    wrapper = JitWrapper(vec_add_kernel, meta_data=lambda: {}, block_dim=20)
+    wrapper = JitWrapper(vec_add_kernel, block_dim=20)
     wrapper._arg_types = [
         _FakeType("!pto.ptr<f32>"),
         _FakeType("!pto.ptr<f32>"),
@@ -46,7 +46,7 @@ def test_generate_caller_cpp_maps_pointer_and_scalar_types():
     def mixed_kernel(data: "ptr_i8", count: "i64_type", idx: "index_dtype") -> None:
         return None
 
-    wrapper = JitWrapper(mixed_kernel, meta_data=lambda: {}, block_dim=7)
+    wrapper = JitWrapper(mixed_kernel, block_dim=7)
     wrapper._arg_types = [
         _FakeType("!pto.ptr<i8>"),
         _FakeType("i64"),
@@ -74,7 +74,7 @@ def test_generate_caller_cpp_for_dynamic_1d_add_signature():
     ) -> None:
         return None
 
-    wrapper = JitWrapper(vec_add_1d_dynamic, meta_data=lambda: {}, block_dim=20)
+    wrapper = JitWrapper(vec_add_1d_dynamic, block_dim=20)
     wrapper._arg_types = [
         _FakeType("!pto.ptr<f32>"),
         _FakeType("!pto.ptr<f32>"),
@@ -98,7 +98,7 @@ def test_set_block_dim_updates_runtime_launch_dim():
     def vec_add_kernel(arg0: "ptr_type") -> None:
         return None
 
-    wrapper = JitWrapper(vec_add_kernel, meta_data=lambda: {}, block_dim=1)
+    wrapper = JitWrapper(vec_add_kernel, block_dim=1)
     wrapper.set_block_dim(20)
 
     assert wrapper._block_dim == 20

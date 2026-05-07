@@ -11,49 +11,42 @@ const = s.const
 K = 4
 TILE_DIM = 16
 
+fp16 = pto.float16
+fp32 = pto.float32
+i32 = pto.int32
+ptr_fp16 = pto.PtrType(fp16)
 
-def meta_data():
-    fp16 = pto.float16
-    fp32 = pto.float32
-    i32 = pto.int32
-    ptr_fp16 = pto.PtrType(fp16)
-    tensor2_fp16 = pto.TensorType(rank=2, dtype=fp16)
-    sub_kk_fp16 = pto.SubTensorType(shape=[K, K], dtype=fp16)
+row_cfg = pto.TileBufConfig()
+col_cfg = pto.TileBufConfig(blayout="ColMajor")
 
-    row_cfg = pto.TileBufConfig()
-    col_cfg = pto.TileBufConfig(blayout="ColMajor")
+# Full UB tile (16×16) — row-major, fp16 alignment for vector loads.
+matrix_fp16 = pto.TileBufType(
+    shape=[TILE_DIM, TILE_DIM],
+    valid_shape=[TILE_DIM, TILE_DIM],
+    dtype=fp16,
+    memory_space="VEC",
+    config=row_cfg,
+)
 
-    # Full UB tile (16×16) — row-major, fp16 alignment for vector loads.
-    matrix_fp16 = pto.TileBufType(
-        shape=[TILE_DIM, TILE_DIM],
-        valid_shape=[TILE_DIM, TILE_DIM],
-        dtype=fp16,
-        memory_space="VEC",
-        config=row_cfg,
-    )
+# TROWMAX / TROWSUM destination: one scalar per row → [TILE_DIM, 1] ColMajor.
+col_vec_fp16 = pto.TileBufType(
+    shape=[TILE_DIM, 1],
+    valid_shape=[-1, -1],
+    dtype=fp16,
+    memory_space="VEC",
+    config=col_cfg,
+)
 
-    # TROWMAX / TROWSUM destination: one scalar per row → [TILE_DIM, 1] ColMajor.
-    col_vec_fp16 = pto.TileBufType(
-        shape=[TILE_DIM, 1],
-        valid_shape=[-1, -1],
-        dtype=fp16,
-        memory_space="VEC",
-        config=col_cfg,
-    )
+# TCOLSUM destination: one scalar per column → [1, TILE_DIM] RowMajor.
+row_vec_fp16 = pto.TileBufType(
+    shape=[1, TILE_DIM],
+    valid_shape=[-1, -1],
+    dtype=fp16,
+    memory_space="VEC",
+    config=row_cfg,
+)
 
-    # TCOLSUM destination: one scalar per column → [1, TILE_DIM] RowMajor.
-    row_vec_fp16 = pto.TileBufType(
-        shape=[1, TILE_DIM],
-        valid_shape=[-1, -1],
-        dtype=fp16,
-        memory_space="VEC",
-        config=row_cfg,
-    )
-
-    return locals()
-
-
-@to_ir_module(meta_data=meta_data)
+@to_ir_module
 def sinkhorn_k4_fp16(
     input_ptr: "ptr_fp16",
     output_ptr: "ptr_fp16",
@@ -83,15 +76,11 @@ def sinkhorn_k4_fp16(
 
         n_rows = nm * cK
 
-        tv_in = pto.as_tensor(
-            tensor2_fp16,
-            ptr=input_ptr,
+        tv_in = pto.as_tensor(ptr=input_ptr,
             shape=[n_rows, cK],
             strides=[cK, c1],
         )
-        tv_out = pto.as_tensor(
-            tensor2_fp16,
-            ptr=output_ptr,
+        tv_out = pto.as_tensor(ptr=output_ptr,
             shape=[n_rows, cK],
             strides=[cK, c1],
         )
@@ -108,15 +97,11 @@ def sinkhorn_k4_fp16(
 
         for mi in pto.range(wid, nm, num_workers):
             row0 = mi * cK
-            gm_in = pto.slice_view(
-                sub_kk_fp16,
-                source=tv_in,
+            gm_in = pto.slice_view(source=tv_in,
                 offsets=[row0, c0],
                 sizes=[cK, cK],
             )
-            gm_out = pto.slice_view(
-                sub_kk_fp16,
-                source=tv_out,
+            gm_out = pto.slice_view(source=tv_out,
                 offsets=[row0, c0],
                 sizes=[cK, cK],
             )
@@ -147,7 +132,6 @@ def sinkhorn_k4_fp16(
                 tile.col_expand_div(mat_kk, col_stat, mat_kk)
 
             pto.store(mat_kk, gm_out)
-
 
 if __name__ == "__main__":
     print(sinkhorn_k4_fp16)

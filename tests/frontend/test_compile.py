@@ -10,16 +10,11 @@ Neither step requires an NPU device — only the CLI tools that ship with the
 CANN image.
 
 Convention for auto-discovery
------------------------------
+------------------------------
 Modules named ``test_*_ir.py`` in this directory are scanned at collection
-time.  Each module that defines a top-level ``meta_data()`` function is
-inspected.  Every other public, non-test, non-build function whose parameter
-annotations are all plain strings (PTO type aliases like ``"ptr_type"``) is
-treated as a DSL kernel.  Each one is wrapped with
-``to_ir_module(meta_data=meta_data)(fn)`` to produce a ``.pto`` module, then:
-
-1. The ``.pto`` is assembled to C++ by ``ptoas``.
-2. The ptoas C++ output + a caller wrapper compiles to ``.so`` via ``bisheng``.
+time.  Each module-level MLIR module object (i.e. ``mlir.ir.Module`` instance)
+is treated as a compiled DSL kernel.  The corresponding Python function is
+found by matching the MLIR function name against module-level callables.
 
 ``--enable-insert-sync`` is enabled automatically unless the generated IR
 already contains explicit synchronisation ops (``record_event`` /
@@ -38,8 +33,10 @@ import pathlib
 import sys
 
 import pytest
+from mlir.ir import Module as MlirModule
 
 from ptodsl import JitWrapper, to_ir_module
+from ptodsl.compiler.ir import _KernelIR
 
 from tooling import run_ptoas, run_bisheng
 
@@ -68,23 +65,27 @@ def _import_ir_modules():
     return modules
 
 
-def _is_kernel_fn(fn, mod):
-    """Heuristic: *fn* is a PTO DSL kernel defined in *mod*."""
-    if not inspect.isfunction(fn):
-        return False
-    # Must be defined in *this* source file (filters out re-exports).
-    try:
-        fn_file = inspect.getfile(fn)
-    except TypeError:
-        return False
-    if fn_file != getattr(mod, "__file__", None):
-        return False
-    hints = getattr(fn, "__annotations__", {})
-    params = {k: v for k, v in hints.items() if k != "return"}
-    if not params:
-        return False
-    # All parameter annotations must be plain strings (PTO type aliases).
-    return all(isinstance(v, str) for v in params.values())
+def _find_kernel_fn_for_module(ir_mod_obj, py_mod):
+    """Return the original Python function for *ir_mod_obj*.
+
+    Prefers the ``_source_fn`` attribute on ``_KernelIR`` wrappers (set by
+    ``to_ir_module``).  Falls back to scanning *py_mod* for a callable whose
+    name matches the first ``func.func`` in the MLIR text.
+    """
+    # Fast path: _KernelIR carries the original function directly.
+    source_fn = getattr(ir_mod_obj, "_source_fn", None)
+    if source_fn is not None and callable(source_fn):
+        return source_fn
+
+    # Fallback: parse MLIR text and look for a matching callable.
+    ir_text = str(ir_mod_obj)
+    import re
+    m = re.search(r'func\.func\s+@(\w+)\s*\(', ir_text)
+    if not m:
+        return None
+    fn_name = m.group(1)
+    candidate = getattr(py_mod, fn_name, None)
+    return candidate if callable(candidate) else None
 
 
 def _has_manual_sync(ir_text: str) -> bool:
@@ -96,40 +97,30 @@ def _has_manual_sync(ir_text: str) -> bool:
 # Collect cases at import time
 # ---------------------------------------------------------------------------
 
-# Each entry: (case_id, ir_factory, meta_fn, kernel_fn)
+# Each entry: (case_id, ir_module_obj, kernel_fn)
 _CASES: list[tuple] = []
 
 for _mod_name, _mod in _import_ir_modules().items():
     _short = _mod_name.removeprefix("test_").removesuffix("_ir")
 
-    # -- DSL kernels: meta_data + annotated functions ----------------------
-    _meta = getattr(_mod, "meta_data", None)
-    if callable(_meta):
-        for _name, _obj in inspect.getmembers(_mod, inspect.isfunction):
-            if (
-                _name.startswith("_")
-                or _name.startswith("test_")
-                or _name.startswith("build")
-                or _name == "meta_data"
-            ):
-                continue
-            if _is_kernel_fn(_obj, _mod):
-                _cid = f"{_short}/{_name}"
-
-                # default-arg trick to capture the current loop values
-                def _make_dsl_factory(m=_meta, k=_obj):
-                    return to_ir_module(meta_data=m)(k)
-
-                _CASES.append((_cid, _make_dsl_factory, _meta, _obj))
+    for _name, _obj in inspect.getmembers(_mod):
+        if not isinstance(_obj, (MlirModule, _KernelIR)):
+            continue
+        # Skip build* results stored as module-level names
+        if _name.startswith("_") or _name.startswith("build"):
+            continue
+        _kernel_fn = _find_kernel_fn_for_module(_obj, _mod)
+        _cid = f"{_short}/{_name}"
+        _CASES.append((_cid, _obj, _kernel_fn))
 
 # -- Parametrise lists -----------------------------------------------------
 
-_PTOAS_PARAMS = [pytest.param(cid, factory, id=cid) for cid, factory, _, _ in _CASES]
+_PTOAS_PARAMS = [pytest.param(cid, ir_mod, id=cid) for cid, ir_mod, _ in _CASES]
 
 _BISHENG_PARAMS = [
-    pytest.param(cid, factory, meta, kern, id=cid)
-    for cid, factory, meta, kern in _CASES
-    if meta is not None and kern is not None
+    pytest.param(cid, ir_mod, kern, id=cid)
+    for cid, ir_mod, kern in _CASES
+    if kern is not None
 ]
 
 
@@ -138,9 +129,9 @@ _BISHENG_PARAMS = [
 # ---------------------------------------------------------------------------
 
 
-def _caller_cpp(fn, meta_data_fn, kernel_cpp_name="kernel.cpp"):
+def _caller_cpp(fn, kernel_cpp_name="kernel.cpp"):
     """Use :class:`JitWrapper` internals to generate a ``caller.cpp`` string."""
-    wrapper = JitWrapper(fn, meta_data=meta_data_fn, block_dim=20)
+    wrapper = JitWrapper(fn, block_dim=20)
     wrapper._arg_types = wrapper._resolve_runtime_arg_types()
     return wrapper._generate_caller_cpp(kernel_cpp_name)
 
@@ -151,10 +142,9 @@ def _caller_cpp(fn, meta_data_fn, kernel_cpp_name="kernel.cpp"):
 
 
 @pytest.mark.require_ptoas_cli
-@pytest.mark.parametrize("case_id,ir_factory", _PTOAS_PARAMS)
-def test_ptoas_assemble(case_id, ir_factory, tmp_path):
+@pytest.mark.parametrize("case_id,ir_module", _PTOAS_PARAMS)
+def test_ptoas_assemble(case_id, ir_module, tmp_path):
     """``ptoas`` can assemble auto-discovered .pto into C++."""
-    ir_module = ir_factory()
     ir_text = str(ir_module)
     enable_sync = not _has_manual_sync(ir_text)
 
@@ -176,10 +166,9 @@ def test_ptoas_assemble(case_id, ir_factory, tmp_path):
 
 @pytest.mark.require_ptoas_cli
 @pytest.mark.require_bisheng
-@pytest.mark.parametrize("case_id,ir_factory,meta_fn,kernel_fn", _BISHENG_PARAMS)
-def test_bisheng_compile(case_id, ir_factory, meta_fn, kernel_fn, tmp_path):
+@pytest.mark.parametrize("case_id,ir_module,kernel_fn", _BISHENG_PARAMS)
+def test_bisheng_compile(case_id, ir_module, kernel_fn, tmp_path):
     """Full pipeline: .pto → ptoas → .cpp → bisheng → .so"""
-    ir_module = ir_factory()
     ir_text = str(ir_module)
     enable_sync = not _has_manual_sync(ir_text)
 
@@ -193,7 +182,7 @@ def test_bisheng_compile(case_id, ir_factory, meta_fn, kernel_fn, tmp_path):
     run_ptoas(pto_path, cpp_path, enable_insert_sync=enable_sync)
 
     # Step 2: generate caller.cpp
-    caller_code = _caller_cpp(kernel_fn, meta_fn, kernel_cpp_name=cpp_path.name)
+    caller_code = _caller_cpp(kernel_fn, kernel_cpp_name=cpp_path.name)
     caller_path.write_text(caller_code, encoding="utf-8")
 
     # Step 3: bisheng

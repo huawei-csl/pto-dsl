@@ -6,32 +6,18 @@ const = s.const
 # 32 KB of UB / sizeof(fp16) = 16384 elements per tile
 ELEMENTS_PER_TILE = 32 * 1024 // 2
 
+dtype = pto.float16
+ptr_type = pto.PtrType(dtype)
+index_dtype = pto.int32
 
-def meta_data():
-    dtype = pto.float16
-    ptr_type = pto.PtrType(dtype)
-    index_dtype = pto.int32
-
-    tensor_type = pto.TensorType(rank=1, dtype=dtype)
-    subtensor_type = pto.SubTensorType(shape=[1, ELEMENTS_PER_TILE], dtype=dtype)
-
-    tile_cfg = pto.TileBufConfig()
-    tile_type = pto.TileBufType(
-        shape=[1, ELEMENTS_PER_TILE],
-        valid_shape=[1, -1],
-        dtype=dtype,
-        memory_space="VEC",
-        config=tile_cfg,
-    )
-
-    return {
-        "ptr_type": ptr_type,
-        "index_dtype": index_dtype,
-        "tensor_type": tensor_type,
-        "subtensor_type": subtensor_type,
-        "tile_type": tile_type,
-    }
-
+tile_cfg = pto.TileBufConfig()
+tile_type = pto.TileBufType(
+    shape=[1, ELEMENTS_PER_TILE],
+    valid_shape=[1, -1],
+    dtype=dtype,
+    memory_space="VEC",
+    config=tile_cfg,
+)
 
 def build_geglu(fn_name="geglu_fp16"):
     """
@@ -60,7 +46,7 @@ def build_geglu(fn_name="geglu_fp16"):
         n_cols  : int32                 -- elements per row; must be <= 16384
     """
 
-    @to_ir_module(meta_data=meta_data)
+    @to_ir_module
     def _kernel(
         a_ptr: "ptr_type",
         b_ptr: "ptr_type",
@@ -97,14 +83,11 @@ def build_geglu(fn_name="geglu_fp16"):
                     num_rows = row_end - row_start
 
                     total_elems = batch * n_cols
-                    tv_a = pto.as_tensor(
-                        tensor_type, ptr=a_ptr, shape=[total_elems], strides=[c1]
+                    tv_a = pto.as_tensor(ptr=a_ptr, shape=[total_elems], strides=[c1]
                     )
-                    tv_b = pto.as_tensor(
-                        tensor_type, ptr=b_ptr, shape=[total_elems], strides=[c1]
+                    tv_b = pto.as_tensor(ptr=b_ptr, shape=[total_elems], strides=[c1]
                     )
-                    tv_c = pto.as_tensor(
-                        tensor_type, ptr=c_ptr, shape=[total_elems], strides=[c1]
+                    tv_c = pto.as_tensor(ptr=c_ptr, shape=[total_elems], strides=[c1]
                     )
 
                     with pto.if_context(num_rows > c0):
@@ -118,21 +101,15 @@ def build_geglu(fn_name="geglu_fp16"):
                         for row_i in pto.range(c0, num_rows, c1):
                             gm_offset = (row_start + row_i) * n_cols
 
-                            sv_a = pto.slice_view(
-                                subtensor_type,
-                                source=tv_a,
+                            sv_a = pto.slice_view(source=tv_a,
                                 offsets=[gm_offset],
                                 sizes=[n_cols],
                             )
-                            sv_b = pto.slice_view(
-                                subtensor_type,
-                                source=tv_b,
+                            sv_b = pto.slice_view(source=tv_b,
                                 offsets=[gm_offset],
                                 sizes=[n_cols],
                             )
-                            sv_c = pto.slice_view(
-                                subtensor_type,
-                                source=tv_c,
+                            sv_c = pto.slice_view(source=tv_c,
                                 offsets=[gm_offset],
                                 sizes=[n_cols],
                             )
@@ -164,7 +141,6 @@ def build_geglu(fn_name="geglu_fp16"):
 
     _ = fn_name
     return _kernel
-
 
 if __name__ == "__main__":
     import argparse

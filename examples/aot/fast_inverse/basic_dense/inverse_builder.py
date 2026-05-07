@@ -7,51 +7,31 @@ from ptodsl import scalar as s
 const = s.const
 SUPPORTED_MATRIX_SIZES = (16, 32, 64, 128)
 
-
-def make_meta_data(n: int):
-    def meta_data():
-        in_dtype = pto.float16
-        out_dtype = pto.float32
-        i32 = pto.int32
-
-        in_ptr_type = pto.PtrType(in_dtype)
-        out_ptr_type = pto.PtrType(out_dtype)
-        in_tensor_type = pto.TensorType(rank=2, dtype=in_dtype)
-        out_tensor_type = pto.TensorType(rank=2, dtype=out_dtype)
-        in_subtensor = pto.SubTensorType(shape=[n, n], dtype=in_dtype)
-        out_subtensor = pto.SubTensorType(shape=[n, n], dtype=out_dtype)
-        l1_tile_type = pto.TileBufType(
-            shape=[n, n], valid_shape=[n, n], dtype=in_dtype, memory_space="MAT"
-        )
-        l0a_tile_type = pto.TileBufType(
-            shape=[n, n], valid_shape=[n, n], dtype=in_dtype, memory_space="LEFT"
-        )
-        l0b_tile_type = pto.TileBufType(
-            shape=[n, n], valid_shape=[n, n], dtype=in_dtype, memory_space="RIGHT"
-        )
-        l0c_tile_type = pto.TileBufType(
-            shape=[n, n], valid_shape=[n, n], dtype=out_dtype, memory_space="ACC"
-        )
-
-        return {
-            "in_ptr_type": in_ptr_type,
-            "out_ptr_type": out_ptr_type,
-            "i32": i32,
-            "in_tensor_type": in_tensor_type,
-            "out_tensor_type": out_tensor_type,
-            "in_subtensor": in_subtensor,
-            "out_subtensor": out_subtensor,
-            "l1_tile_type": l1_tile_type,
-            "l0a_tile_type": l0a_tile_type,
-            "l0b_tile_type": l0b_tile_type,
-            "l0c_tile_type": l0c_tile_type,
-        }
-
-    return meta_data
-
-
 def build_kernel(matrix_size: int):
-    @to_ir_module(meta_data=make_meta_data(matrix_size))
+    n = matrix_size
+    in_dtype = pto.float16
+    out_dtype = pto.float32
+    i32 = pto.int32
+
+    in_ptr_type = pto.PtrType(in_dtype)
+    out_ptr_type = pto.PtrType(out_dtype)
+    in_tensor_type = pto.TensorType(rank=2, dtype=in_dtype)
+    out_tensor_type = pto.TensorType(rank=2, dtype=out_dtype)
+
+    l1_tile_type = pto.TileBufType(
+        shape=[n, n], valid_shape=[n, n], dtype=in_dtype, memory_space="MAT"
+    )
+    l0a_tile_type = pto.TileBufType(
+        shape=[n, n], valid_shape=[n, n], dtype=in_dtype, memory_space="LEFT"
+    )
+    l0b_tile_type = pto.TileBufType(
+        shape=[n, n], valid_shape=[n, n], dtype=in_dtype, memory_space="RIGHT"
+    )
+    l0c_tile_type = pto.TileBufType(
+        shape=[n, n], valid_shape=[n, n], dtype=out_dtype, memory_space="ACC"
+    )
+
+    @to_ir_module
     def tri_inv_trick_fp16(
         out_ptr: "out_ptr_type",
         in_ptr: "in_ptr_type",
@@ -79,18 +59,14 @@ def build_kernel(matrix_size: int):
             length = base + s.select(lt_rem, c1, c0)
             b_end = s.min_u(b_start + length, batch_size)
 
-            tv_m = pto.as_tensor(
-                in_tensor_type, ptr=in_ptr, shape=[total_rows, n_c], strides=[n_c, c1]
+            tv_m = pto.as_tensor(ptr=in_ptr, shape=[total_rows, n_c], strides=[n_c, c1]
             )
-            tv_out = pto.as_tensor(
-                out_tensor_type, ptr=out_ptr, shape=[total_rows, n_c], strides=[n_c, c1]
+            tv_out = pto.as_tensor(ptr=out_ptr, shape=[total_rows, n_c], strides=[n_c, c1]
             )
-            tv_i_neg = pto.as_tensor(
-                in_tensor_type, ptr=i_neg_ptr, shape=[n_c, n_c], strides=[n_c, c1]
+            tv_i_neg = pto.as_tensor(ptr=i_neg_ptr, shape=[n_c, n_c], strides=[n_c, c1]
             )
 
-            sv_i_neg = pto.slice_view(
-                in_subtensor, source=tv_i_neg, offsets=[c0, c0], sizes=[n_c, n_c]
+            sv_i_neg = pto.slice_view(source=tv_i_neg, offsets=[c0, c0], sizes=[n_c, n_c]
             )
 
             i_neg_l1 = pto.alloc_tile(l1_tile_type)
@@ -110,15 +86,11 @@ def build_kernel(matrix_size: int):
 
             for b_idx in pto.range(b_start, b_end, c1):
                 row_offset = b_idx * n_c
-                sv_m = pto.slice_view(
-                    in_subtensor,
-                    source=tv_m,
+                sv_m = pto.slice_view(source=tv_m,
                     offsets=[row_offset, c0],
                     sizes=[n_c, n_c],
                 )
-                sv_out = pto.slice_view(
-                    out_subtensor,
-                    source=tv_out,
+                sv_out = pto.slice_view(source=tv_out,
                     offsets=[row_offset, c0],
                     sizes=[n_c, n_c],
                 )
@@ -158,7 +130,6 @@ def build_kernel(matrix_size: int):
                 pto.store(c_l0, sv_out)
 
     return tri_inv_trick_fp16
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
