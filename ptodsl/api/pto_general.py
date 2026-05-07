@@ -160,9 +160,7 @@ def reserve_buffer(*, name, size, location, auto_alloc=True, base=None):
 @with_loc
 def import_reserved_buffer(*, name, peer_func):
     # wrap import_reserved_buffer(name, peer_func, *, loc=None, ip=None) -> mlir._mlir_libs._mlir.ir.Value
-    return _pto.ImportReservedBufferOp(
-        name, _resolve_peer_func_attr(peer_func)
-    ).result
+    return _pto.ImportReservedBufferOp(name, _resolve_peer_func_attr(peer_func)).result
 
 
 @with_loc

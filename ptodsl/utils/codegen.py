@@ -48,12 +48,13 @@ def with_loc(fn):
             return fn(*args, **kwargs)
         with loc:
             return fn(*args, **kwargs)
+
     return wrapper
 
 
 def apply_loc(cls):
     for name, val in vars(cls).items():
-        if name == '__init__':
+        if name == "__init__":
             continue
         if isinstance(val, staticmethod):
             setattr(cls, name, staticmethod(with_loc(val.__func__)))

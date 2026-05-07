@@ -15,7 +15,7 @@ class Value:
     # TODO: generalize to more comprehensive wrappers like
     # https://github.com/makslevental/mlir-python-extras/blob/0.0.8.2/mlir/extras/dialects/ext/arith.py
     def __init__(self, raw):
-            self.raw = raw
+        self.raw = raw
 
     def __mul__(self, other):
         return Value(arith.MulIOp(_unwrap(self), _unwrap(other)).result)
@@ -147,30 +147,22 @@ def min_u(a, b):
 
 @with_loc
 def eq(a, b):
-    return Value(
-        arith.CmpIOp(arith.CmpIPredicate.eq, _unwrap(a), _unwrap(b)).result
-    )
+    return Value(arith.CmpIOp(arith.CmpIPredicate.eq, _unwrap(a), _unwrap(b)).result)
 
 
 @with_loc
 def lt(a, b):
-    return Value(
-        arith.CmpIOp(arith.CmpIPredicate.slt, _unwrap(a), _unwrap(b)).result
-    )
+    return Value(arith.CmpIOp(arith.CmpIPredicate.slt, _unwrap(a), _unwrap(b)).result)
 
 
 @with_loc
 def gt(a, b):
-    return Value(
-        arith.CmpIOp(arith.CmpIPredicate.sgt, _unwrap(a), _unwrap(b)).result
-    )
+    return Value(arith.CmpIOp(arith.CmpIPredicate.sgt, _unwrap(a), _unwrap(b)).result)
 
 
 @with_loc
 def ge(a, b):
-    return Value(
-        arith.CmpIOp(arith.CmpIPredicate.sge, _unwrap(a), _unwrap(b)).result
-    )
+    return Value(arith.CmpIOp(arith.CmpIPredicate.sge, _unwrap(a), _unwrap(b)).result)
 
 
 @with_loc
