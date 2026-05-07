@@ -29,12 +29,12 @@ def test_location_info_in_asm():
     asm = kernel.operation.get_asm(enable_debug_info=True)
     print(asm)
     # Kernel def — line of the @to_ir_module decorated function definition
-    assert 'test_location_info.py":16:0)' in asm
+    assert 'test_location_info.py":15:0)' in asm
     # Const def
-    assert 'test_location_info.py":23:9)' in asm
+    assert 'test_location_info.py":22:9)' in asm
     # Add def
-    assert 'test_location_info.py":24:10)' in asm
+    assert 'test_location_info.py":23:10)' in asm
     # Block idx def
-    assert 'test_location_info.py":25:9)' in asm
+    assert 'test_location_info.py":24:9)' in asm
     # Index cast def
-    assert 'test_location_info.py":26:12)' in asm
+    assert 'test_location_info.py":25:12)' in asm
