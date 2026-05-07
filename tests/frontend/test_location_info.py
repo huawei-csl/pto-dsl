@@ -31,11 +31,10 @@ def kernel(
     batch_i32: "index_dtype",
     n_cols_i32: "index_dtype",
 ) -> None:
-    c0 = s.const(0)
     c1 = s.const(1)
-
+    add = c1 + c1
+    id = pto.get_block_idx()
     batch = s.index_cast(batch_i32)
-    n_cols = s.index_cast(n_cols_i32)
 
 
 def test_location_info_in_asm():
@@ -47,3 +46,9 @@ def test_location_info_in_asm():
     assert 'tests/frontend/test_location_info.py":28:0)' in asm
     # Const def
     assert 'tests/frontend/test_location_info.py":34:9)' in asm
+    # Add def
+    assert 'tests/frontend/test_location_info.py":35:10)' in asm
+    # Block idx def
+    assert 'tests/frontend/test_location_info.py":36:9)' in asm
+    # Index cast def
+    assert 'tests/frontend/test_location_info.py":37:12)' in asm

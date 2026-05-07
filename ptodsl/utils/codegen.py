@@ -2,6 +2,7 @@
 
 import sys
 import inspect
+import functools
 from pathlib import Path
 from typing import Optional
 
@@ -37,3 +38,25 @@ def get_user_code_loc(user_base: Optional[Path] = None):
         )
     else:
         return Location.file(frame_info.filename, frame_info.lineno, col=0)
+
+
+def with_loc(fn):
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        loc = get_user_code_loc()
+        if loc is None:
+            return fn(*args, **kwargs)
+        with loc:
+            return fn(*args, **kwargs)
+    return wrapper
+
+
+def apply_loc(cls):
+    for name, val in vars(cls).items():
+        if name == '__init__':
+            continue
+        if isinstance(val, staticmethod):
+            setattr(cls, name, staticmethod(with_loc(val.__func__)))
+        elif callable(val):
+            setattr(cls, name, with_loc(val))
+    return cls
