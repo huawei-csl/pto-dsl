@@ -1,3 +1,4 @@
+import ctypes
 import inspect
 
 from mlir.dialects import func, pto as _pto
@@ -161,6 +162,37 @@ def _restore_globals(fn, old, names):
             globs[name] = old[name]
 
 
+def _patch_closure_cells(fn, values):
+    """Replace any _LazyType closure cells in *fn* with their materialized values.
+
+    Returns a dict mapping cell index → original _LazyType so the caller can
+    restore them afterwards.
+    """
+    saved = {}
+    if not (fn.__code__.co_freevars and fn.__closure__):
+        return saved
+    for i, (name, cell) in enumerate(zip(fn.__code__.co_freevars, fn.__closure__)):
+        try:
+            contents = cell.cell_contents
+        except ValueError:
+            continue
+        if isinstance(contents, _LazyType) and name in values:
+            saved[i] = contents
+            ctypes.pythonapi.PyCell_Set(
+                ctypes.py_object(cell), ctypes.py_object(values[name])
+            )
+    return saved
+
+
+def _restore_closure_cells(fn, saved):
+    """Restore closure cells previously patched by *_patch_closure_cells*."""
+    if not saved or not fn.__closure__:
+        return
+    for i, original in saved.items():
+        cell = fn.__closure__[i]
+        ctypes.pythonapi.PyCell_Set(ctypes.py_object(cell), ctypes.py_object(original))
+
+
 def _define(module, ctx, meta_map, fn, *, name=None, entry=False, kernel=None):
     sig = inspect.signature(fn)
     arg_types = _resolve_arg_types(sig, meta_map)
@@ -184,10 +216,12 @@ def _define(module, ctx, meta_map, fn, *, name=None, entry=False, kernel=None):
     with InsertionPoint(block), Location.file(fn_file, fn_line, 0):
         wrapped_args = [wrap_value(arg) for arg in block.arguments]
         old = _inject_globals(fn, meta_map)
+        saved_cells = _patch_closure_cells(fn, meta_map)
         try:
             fn(*wrapped_args)
         finally:
             _restore_globals(fn, old, meta_map.keys())
+            _restore_closure_cells(fn, saved_cells)
 
         if not ret_types and not _has_func_return(block):
             func.ReturnOp([])
