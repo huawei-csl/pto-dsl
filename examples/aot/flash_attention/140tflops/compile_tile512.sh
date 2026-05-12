@@ -8,22 +8,18 @@ ARTIFACT_DIR="${SCRIPT_DIR}/build_artifacts"
 PTO_LIB_PATH="${PTO_LIB_PATH:-/sources/pto-isa}"
 NPU_ARCH="${NPU_ARCH:-dav-2201}"
 PTO_LEVEL="${PTO_LEVEL:-}"
+
 MLIR_PATH="${ARTIFACT_DIR}/fa_dsl.mlir"
 GENERATED_CPP="${ARTIFACT_DIR}/fa_dsl.cpp"
 PATCHED_CPP="${ARTIFACT_DIR}/fa_dsl_patched.cpp"
 LIB_PATH="${ARTIFACT_DIR}/fa_dsl.so"
 RUNTIME_BUILDER_PATH="${ARTIFACT_DIR}/fa_dsl_runtime_builder.py"
-BUILDER_PATH="${SCRIPT_DIR}/fa_dsl_builder.py"
+BUILDER_PATH="${SCRIPT_DIR}/fa_dsl_builder_tile512.py"
 
 parse_common_compile_args "$@"
 
 mkdir -p "${ARTIFACT_DIR}"
 rm -f "${MLIR_PATH}" "${GENERATED_CPP}" "${PATCHED_CPP}" "${LIB_PATH}" "${RUNTIME_BUILDER_PATH}"
-
-if [[ ! -f "${BUILDER_PATH}" ]]; then
-    echo "Builder not found: ${BUILDER_PATH}" >&2
-    exit 2
-fi
 
 python "${BUILDER_PATH}" > "${MLIR_PATH}"
 
@@ -53,7 +49,8 @@ bisheng \
     "${SCRIPT_DIR}/caller.cpp" \
     -o "${LIB_PATH}"
 
+cp "${BUILDER_PATH}" "${RUNTIME_BUILDER_PATH}"
+
 echo "Generated ${GENERATED_CPP}."
 echo "Built ${LIB_PATH}."
-cp "${BUILDER_PATH}" "${RUNTIME_BUILDER_PATH}"
 echo "Runtime builder ${RUNTIME_BUILDER_PATH}."

@@ -8,16 +8,16 @@ const = s.const
 
 CUBE_S0 = 128
 S0_HALF = CUBE_S0 // 2
-VEC_ROWS = S0_HALF // 2
 HEAD = 128
 CUBE_S1 = 128
-TILE_S1 = 256
+TILE_S1 = 512
 SUBTILES = TILE_S1 // CUBE_S1
+VEC_ROWS = S0_HALF // SUBTILES
 
 SPLIT_UP_DOWN = 1
 SLOT_NUM = 8
-QK_PRELOAD = int(os.environ.get("FA_DSL_QK_PRELOAD", "3"))
-EXP_RING = int(os.environ.get("FA_DSL_EXP_RING", "3"))
+QK_PRELOAD = int(os.environ.get("FA_DSL_QK_PRELOAD", "4"))
+EXP_RING = int(os.environ.get("FA_DSL_EXP_RING", "4"))
 
 SLOT_SIZE_QK = CUBE_S0 * TILE_S1 * 4
 SLOT_SIZE_PV = CUBE_S0 * HEAD * 4
@@ -397,22 +397,18 @@ def module():
             o_tensor_ty, ptr=gm_o, shape=[s0, cHEAD], strides=[cHEAD, c1]
         )
 
-        qk_first = pto.alloc_tile(qk_vec_ty)
-        qk_second = pto.alloc_tile(qk_vec_ty)
+        qk_tile = pto.alloc_tile(qk_vec_ty)
         reduce_tmp = pto.alloc_tile(p_fp32_ty)
         p_fp16 = pto.alloc_tile(p_fp16_ty)
-        o_first = pto.alloc_tile(o_vec_ty)
-        o_second = pto.alloc_tile(o_vec_ty)
-        recv_first = pto.alloc_tile(pv_vec_ty)
-        recv_second = pto.alloc_tile(pv_vec_ty)
-        global_max_first = pto.alloc_tile(red_ty)
-        global_max_second = pto.alloc_tile(red_ty)
+        recv_tile = pto.alloc_tile(pv_vec_ty)
+        o_tiles = [pto.alloc_tile(o_vec_ty) for _ in range(SUBTILES)]
+        global_max_tiles = [pto.alloc_tile(red_ty) for _ in range(SUBTILES)]
+        global_sum_tiles = [pto.alloc_tile(red_ty) for _ in range(SUBTILES)]
         local_max = pto.alloc_tile(red_ty)
-        global_sum_first = pto.alloc_tile(red_ty)
-        global_sum_second = pto.alloc_tile(red_ty)
         local_sum = pto.alloc_tile(red_ty)
-        exp_max_first_tiles = [pto.alloc_tile(red_ty) for _ in range(EXP_RING)]
-        exp_max_second_tiles = [pto.alloc_tile(red_ty) for _ in range(EXP_RING)]
+        exp_max_tiles = [
+            [pto.alloc_tile(red_ty) for _ in range(EXP_RING)] for _ in range(SUBTILES)
+        ]
 
         scale = const(1.0 / math.sqrt(HEAD), s.float32)
 
@@ -443,165 +439,154 @@ def module():
             tile.row_sum(qk, reduce_tmp, local_sum)
             tile.add(global_sum_r, local_sum_r, global_sum_r)
 
-        def init_softmax(qk0, qk1):
-            init_softmax_slice(qk0, global_max_first, global_sum_first)
-            init_softmax_slice(qk1, global_max_second, global_sum_second)
+        def init_softmax_row(row_slice):
+            init_softmax_slice(
+                qk_tile,
+                global_max_tiles[row_slice],
+                global_sum_tiles[row_slice],
+            )
 
-        def update_softmax(qk0, qk1, exp_max_first, exp_max_second):
-            update_softmax_slice(qk0, exp_max_first, global_max_first, global_sum_first)
+        def update_softmax_row(row_slice, exp_max):
             update_softmax_slice(
-                qk1, exp_max_second, global_max_second, global_sum_second
+                qk_tile,
+                exp_max,
+                global_max_tiles[row_slice],
+                global_sum_tiles[row_slice],
             )
 
         cEXP_RING = const(EXP_RING)
-        if EXP_RING != 3:
-            raise ValueError("fa_dsl_builder.py fast path expects EXP_RING == 3")
+        # if EXP_RING != 3:
+        #     raise ValueError("fa_dsl_builder.py fast path expects EXP_RING == 3")
 
         qk_entry = pto.declare_global(qk_vec_slot_ty)
         p_entry = pto.declare_global(p_vec_slot_ty)
         pv_entry = pto.declare_global(pv_vec_slot_ty)
 
-        def pop_qk_slot():
-            pto.tpop_into(qk_entry, qk_pipe, SPLIT_UP_DOWN)
-            qk_part0 = pto.slice_view(
+        def load_qk_row(row_slice):
+            qk_part = pto.slice_view(
                 qk_vec_slot_part_ty,
                 source=qk_entry,
-                offsets=[c0, c0],
+                offsets=[const(row_slice * VEC_ROWS), c0],
                 sizes=[cVEC_ROWS, cTILE],
             )
-            qk_part1 = pto.slice_view(
-                qk_vec_slot_part_ty,
-                source=qk_entry,
-                offsets=[cVEC_ROWS, c0],
-                sizes=[cVEC_ROWS, cTILE],
-            )
-            pto.load(qk_part0, qk_first)
-            pto.load(qk_part1, qk_second)
-            pto.tfree(qk_pipe, SPLIT_UP_DOWN, entry=qk_entry)
+            pto.load(qk_part, qk_tile)
 
-        def push_p_slot():
-            pto.talloc(p_entry, p_pipe, SPLIT_UP_DOWN)
-            tile.cvt(qk_first, p_fp16, rmode="cast_rint")
-            p_part0 = pto.slice_view(
+        def store_p_row(row_slice):
+            tile.cvt(qk_tile, p_fp16, rmode="cast_rint")
+            p_part = pto.slice_view(
                 p_vec_slot_part_ty,
                 source=p_entry,
-                offsets=[c0, c0],
+                offsets=[const(row_slice * VEC_ROWS), c0],
                 sizes=[cVEC_ROWS, cTILE],
             )
-            pto.store(p_fp16, p_part0)
-            tile.cvt(qk_second, p_fp16, rmode="cast_rint")
-            p_part1 = pto.slice_view(
-                p_vec_slot_part_ty,
-                source=p_entry,
-                offsets=[cVEC_ROWS, c0],
-                sizes=[cVEC_ROWS, cTILE],
-            )
-            pto.store(p_fp16, p_part1)
-            pto.tpush(p_entry, p_pipe, SPLIT_UP_DOWN)
+            pto.store(p_fp16, p_part)
 
         def compute_p_init():
-            pop_qk_slot()
-            init_softmax(qk_first, qk_second)
-            push_p_slot()
+            pto.tpop_into(qk_entry, qk_pipe, SPLIT_UP_DOWN)
+            pto.talloc(p_entry, p_pipe, SPLIT_UP_DOWN)
+            for row_slice in range(SUBTILES):
+                load_qk_row(row_slice)
+                init_softmax_row(row_slice)
+                store_p_row(row_slice)
+            pto.tfree(qk_pipe, SPLIT_UP_DOWN, entry=qk_entry)
+            pto.tpush(p_entry, p_pipe, SPLIT_UP_DOWN)
 
-        def compute_p_update(tile_id, exp_max_first, exp_max_second):
-            pop_qk_slot()
-            update_softmax(qk_first, qk_second, exp_max_first, exp_max_second)
-            push_p_slot()
+        def compute_p_update(tile_id, ring_idx):
+            pto.tpop_into(qk_entry, qk_pipe, SPLIT_UP_DOWN)
+            pto.talloc(p_entry, p_pipe, SPLIT_UP_DOWN)
+            for row_slice in range(SUBTILES):
+                load_qk_row(row_slice)
+                update_softmax_row(row_slice, exp_max_tiles[row_slice][ring_idx])
+                store_p_row(row_slice)
+            pto.tfree(qk_pipe, SPLIT_UP_DOWN, entry=qk_entry)
+            pto.tpush(p_entry, p_pipe, SPLIT_UP_DOWN)
 
         def compute_p_update_dispatch(tile_id):
-            pop_qk_slot()
             mod = tile_id % cEXP_RING
             with pto.if_context(mod == c0, has_else=True) as branch0:
-                update_softmax(
-                    qk_first,
-                    qk_second,
-                    exp_max_first_tiles[0],
-                    exp_max_second_tiles[0],
-                )
+                compute_p_update(tile_id, 0)
             with branch0.else_context():
                 with pto.if_context(mod == c1, has_else=True) as branch1:
-                    update_softmax(
-                        qk_first,
-                        qk_second,
-                        exp_max_first_tiles[1],
-                        exp_max_second_tiles[1],
-                    )
+                    compute_p_update(tile_id, 1)
                 with branch1.else_context():
-                    update_softmax(
-                        qk_first,
-                        qk_second,
-                        exp_max_first_tiles[2],
-                        exp_max_second_tiles[2],
-                    )
-            push_p_slot()
+                    with pto.if_context(mod == const(2), has_else=True) as branch2:
+                        compute_p_update(tile_id, 2)
+                    with branch2.else_context():
+                        compute_p_update(tile_id, 3)
 
-        def pop_pv_slot():
-            pto.tpop_into(pv_entry, pv_pipe, SPLIT_UP_DOWN)
-            pv_part0 = pto.slice_view(
+        def load_pv_row(row_slice):
+            pv_part = pto.slice_view(
                 pv_vec_slot_part_ty,
                 source=pv_entry,
-                offsets=[c0, c0],
+                offsets=[const(row_slice * VEC_ROWS), c0],
                 sizes=[cVEC_ROWS, cHEAD],
             )
-            pv_part1 = pto.slice_view(
-                pv_vec_slot_part_ty,
-                source=pv_entry,
-                offsets=[cVEC_ROWS, c0],
-                sizes=[cVEC_ROWS, cHEAD],
-            )
-            pto.load(pv_part0, recv_first)
-            pto.load(pv_part1, recv_second)
+            pto.load(pv_part, recv_tile)
 
         def free_pv_slot():
             pto.tfree(pv_pipe, SPLIT_UP_DOWN, entry=pv_entry)
 
         def compute_gu_init():
-            pop_pv_slot()
-            tile.mov(recv_first, o_first)
-            tile.mov(recv_second, o_second)
+            pto.tpop_into(pv_entry, pv_pipe, SPLIT_UP_DOWN)
+            for row_slice in range(SUBTILES):
+                load_pv_row(row_slice)
+                tile.mov(recv_tile, o_tiles[row_slice])
             free_pv_slot()
 
-        def apply_gu_update(exp_max_first, exp_max_second):
-            tile.row_expand_mul(o_first, exp_max_first, o_first)
-            tile.add(o_first, recv_first, o_first)
-            tile.row_expand_mul(o_second, exp_max_second, o_second)
-            tile.add(o_second, recv_second, o_second)
+        def apply_gu_update_row(row_slice, exp_max):
+            tile.row_expand_mul(o_tiles[row_slice], exp_max, o_tiles[row_slice])
+            tile.add(o_tiles[row_slice], recv_tile, o_tiles[row_slice])
 
         def compute_gu_update_dispatch(tile_id):
-            pop_pv_slot()
+            pto.tpop_into(pv_entry, pv_pipe, SPLIT_UP_DOWN)
             mod = tile_id % cEXP_RING
-            with pto.if_context(mod == c0, has_else=True) as branch0:
-                apply_gu_update(exp_max_first_tiles[0], exp_max_second_tiles[0])
-            with branch0.else_context():
-                with pto.if_context(mod == c1, has_else=True) as branch1:
-                    apply_gu_update(exp_max_first_tiles[1], exp_max_second_tiles[1])
-                with branch1.else_context():
-                    apply_gu_update(exp_max_first_tiles[2], exp_max_second_tiles[2])
+            for row_slice in range(SUBTILES):
+                load_pv_row(row_slice)
+                with pto.if_context(mod == c0, has_else=True) as branch0:
+                    apply_gu_update_row(row_slice, exp_max_tiles[row_slice][0])
+                with branch0.else_context():
+                    with pto.if_context(mod == c1, has_else=True) as branch1:
+                        apply_gu_update_row(row_slice, exp_max_tiles[row_slice][1])
+                    with branch1.else_context():
+                        with pto.if_context(mod == const(2), has_else=True) as branch2:
+                            apply_gu_update_row(row_slice, exp_max_tiles[row_slice][2])
+                        with branch2.else_context():
+                            apply_gu_update_row(row_slice, exp_max_tiles[row_slice][3])
             free_pv_slot()
 
         def compute_gu(tile_id):
-            pop_pv_slot()
+            pto.tpop_into(pv_entry, pv_pipe, SPLIT_UP_DOWN)
             with pto.if_context(tile_id == c0, has_else=True) as branch:
-                tile.mov(recv_first, o_first)
-                tile.mov(recv_second, o_second)
+                for row_slice in range(SUBTILES):
+                    load_pv_row(row_slice)
+                    tile.mov(recv_tile, o_tiles[row_slice])
             with branch.else_context():
                 mod = tile_id % cEXP_RING
-                with pto.if_context(mod == c0, has_else=True) as branch0:
-                    apply_gu_update(exp_max_first_tiles[0], exp_max_second_tiles[0])
-                with branch0.else_context():
-                    with pto.if_context(mod == c1, has_else=True) as branch1:
-                        apply_gu_update(exp_max_first_tiles[1], exp_max_second_tiles[1])
-                    with branch1.else_context():
-                        apply_gu_update(exp_max_first_tiles[2], exp_max_second_tiles[2])
+                for row_slice in range(SUBTILES):
+                    load_pv_row(row_slice)
+                    with pto.if_context(mod == c0, has_else=True) as branch0:
+                        apply_gu_update_row(row_slice, exp_max_tiles[row_slice][0])
+                    with branch0.else_context():
+                        with pto.if_context(mod == c1, has_else=True) as branch1:
+                            apply_gu_update_row(row_slice, exp_max_tiles[row_slice][1])
+                        with branch1.else_context():
+                            with pto.if_context(
+                                mod == const(2), has_else=True
+                            ) as branch2:
+                                apply_gu_update_row(
+                                    row_slice, exp_max_tiles[row_slice][2]
+                                )
+                            with branch2.else_context():
+                                apply_gu_update_row(
+                                    row_slice, exp_max_tiles[row_slice][3]
+                                )
             free_pv_slot()
 
         compute_p_init()
         for preload in range(1, QK_PRELOAD):
             compute_p_update(
                 const(preload),
-                exp_max_first_tiles[preload % EXP_RING],
-                exp_max_second_tiles[preload % EXP_RING],
+                preload % EXP_RING,
             )
 
         cPRELOAD = const(QK_PRELOAD)
@@ -610,8 +595,7 @@ def module():
             compute_gu_init()
             compute_p_update(
                 cPRELOAD,
-                exp_max_first_tiles[QK_PRELOAD % EXP_RING],
-                exp_max_second_tiles[QK_PRELOAD % EXP_RING],
+                QK_PRELOAD % EXP_RING,
             )
 
         for tile_id in pto.range(c1, steady_end, c1):
@@ -623,22 +607,19 @@ def module():
             tile_id = steady_end + const(drain)
             compute_gu(tile_id)
 
-        tile.row_expand_div(o_first, global_sum_first, o_first)
-        tile.row_expand_div(o_second, global_sum_second, o_second)
-        o_view0 = pto.slice_view(
-            o_sub_vec_ty,
-            source=tv_o,
-            offsets=[q_row_off_sb, c0],
-            sizes=[cVEC_ROWS, cHEAD],
-        )
-        pto.store(o_first, o_view0)
-        o_view1 = pto.slice_view(
-            o_sub_vec_ty,
-            source=tv_o,
-            offsets=[q_row_off_sb + cVEC_ROWS, c0],
-            sizes=[cVEC_ROWS, cHEAD],
-        )
-        pto.store(o_second, o_view1)
+        for row_slice in range(SUBTILES):
+            tile.row_expand_div(
+                o_tiles[row_slice],
+                global_sum_tiles[row_slice],
+                o_tiles[row_slice],
+            )
+            o_view = pto.slice_view(
+                o_sub_vec_ty,
+                source=tv_o,
+                offsets=[q_row_off_sb + const(row_slice * VEC_ROWS), c0],
+                sizes=[cVEC_ROWS, cHEAD],
+            )
+            pto.store(o_tiles[row_slice], o_view)
 
     @pto.func
     def call_both(
