@@ -47,10 +47,10 @@ jobs:
 
     env:
       RELEASE_REPO: hw-native-sys/PTOAS
-      RELEASE_VER: 0.31
-      RELEASE_TAG: v0.31
+      RELEASE_VER: 0.37
+      RELEASE_TAG: v0.37
       CLI_DIR: /installers/ptoas-cli
-      PTOISA_COMMIT: 0af942568a4f2868673da0a35b0f5b64f27a20d5
+      PTOISA_COMMIT: 933ad5d84c98377ca19f1de2e6616ba79136056a
 
     steps:
       - name: Install system packages

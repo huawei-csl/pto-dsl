@@ -179,19 +179,29 @@ def aic_initialize_pipe(
     dir_mask,
     slot_size,
     gm_slot_buffer=None,  # only needed on a2/a3?
-    c2v_consumer_buf,
-    v2c_consumer_buf,
+    gm_slot_tensor=None,
+    c2v_consumer_buf=None,
+    v2c_consumer_buf=None,
     id=None,
+    local_slot_num=None,
     nosplit=None,
 ):
+    kwargs = {}
+    if c2v_consumer_buf is not None:
+        kwargs["c2v_consumer_buf"] = _unwrap(c2v_consumer_buf)
+    if v2c_consumer_buf is not None:
+        kwargs["v2c_consumer_buf"] = _unwrap(v2c_consumer_buf)
+    if gm_slot_buffer is not None:
+        kwargs["gm_slot_buffer"] = _unwrap(gm_slot_buffer)
+    if gm_slot_tensor is not None:
+        kwargs["gm_slot_tensor"] = _unwrap(gm_slot_tensor)
     return _pto.AicInitializePipeOp(
         dir_mask,
         slot_size,
-        c2v_consumer_buf=_unwrap(c2v_consumer_buf),
-        v2c_consumer_buf=_unwrap(v2c_consumer_buf),
-        gm_slot_buffer=_unwrap(gm_slot_buffer),
         id=id,
+        local_slot_num=local_slot_num,
         nosplit=nosplit,
+        **kwargs,
     )
 
 
@@ -206,22 +216,33 @@ def aiv_initialize_pipe(
     dir_mask,
     slot_size,
     gm_slot_buffer=None,  # only needed on a2/a3
-    c2v_consumer_buf,
-    v2c_consumer_buf,
+    gm_slot_tensor=None,
+    c2v_consumer_buf=None,
+    v2c_consumer_buf=None,
     id=None,
+    local_slot_num=None,
     nosplit=None,
 ):
+    kwargs = {}
+    if c2v_consumer_buf is not None:
+        kwargs["c2v_consumer_buf"] = _unwrap(c2v_consumer_buf)
+    if v2c_consumer_buf is not None:
+        kwargs["v2c_consumer_buf"] = _unwrap(v2c_consumer_buf)
+    if gm_slot_buffer is not None:
+        kwargs["gm_slot_buffer"] = _unwrap(gm_slot_buffer)
+    if gm_slot_tensor is not None:
+        kwargs["gm_slot_tensor"] = _unwrap(gm_slot_tensor)
     return _pto.AivInitializePipeOp(
         dir_mask,
         slot_size,
-        c2v_consumer_buf=_unwrap(c2v_consumer_buf),
-        v2c_consumer_buf=_unwrap(v2c_consumer_buf),
-        gm_slot_buffer=_unwrap(gm_slot_buffer),
         id=id,
+        local_slot_num=local_slot_num,
         nosplit=nosplit,
+        **kwargs,
     )
 
 
+@with_loc
 def initialize_l2g2l_pipe(
     *,
     dir_mask,
@@ -315,6 +336,14 @@ def tpush_to_aic(tile, split, *, id=None):
     return _pto.TPushToAicOp(_unwrap(tile), split, id=id)
 
 
+def talloc_to_aic(entry, split, *, id=None):
+    return _pto.TAllocToAicOp(_unwrap(entry), split, id=id).result
+
+
+def talloc_to_aiv(entry, split, *, id=None):
+    return _pto.TAllocToAivOp(_unwrap(entry), split, id=id).result
+
+
 # %recv_tile = pto.tpop_from_aic {split = 0} -> !pto.tile_buf<loc=vec, ... fractal=512, pad=0>
 @with_loc
 def tpop_from_aic(tile_type, split, *, id=None):
@@ -328,13 +357,24 @@ def tpop_from_aiv(tile_type, split, *, id=None):
 
 # pto.tfree_from_aic {split = 0}
 @with_loc
-def tfree_from_aic(split, *, id=None):
-    return _pto.TFreeFromAicOp(split, id=id)
+def tfree_from_aic(split, *, entry=None, id=None):
+    kwargs = {}
+    if entry is not None:
+        kwargs["entry"] = _unwrap(entry)
+    return _pto.TFreeFromAicOp(split, id=id, **kwargs)
 
 
 @with_loc
-def tfree_from_aiv(split, *, id=None):
-    return _pto.TFreeFromAivOp(split, id=id)
+def tfree_from_aiv(split, *, entry=None, id=None):
+    kwargs = {}
+    if entry is not None:
+        kwargs["entry"] = _unwrap(entry)
+    return _pto.TFreeFromAivOp(split, id=id, **kwargs)
+
+
+@with_loc
+def bitcast(result_type, src):
+    return _pto.BitcastOp(result_type, _unwrap(src)).result
 
 
 @with_loc
@@ -387,6 +427,7 @@ __all__ = [
     "alloc_tile",
     "declare_global",
     "declare_tile",
+    "declare_global",
     "reserve_buffer",
     "import_reserved_buffer",
     "aic_initialize_pipe",
@@ -395,6 +436,9 @@ __all__ = [
     "load_scalar",
     "load",
     "store",
+    "bitcast",
+    "talloc_to_aic",
+    "talloc_to_aiv",
     "tpush_to_aiv",
     "tpush_to_aic",
     "tpop_from_aic",
