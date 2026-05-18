@@ -262,7 +262,12 @@ def to_ir_module(fn=None, *, module=False):
                     )
                 old = _inject_globals(fn, meta_map)
                 prev = _CURRENT
-                _CURRENT = {"ctx": ctx, "module": ir_module, "meta_map": meta_map, "entry_fn": None}
+                _CURRENT = {
+                    "ctx": ctx,
+                    "module": ir_module,
+                    "meta_map": meta_map,
+                    "entry_fn": None,
+                }
                 try:
                     fn()
                     # Capture entry metadata before _CURRENT is restored.
