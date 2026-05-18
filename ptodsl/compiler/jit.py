@@ -102,13 +102,7 @@ class JitWrapper:
         module=False,
     ):
         self._fn = fn
-<<<<<<< HEAD
-        self._orig_sig = inspect.signature(fn)
-        self._sig = self._orig_sig
-        self._meta_data = meta_data
-=======
         self._sig = inspect.signature(fn)
->>>>>>> 9414944 (minimizing meta data info)
         self._arg_types = None
         self._output_dir = (
             pathlib.Path(output_dir)
@@ -267,30 +261,7 @@ class JitWrapper:
         self._output_dir.mkdir(parents=True, exist_ok=True)
         pto_path, cpp_path, caller_path, lib_path = self._artifact_paths()
 
-<<<<<<< HEAD
-        if self._module:
-            # Multi-function module mode: build the module and extract
-            # the entry function signature from the module-level metadata.
-            from .ir import get_last_entry_meta
-
-            ir_module = to_ir_module(meta_data=self._meta_data, module=True)(self._fn)
-            entry_meta = get_last_entry_meta()
-            if entry_meta is None or entry_meta.get("entry_name") is None:
-                raise RuntimeError(
-                    "module=True requires at least one `@pto.func` (without "
-                    "kernel=) as the entry point."
-                )
-            self._entry_name = entry_meta["entry_name"]
-            self._sig = entry_meta["entry_sig"]
-            self._arg_types = entry_meta["entry_arg_types"]
-        else:
-            # Single-function mode (original path).
-            self._arg_types = self._resolve_runtime_arg_types()
-            ir_module = to_ir_module(meta_data=self._meta_data)(self._fn)
-
-=======
         ir_module = to_ir_module(self._fn)
->>>>>>> 9414944 (minimizing meta data info)
         pto_path.write_text(f"{ir_module}\n", encoding="utf-8")
 
         ptoas_cmd = ["ptoas"]

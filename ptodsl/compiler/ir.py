@@ -1,4 +1,3 @@
-import ctypes
 import inspect
 
 from mlir.dialects import func, pto as _pto
@@ -7,6 +6,7 @@ from mlir.ir import Attribute, Context, InsertionPoint, Location, Module, UnitAt
 from ..api.scalar import wrap_value
 from ..api.type_def import _LazyType, _materialize
 from ..utils.codegen import get_user_code_loc
+
 
 # For the inner decorators to be clean for the user visible API `pto.func(kernel='cube')`
 # with no reference to module, we need this:
@@ -162,37 +162,6 @@ def _restore_globals(fn, old, names):
             globs[name] = old[name]
 
 
-def _patch_closure_cells(fn, values):
-    """Replace any _LazyType closure cells in *fn* with their materialized values.
-
-    Returns a dict mapping cell index → original _LazyType so the caller can
-    restore them afterwards.
-    """
-    saved = {}
-    if not (fn.__code__.co_freevars and fn.__closure__):
-        return saved
-    for i, (name, cell) in enumerate(zip(fn.__code__.co_freevars, fn.__closure__)):
-        try:
-            contents = cell.cell_contents
-        except ValueError:
-            continue
-        if isinstance(contents, _LazyType) and name in values:
-            saved[i] = contents
-            ctypes.pythonapi.PyCell_Set(
-                ctypes.py_object(cell), ctypes.py_object(values[name])
-            )
-    return saved
-
-
-def _restore_closure_cells(fn, saved):
-    """Restore closure cells previously patched by *_patch_closure_cells*."""
-    if not saved or not fn.__closure__:
-        return
-    for i, original in saved.items():
-        cell = fn.__closure__[i]
-        ctypes.pythonapi.PyCell_Set(ctypes.py_object(cell), ctypes.py_object(original))
-
-
 def _define(module, ctx, meta_map, fn, *, name=None, entry=False, kernel=None):
     sig = inspect.signature(fn)
     arg_types = _resolve_arg_types(sig, meta_map)
@@ -216,12 +185,10 @@ def _define(module, ctx, meta_map, fn, *, name=None, entry=False, kernel=None):
     with InsertionPoint(block), Location.file(fn_file, fn_line, 0):
         wrapped_args = [wrap_value(arg) for arg in block.arguments]
         old = _inject_globals(fn, meta_map)
-        saved_cells = _patch_closure_cells(fn, meta_map)
         try:
             fn(*wrapped_args)
         finally:
             _restore_globals(fn, old, meta_map.keys())
-            _restore_closure_cells(fn, saved_cells)
 
         if not ret_types and not _has_func_return(block):
             func.ReturnOp([])
@@ -264,19 +231,6 @@ def ir_func(fn=None, *, name=None, kernel=None):
     return decorator
 
 
-<<<<<<< HEAD
-# Stores entry function metadata from the last to_ir_module(module=True) call.
-# Read by JitWrapper._build immediately after calling to_ir_module (synchronous).
-_LAST_ENTRY_META = None
-
-
-def get_last_entry_meta():
-    """Return the entry function metadata from the last module build, or None."""
-    return _LAST_ENTRY_META
-
-
-def to_ir_module(*, meta_data, module=False):
-=======
 def to_ir_module(fn=None, *, module=False):
     """Decorator that compiles a kernel function (or module builder) to an MLIR module.
 
@@ -292,7 +246,6 @@ def to_ir_module(fn=None, *, module=False):
             ...
     """
 
->>>>>>> 9414944 (minimizing meta data info)
     def decorator(fn):
         global _CURRENT, _LAST_ENTRY_META
         _LAST_ENTRY_META = None
@@ -309,12 +262,7 @@ def to_ir_module(fn=None, *, module=False):
                     )
                 old = _inject_globals(fn, meta_map)
                 prev = _CURRENT
-                _CURRENT = {
-                    "ctx": ctx,
-                    "module": ir_module,
-                    "meta_map": meta_map,
-                    "entry_fn": None,
-                }
+                _CURRENT = {"ctx": ctx, "module": ir_module, "meta_map": meta_map, "entry_fn": None}
                 try:
                     fn()
                     # Capture entry metadata before _CURRENT is restored.

@@ -4,6 +4,7 @@ from mlir.dialects import pto as _pto
 from mlir.ir import FlatSymbolRefAttr, InsertionPoint, Operation, ShapedType
 
 from .scalar import Value, _unwrap
+from .type_def import _materialize
 from ..utils.codegen import get_user_code_loc, with_loc
 
 
@@ -145,6 +146,7 @@ def cube_section():
 
 @with_loc
 def alloc_tile(tile_type, *, addr=None, valid_row=None, valid_col=None):
+    tile_type = _materialize(tile_type)
     kwargs = {}
     if addr is not None:
         kwargs["addr"] = _unwrap(addr)
@@ -157,6 +159,7 @@ def alloc_tile(tile_type, *, addr=None, valid_row=None, valid_col=None):
 
 @with_loc
 def declare_tile(tile_type):
+    tile_type = _materialize(tile_type)
     return Operation.create("pto.declare_tile", results=[tile_type]).result
 
 

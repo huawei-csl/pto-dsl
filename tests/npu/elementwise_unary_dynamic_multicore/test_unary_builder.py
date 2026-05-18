@@ -22,7 +22,7 @@ UNARY_OPS = [
     ("reciprocal", lambda x: x.reciprocal()),
 ]
 
-DTYPES = ["float32", "float16"]
+DTYPES = ["float32"]
 
 TORCH_DTYPES = {
     "float32": torch.float32,
