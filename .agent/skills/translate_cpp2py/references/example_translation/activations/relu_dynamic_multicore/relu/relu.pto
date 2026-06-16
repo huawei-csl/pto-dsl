@@ -1,0 +1,45 @@
+module {
+  func.func @sync_kernel_dyn(%arg0: !pto.ptr<f32>, %arg1: !pto.ptr<f32>, %arg2: i32) {
+    pto.section.vector {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c32 = arith.constant 32 : index
+      %0 = arith.index_cast %arg2 : i32 to index
+      %1 = pto.get_block_idx
+      %2 = pto.get_subblock_idx
+      %3 = pto.get_subblock_num
+      %4 = arith.muli %1, %3 : i64
+      %5 = arith.addi %4, %2 : i64
+      %6 = arith.index_cast %5 : i64 to index
+      %7 = pto.get_block_num
+      %8 = arith.muli %7, %3 : i64
+      %9 = arith.index_cast %8 : i64 to index
+      %10 = arith.ceildivsi %0, %9 : index
+      %11 = arith.muli %6, %10 : index
+      %12 = pto.make_tensor_view %arg0, shape = [%0], strides = [%c1] : !pto.tensor_view<?xf32>
+      %13 = pto.make_tensor_view %arg1, shape = [%0], strides = [%c1] : !pto.tensor_view<?xf32>
+      %14 = arith.cmpi slt, %11, %0 : index
+      scf.if %14 {
+        %15 = arith.addi %11, %10 : index
+        %16 = arith.minui %15, %0 : index
+        %17 = arith.subi %16, %11 : index
+        %18 = arith.ceildivsi %17, %c32 : index
+        scf.for %arg3 = %c0 to %18 step %c1 {
+          %19 = arith.muli %arg3, %c32 : index
+          %20 = arith.addi %11, %19 : index
+          %21 = arith.subi %16, %20 : index
+          %22 = arith.minui %21, %c32 : index
+          %23 = pto.alloc_tile valid_row = %c1 valid_col = %22 : !pto.tile_buf<loc=vec, dtype=f32, rows=1, cols=32, v_row=?, v_col=?, blayout=row_major, slayout=none_box, fractal=512, pad=0>
+          %24 = pto.alloc_tile valid_row = %c1 valid_col = %22 : !pto.tile_buf<loc=vec, dtype=f32, rows=1, cols=32, v_row=?, v_col=?, blayout=row_major, slayout=none_box, fractal=512, pad=0>
+          %25 = pto.partition_view %12, offsets = [%20], sizes = [%c32] : !pto.tensor_view<?xf32> -> !pto.partition_tensor_view<32xf32>
+          %26 = pto.partition_view %13, offsets = [%20], sizes = [%c32] : !pto.tensor_view<?xf32> -> !pto.partition_tensor_view<32xf32>
+          pto.tload ins(%25 : !pto.partition_tensor_view<32xf32>) outs(%23 : !pto.tile_buf<loc=vec, dtype=f32, rows=1, cols=32, v_row=?, v_col=?, blayout=row_major, slayout=none_box, fractal=512, pad=0>)
+          pto.trelu ins(%23 : !pto.tile_buf<loc=vec, dtype=f32, rows=1, cols=32, v_row=?, v_col=?, blayout=row_major, slayout=none_box, fractal=512, pad=0>) outs(%24 : !pto.tile_buf<loc=vec, dtype=f32, rows=1, cols=32, v_row=?, v_col=?, blayout=row_major, slayout=none_box, fractal=512, pad=0>)
+          pto.tstore ins(%24 : !pto.tile_buf<loc=vec, dtype=f32, rows=1, cols=32, v_row=?, v_col=?, blayout=row_major, slayout=none_box, fractal=512, pad=0>) outs(%26 : !pto.partition_tensor_view<32xf32>)
+        }
+      }
+    }
+    return
+  }
+}
+
