@@ -1,0 +1,46 @@
+mode = "create"
+
+kernel_dir  = "examples/aot/geglu_dynamic_multicore"  # reference for API patterns only
+kernel_name = "mish"
+create_file = "mish_builder.py"
+
+build_cmd = ["bash", "compile.sh"]
+test_cmd  = ["python", "run_mish.py"]
+bench_cmd = ["python", "_bench_wrapper.py"]
+
+create_prompt = """
+Implement Mish activation: y = x * tanh(softplus(x)) = x * tanh(ln(1 + exp(x)))
+PyTorch reference: torch.nn.functional.mish(x)
+
+Input:  fp16 tensor (batch, n_cols)
+Output: fp16 tensor (batch, n_cols) — separate output pointer
+
+The kernel signature in caller.cpp should be:
+    extern "C" void call_kernel(uint32_t blockDim, void *stream,
+                                uint8_t *x, uint8_t *y,
+                                uint32_t batch, uint32_t n_cols)
+
+The .so produced by compile.sh should be named mish_lib.so.
+The test script run_mish.py should compare against torch.nn.functional.mish(x.float()).to(x.dtype).
+The bench wrapper _bench_wrapper.py should print latency_ms=<value>.
+
+Implementation hint: compute softplus(x) = ln(1 + exp(x)) first, then tanh of that, then multiply by x.
+For numerical stability at large x, softplus(x) ≈ x (exp overflows), so clamp or use the identity
+softplus(x) = x + ln(1 + exp(-x)) for large positive x.
+"""
+
+# These are loaded from the reference kernel_dir as examples — adapt them for mish
+preload_files = ["compile.sh", "caller.cpp", "geglu_builder.py", "run_geglu.py", "_bench_wrapper.py"]
+
+# Local PTO-DSL API files (authoritative, read from repo)
+local_context_files = [
+    "ptodsl/api/pto.py",
+    "ptodsl/api/tile.py",
+    "ptodsl/api/scalar.py",
+    "ptodsl/api/control_flow.py",
+    "ptodsl/api/synchronization.py",
+]
+
+[[context_urls]]
+url   = "https://github.com/zhangstevenunity/PTOAS/blob/main/python/pto/dialects/pto.py"
+label = "PTO Python bindings"
