@@ -1,0 +1,76 @@
+name: On device CI
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+# New on-device CI runs cancel older queued or running jobs.
+concurrency:
+  group: on-device-ci
+  cancel-in-progress: true
+
+jobs:
+  on-device-ci:
+    name: On device CI
+    runs-on: self-hosted
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set Docker image tag
+        run: |
+          dockerfile_sha="$(sha256sum docker/Dockerfile | cut -d ' ' -f 1)"
+          echo "DOCKER_IMAGE=pto-dsl-ci:${dockerfile_sha}" >> "$GITHUB_ENV"
+      - name: Build or reuse Docker image
+        run: |
+          docker build \
+            --file docker/Dockerfile \
+            --tag "$DOCKER_IMAGE" \
+            docker
+      - name: Run Docker image
+        run: |
+          docker run --rm \
+            --ipc=host \
+            --privileged \
+            --device=/dev/davinci0 \
+            --device=/dev/davinci1 \
+            --device=/dev/davinci2 \
+            --device=/dev/davinci3 \
+            --device=/dev/davinci4 \
+            --device=/dev/davinci5 \
+            --device=/dev/davinci6 \
+            --device=/dev/davinci7 \
+            --device=/dev/davinci_manager \
+            --device=/dev/devmm_svm \
+            --device=/dev/hisi_hdc \
+            -e PTODSL_TEST_DEVICE_ID=0 \
+            -v /usr/local/Ascend/driver:/usr/local/Ascend/driver:ro \
+            -v /etc/ascend_install.info:/etc/ascend_install.info:ro \
+            -v "${GITHUB_WORKSPACE}:/workspace/pto-dsl-src:ro" \
+            -w /tmp \
+            "$DOCKER_IMAGE" \
+            bash -lc '
+              set -e
+              echo "::group::Copy repository"
+              cp -a /workspace/pto-dsl-src /tmp/pto-dsl
+              cd /tmp/pto-dsl
+              echo "::endgroup::"
+              echo "::group::Install pto-dsl"
+              python -m pip install --no-cache-dir -e .
+              echo "::endgroup::"
+              echo "::group::Import torch"
+              python -c "import torch; print(torch.ones(2).npu())"
+              echo "::endgroup::"
+
+              echo "::group::Run pytest"
+              pytest -v
+              echo "::endgroup::"
+              echo "::group::Validate examples"
+              python examples/validate_all_examples.py
+              echo "::endgroup::"
+            '
