@@ -1,0 +1,10 @@
+# Generated build artifacts (compile.sh outputs)
+sparse_attn.pto
+sparse_attn.cpp
+sparse_attn_lib.so
+
+# Python cache
+__pycache__/
+
+# Benchmark scratch
+perf_data/

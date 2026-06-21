@@ -1,0 +1,10 @@
+# Generated build artifacts (compile.sh outputs)
+act_quant.pto
+act_quant.cpp
+act_quant_lib.so
+
+# Python cache
+__pycache__/
+
+# Benchmark scratch
+perf_data/

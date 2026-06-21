@@ -1,0 +1,10 @@
+# Generated build artifacts (compile.sh outputs)
+fp4_gemm.pto
+fp4_gemm.cpp
+fp4_gemm_lib.so
+
+# Python cache
+__pycache__/
+
+# Benchmark scratch
+perf_data/
